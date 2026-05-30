@@ -573,47 +573,6 @@ export default function App() {
   );
 
   /* ── ADMIN DASHBOARD ── */
-  const totRev = myBooks.filter(b => b.status !== "cancelled").reduce((s, b) => s + b.paid, 0);
-  const totExp = myExps.reduce((s, e) => s + e.amt, 0);
-  const netPro = totRev - totExp;
-  const pending = myBooks.reduce((s, b) => s + (b.total - b.paid), 0);
-  const occPct = myRooms.length ? Math.round(myRooms.filter(r => r.status === "occupied").length / myRooms.length * 100) : 0;
-
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: G1, fontFamily: "'DM Sans',sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-      <NavBar />
-      {/* Tab bar */}
-      <div style={{ background: WH, borderBottom: `1px solid ${G2}`, display: "flex", overflowX: "auto", flexShrink: 0 }}>
-        {ATABS.map(t => (
-          <button key={t.id} onClick={() => setATab(t.id)} style={{ padding: "12px 16px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: aTab === t.id ? M : G6, borderBottom: `3px solid ${aTab === t.id ? M : "transparent"}`, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", fontFamily: "inherit" }}>
-            {t.icon} {t.label}
-          </button>
-        ))}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", padding: "0 14px" }}>
-          <Btn onClick={() => setModal("newBook")} style={{ fontSize: 12, padding: "7px 13px" }}>+ New Booking</Btn>
-        </div>
-      </div>
-      {/* Content */}
-      <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
-        {aTab === "dash" && <DashTab books={myBooks} rooms={myRooms} exps={myExps} locs={locs} allRooms={rooms} totRev={totRev} totExp={totExp} netPro={netPro} pending={pending} occPct={occPct} setATab={setATab} />}
-        {aTab === "books" && <BooksTab books={myBooks} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} onNew={() => setModal("newBook")} pop={pop} setBooks={setBooks} />}
-        {aTab === "rooms" && <RoomsTab rooms={myRooms} locs={locs} setRooms={setRooms} pop={pop} />}
-        {aTab === "pays" && <PaysTab books={myBooks} rooms={rooms} recPay={recPay} />}
-        {aTab === "exps" && <ExpsTab exps={myExps} locs={locs} user={user} setExps={setExps} pop={pop} />}
-        {aTab === "reports" && <ReportsTab books={myBooks} exps={myExps} rooms={myRooms} locs={locs} allRooms={rooms} />}
-        {aTab === "locs" && user?.role === "Admin" && <LocsTab locs={locs} setLocs={setLocs} rooms={rooms} books={books} pop={pop} />}
-        {aTab === "staff" && user?.role === "Admin" && <StaffTab staff={staff} setStaff={setStaff} locs={locs} pop={pop} />}
-      </div>
-      {modal === "newBook" && <NewBookModal rooms={rooms} locs={locs} user={user} onClose={() => setModal(null)} onSave={b => { setBooks(p => [...p, b]); setModal(null); pop("Booking created: " + b.id); }} />}
-      {modal === "login" && <LoginMod />}
-      {toast && <div style={{ position: "fixed", bottom: 22, right: 22, background: toast.t === "ok" ? OK : ER, color: WH, padding: "11px 18px", borderRadius: 10, fontSize: 14, fontWeight: 700, zIndex: 2000, boxShadow: "0 8px 24px rgba(0,0,0,.2)" }}>{toast.t === "ok" ? "✓ " : "✗ "}{toast.msg}</div>}
-    </div>
-  );
-}
-
-
-  /* ── ADMIN DASHBOARD ── */
   const totRev = books.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+b.paid,0);
   const totExp = exps.reduce((s,e)=>s+e.amt,0);
   const netPro = totRev - totExp;
