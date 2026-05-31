@@ -235,6 +235,15 @@ export default function App() {
   };
 
   /* ── ADMIN ACTIONS ── */
+  const deleteBooking = async (id, guestName) => {
+    if (!window.confirm(`Permanently delete booking for "${guestName}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteBooking(id);
+      setBooks(p => p.filter(b => b.id !== id));
+      pop(`Booking deleted`);
+    } catch (err) { pop(err.message || 'Delete failed', 'err'); }
+  };
+
   const updBook = async (id, status) => {
     try {
       const updated = await api.updateBooking(id, { status });
@@ -626,7 +635,7 @@ export default function App() {
   const totRev = books.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+b.paid,0);
   const totExp = exps.reduce((s,e)=>s+e.amt,0);
   const netPro = totRev - totExp;
-  const pending = books.reduce((s,b)=>s+(b.total-b.paid),0);
+  const pending = books.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+(b.total-b.paid),0);
   const occPct = rooms.length ? Math.round(rooms.filter(r=>r.status==="occupied").length/rooms.length*100) : 0;
 
   return (
@@ -647,7 +656,7 @@ export default function App() {
       <div style={{ flex:1, overflow:"auto", padding:22 }}>
         {loading && <Spinner/>}
         {!loading && aTab==="dash"    && <DashTab books={books} rooms={rooms} exps={exps} locs={locs} allRooms={rooms} totRev={totRev} totExp={totExp} netPro={netPro} pending={pending} occPct={occPct} setATab={setATab}/>}
-        {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} onNew={()=>setModal("newBook")} pop={pop}/>}
+        {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} deleteBooking={deleteBooking} onNew={()=>setModal("newBook")} pop={pop} user={user}/>}
         {!loading && aTab==="rooms"   && <RoomsTab rooms={rooms} locs={locs} saveRoom={saveRoom} pop={pop}/>}
         {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay}/>}
         {!loading && aTab==="exps"    && <ExpsTab exps={exps} locs={locs} user={user} saveExp={saveExp} pop={pop}/>}
@@ -763,7 +772,7 @@ function DashTab({ books, rooms, exps, locs, allRooms, totRev, totExp, netPro, p
 }
 
 /* ─── BOOKINGS TAB ───────────────────────────────────────── */
-function BooksTab({ books, rooms, locs, updBook, recPay, onNew, pop, setBooks }) {
+function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, onNew, pop, user }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState(null);
@@ -803,8 +812,9 @@ function BooksTab({ books, rooms, locs, updBook, recPay, onNew, pop, setBooks })
                 {b.status === "pending" && <button onClick={() => updBook(b.id, "confirmed")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${OK}`, color: OK, background: "none", cursor: "pointer", fontWeight: 700 }}>Confirm</button>}
                 {b.status === "confirmed" && <button onClick={() => updBook(b.id, "checkedIn")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${M}`, color: M, background: "none", cursor: "pointer", fontWeight: 700 }}>Check In</button>}
                 {b.status === "checkedIn" && <button onClick={() => updBook(b.id, "checkedOut")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${G6}`, color: G6, background: "none", cursor: "pointer", fontWeight: 700 }}>Check Out</button>}
-                {bal > 0 && <button onClick={() => setSel(b.id)} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${IN}`, color: IN, background: "none", cursor: "pointer", fontWeight: 700 }}>Pay</button>}
+                {bal > 0 && b.status !== "cancelled" && <button onClick={() => setSel(b.id)} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${IN}`, color: IN, background: "none", cursor: "pointer", fontWeight: 700 }}>Pay</button>}
                 {!["cancelled", "checkedOut"].includes(b.status) && <button onClick={() => updBook(b.id, "cancelled")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${ER}`, color: ER, background: "none", cursor: "pointer", fontWeight: 700 }}>Cancel</button>}
+                {b.status === "cancelled" && user?.role === "Admin" && <button onClick={() => deleteBooking(b.id, b.gName)} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${ER}`, color: WH, background: ER, cursor: "pointer", fontWeight: 700 }}>Delete</button>}
               </div>
             ];
           })} />
@@ -829,13 +839,18 @@ function BooksTab({ books, rooms, locs, updBook, recPay, onNew, pop, setBooks })
               ))}
             </div>
           </div>
-          {(selB.total - selB.paid) > 0 && (
+          {(selB.total - selB.paid) > 0 && selB.status !== "cancelled" && (
             <div style={{ marginTop: 18, padding: 14, background: G1, borderRadius: 10 }}>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Record Payment</div>
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
                 <Inp label={`Amount (max ${fmt(selB.total - selB.paid)})`} type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} style={{ marginBottom: 0 }} />
                 <Btn v="ok" onClick={() => { recPay(selB.id, payAmt); setPayAmt(""); setSel(null); }}>Record</Btn>
               </div>
+            </div>
+          )}
+          {selB.status === "cancelled" && (
+            <div style={{ marginTop: 18, padding: 14, background: ERB, borderRadius: 10, fontSize: 13, color: ER }}>
+              ✗ This booking is cancelled — no outstanding balance. {selB.paid > 0 && `${fmt(selB.paid)} already collected is retained.`}
             </div>
           )}
           {selB.notes && <div style={{ marginTop: 14, fontSize: 13, color: G6 }}>📝 {selB.notes}</div>}
@@ -917,7 +932,7 @@ function PaysTab({ books, rooms, recPay }) {
   const [amt, setAmt] = useState("");
   const selB = books.find(b => b.id === sel);
   const totColl = books.reduce((s, b) => s + b.paid, 0);
-  const totPend = books.reduce((s, b) => s + (b.total - b.paid), 0);
+  const totPend = books.filter(b => b.status !== "cancelled").reduce((s, b) => s + (b.total - b.paid), 0);
   const totDisc = books.reduce((s, b) => s + (b.base - b.total), 0);
   return (
     <div>
@@ -937,9 +952,11 @@ function PaysTab({ books, rooms, recPay }) {
               <span style={{ color: OK, fontWeight: 700 }}>{fmt(b.paid)}</span>,
               <span style={{ color: bal > 0 ? ER : OK, fontWeight: 700 }}>{fmt(bal)}</span>,
               b.method,
-              bal > 0
-                ? <button onClick={() => { setSel(b.id); setAmt(""); }} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, background: M, color: WH, border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>Record</button>
-                : <span style={{ color: OK, fontSize: 12, fontWeight: 700 }}>✓ Settled</span>
+              b.status === "cancelled"
+                ? <span style={{ color: ER, fontSize: 12, fontWeight: 700 }}>✗ Cancelled</span>
+                : bal > 0
+                  ? <button onClick={() => { setSel(b.id); setAmt(""); }} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, background: M, color: WH, border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>Record</button>
+                  : <span style={{ color: OK, fontSize: 12, fontWeight: 700 }}>✓ Settled</span>
             ];
           })} />
       </Card>
@@ -1011,7 +1028,7 @@ function ReportsTab({ books, exps, rooms, locs, allRooms }) {
   const totExp = exps.reduce((s, e) => s + e.amt, 0);
   const net = totRev - totExp;
   const totDisc = books.reduce((s, b) => s + (b.base - b.total), 0);
-  const pending = books.reduce((s, b) => s + (b.total - b.paid), 0);
+  const pending = books.filter(b => b.status !== "cancelled").reduce((s, b) => s + (b.total - b.paid), 0);
   const margin = totRev > 0 ? Math.round(net / totRev * 100) : 0;
   const occ = rooms.length ? Math.round(rooms.filter(r => r.status === "occupied").length / rooms.length * 100) : 0;
   const avgRate = rooms.length ? Math.round(rooms.reduce((s, r) => s + r.price, 0) / rooms.length) : 0;

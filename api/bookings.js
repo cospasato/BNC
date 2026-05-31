@@ -59,10 +59,21 @@ module.exports = async function handler(req, res) {
       if (!id) return res.status(400).json({ error: 'id required' });
       const { status, paid_amount, add_payment } = req.body || {};
       let rows;
+
       if (add_payment !== undefined) {
+        // Record a payment
         rows = await sql`
           UPDATE bookings
           SET paid_amount = LEAST(total_amount, paid_amount + ${Number(add_payment)})
+          WHERE id = ${id} RETURNING *
+        `;
+      } else if (status === 'cancelled') {
+        // Cancellation: set total_amount = paid_amount so outstanding balance becomes 0
+        // Any amount already paid is retained (refund is handled offline)
+        rows = await sql`
+          UPDATE bookings SET
+            status       = 'cancelled',
+            total_amount = paid_amount
           WHERE id = ${id} RETURNING *
         `;
       } else {
@@ -73,6 +84,7 @@ module.exports = async function handler(req, res) {
           WHERE id = ${id} RETURNING *
         `;
       }
+
       if (!rows.length) return res.status(404).json({ error: `Booking '${id}' not found` });
       const b = rows[0];
       if (b.status === 'checkedIn')
@@ -80,6 +92,17 @@ module.exports = async function handler(req, res) {
       if (b.status === 'checkedOut' || b.status === 'cancelled')
         await sql`UPDATE rooms SET status = 'available' WHERE id = ${b.room_id}`;
       return res.status(200).json(b);
+    }
+
+    // DELETE /api/bookings?id=X — admin only, cancelled bookings only
+    if (req.method === 'DELETE') {
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const check = await sql`SELECT status, guest_name FROM bookings WHERE id = ${id}`;
+      if (!check.length) return res.status(404).json({ error: 'Booking not found' });
+      if (check[0].status !== 'cancelled')
+        return res.status(400).json({ error: 'Only cancelled bookings can be deleted. Cancel it first.' });
+      await sql`DELETE FROM bookings WHERE id = ${id}`;
+      return res.status(200).json({ success: true, guest: check[0].guest_name });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
