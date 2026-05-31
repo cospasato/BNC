@@ -656,7 +656,9 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                         <span style={{ fontSize: 15, fontWeight: 700, color: BK, fontFamily: "'Playfair Display',serif" }}>{rm.name}</span>
-                        {dateTaken && bD.ci && bD.co ? <span style={{background:WAB,color:WA,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>Dates Taken</span> : <Badge s={rm.status}/>}
+                        {dateTaken && bD.ci && bD.co
+                        ? <span style={{background:WAB,color:WA,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>📅 Dates Taken</span>
+                        : <Badge s={rm.status}/>}
                       </div>
                       <div style={{ fontSize: 12, color: G6, marginBottom: 7 }}>{rm.type} · {rm.beds} bed · up to {rm.guests} guests</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 8px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
@@ -666,6 +668,18 @@ export default function App() {
                       <div style={{ fontSize: 11, color: G4 }}>per night</div>
                     </div>
                   </div>
+                  {dateTaken && bD.ci && bD.co && (
+                    <div style={{ margin: "0 16px 14px", padding: "10px 13px", background: WAB, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ fontSize: 12, color: WA, fontWeight: 700 }}>
+                        Not available {bD.ci} → {bD.co}
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); setBD(d => ({ ...d, roomId: rm.id })); setBStep(3); }}
+                        style={{ background: WA, color: WH, border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        Change Dates →
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
               })}
@@ -679,7 +693,25 @@ export default function App() {
         {/* Step 3 */}
         {bStep === 3 && (
           <div>
-            <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, marginBottom: 20, color: BK }}>Select Dates</h2>
+            <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, marginBottom: 12, color: BK }}>Select Dates</h2>
+            {bD.roomId && !isAvailableForDates(bD.roomId) && bD.ci && bD.co && (
+              <div style={{ background: WAB, border: `1px solid ${WA}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <span style={{ fontSize: 20, flexShrink: 0 }}>📅</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: WA, fontSize: 14, marginBottom: 3 }}>
+                    {rooms.find(r=>r.id===bD.roomId)?.name} is not available for {bD.ci} → {bD.co}
+                  </div>
+                  <div style={{ fontSize: 13, color: G6 }}>
+                    Pick different dates below, or{" "}
+                    <button onClick={() => { setBD(d => ({ ...d, roomId: "" })); setBStep(2); }}
+                      style={{ background: "none", border: "none", color: M, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0, textDecoration: "underline" }}>
+                      choose a different room
+                    </button>
+                    .
+                  </div>
+                </div>
+              </div>
+            )}
             <Card>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <Inp label="Check-in Date" type="date" value={bD.ci} min={td()}
@@ -697,10 +729,13 @@ export default function App() {
               <Btn v="ghost" onClick={() => setBStep(2)}>← Back</Btn>
               <Btn onClick={() => {
                 if (bD.roomId && !isAvailableForDates(bD.roomId)) {
+                  // dates changed but room still conflicts — clear room, go back to select
                   setBD(d=>({...d, roomId:""}));
-                  pop("That room is not available for those dates. Please choose another.", "err");
+                  pop("Those dates are taken for that room — pick a different room.", "err");
                   setBStep(2);
-                } else setBStep(4);
+                } else {
+                  setBStep(4);
+                }
               }} disabled={!bD.ci || !bD.co}>Continue →</Btn>
             </div>
           </div>
@@ -1572,6 +1607,8 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
   const [dateTo, setDateTo]     = useState("");
   const [rptLoading, setRptLoading] = useState(false);
   const [rptData, setRptData]   = useState(null);
+  const [payDrillDown, setPayDrillDown] = useState(false);
+  const [payDrillMethod, setPayDrillMethod] = useState("");
 
   const fmtD = d => d.toISOString().split("T")[0];
 
@@ -1707,11 +1744,25 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
               ))}
             </Card>
             <Card>
-              <ST c="Payment Methods Breakdown"/>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13}}>
+                <ST c="Payment Methods Breakdown"/>
+                {byMethod.length>0 && (
+                  <button onClick={()=>setPayDrillDown(true)}
+                    style={{background:MF,color:M,border:`1px solid ${M}30`,borderRadius:7,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    View Details →
+                  </button>
+                )}
+              </div>
               {byMethod.length===0 && <div style={{color:G4,fontSize:13}}>No payment data for this period</div>}
               {byMethod.map((m,i)=>(
                 <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                  <span style={{color:G6}}>{m.method}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{color:G6}}>{m.method}</span>
+                    <button onClick={()=>{setPayDrillMethod(m.method);setPayDrillDown(true);}}
+                      style={{background:"none",border:"none",color:M,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>
+                      see payments
+                    </button>
+                  </div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontWeight:700}}>{fmt(m.total)}</div>
                     <div style={{fontSize:11,color:G4}}>{totRev>0?Math.round(m.total/totRev*100):0}%</div>
@@ -1720,6 +1771,71 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
               ))}
               {byMethod.length>0&&<div style={{marginTop:11,padding:"9px 0",borderTop:`2px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:M}}>{fmt(totRev)}</span></div>}
             </Card>
+
+            {/* ── PAYMENT DRILL-DOWN MODAL ── */}
+            {payDrillDown && (
+              <Modal title="Payment Details" onClose={()=>{setPayDrillDown(false);setPayDrillMethod("");}} wide>
+                {/* Method filter chips */}
+                <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:16}}>
+                  <button onClick={()=>setPayDrillMethod("")}
+                    style={{padding:"5px 13px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${!payDrillMethod?M:G2}`,background:!payDrillMethod?M:WH,color:!payDrillMethod?WH:G6}}>
+                    All Methods
+                  </button>
+                  {byMethod.map((m,i)=>(
+                    <button key={i} onClick={()=>setPayDrillMethod(m.method)}
+                      style={{padding:"5px 13px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${payDrillMethod===m.method?M:G2}`,background:payDrillMethod===m.method?M:WH,color:payDrillMethod===m.method?WH:G6}}>
+                      {m.method}
+                    </button>
+                  ))}
+                </div>
+                {/* Summary for selected method */}
+                {payDrillMethod && (()=>{
+                  const total = byMethod.find(m=>m.method===payDrillMethod)?.total||0;
+                  const count = Bk.filter(b=>b.method===payDrillMethod&&b.paid>0).length;
+                  return (
+                    <div style={{background:MF,border:`1px solid ${M}20`,borderRadius:8,padding:"11px 14px",marginBottom:14,display:"flex",gap:20,fontSize:13}}>
+                      <div><span style={{color:G6}}>Method: </span><strong style={{color:M}}>{payDrillMethod}</strong></div>
+                      <div><span style={{color:G6}}>Total: </span><strong>{fmt(total)}</strong></div>
+                      <div><span style={{color:G6}}>Transactions: </span><strong>{count}</strong></div>
+                    </div>
+                  );
+                })()}
+                {/* Payments table */}
+                <Tbl
+                  hdr={["Booking","Guest","Room","Date","Method","Paid","Balance","Status"]}
+                  rows={Bk
+                    .filter(b => b.paid > 0 && (!payDrillMethod || b.method === payDrillMethod))
+                    .sort((a,b)=>b.id.localeCompare(a.id))
+                    .map(b=>{
+                      const rm = rooms.find(r=>r.id===b.roomId);
+                      const bal = b.total - b.paid;
+                      return [
+                        <span style={{color:M,fontWeight:700,fontSize:12}}>{b.id}</span>,
+                        <div>
+                          <div style={{fontWeight:700}}>{b.gName}</div>
+                          <div style={{fontSize:11,color:G6}}>{b.gPhone}</div>
+                        </div>,
+                        <div style={{fontSize:12}}>
+                          <div>{rm?.name||"—"}</div>
+                          <div style={{fontSize:11,color:G6}}>{locs.find(l=>l.id===b.locId)?.name||""}</div>
+                        </div>,
+                        <div style={{fontSize:12}}>
+                          <div>{b.ci}</div>
+                          <div style={{color:G6}}>{b.nights}n</div>
+                        </div>,
+                        <span style={{background:G1,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700,color:G8}}>{b.method}</span>,
+                        <span style={{color:OK,fontWeight:700}}>{fmt(b.paid)}</span>,
+                        <span style={{color:bal>0?ER:OK,fontWeight:700}}>{fmt(bal)}</span>,
+                        <Badge s={b.status}/>
+                      ];
+                    })
+                  }
+                />
+                {Bk.filter(b=>b.paid>0&&(!payDrillMethod||b.method===payDrillMethod)).length===0 && (
+                  <div style={{textAlign:"center",padding:"20px 0",color:G4,fontSize:14}}>No payments found for this filter</div>
+                )}
+              </Modal>
+            )}
           </div>
         </div>
       )}
