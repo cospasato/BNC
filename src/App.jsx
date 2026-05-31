@@ -29,7 +29,7 @@ const mapBook = b => b ? ({
 const mapRoom = r => r ? ({
   id: r.id, locId: r.location_id, name: r.name, type: r.type,
   beds: r.beds, guests: r.max_guests, price: Number(r.price_per_night),
-  status: r.status, amen: r.amenities || [], photos: r.photos || [],
+  status: r.status, amen: r.amenities || [], photos: r.photos || [], video: r.video_url || "",
 }) : null;
 
 const mapLoc = l => l ? ({
@@ -148,16 +148,35 @@ export default function App() {
     const u = await api.customerLogin({ email, password });
     setCustomer(u);
     setCustModal(null);
-    setView("customer");
-    loadCustBooks(u.id);
+    if (pendingBookLoc) {
+      setBD(d=>({...d, locId: pendingBookLoc}));
+      setView("book"); setBStep(2);
+      setPendingBookLoc(null);
+    } else if (pendingBookLoc === "") {
+      setView("book"); setBStep(1);
+      setPendingBookLoc(null);
+    } else {
+      setView("customer");
+      loadCustBooks(u.id);
+    }
   };
 
   const custRegister = async (form) => {
     const u = await api.customerRegister(form);
     setCustomer(u);
     setCustModal(null);
-    setView("customer");
     pop("Welcome, " + u.name + "! Account created.");
+    if (pendingBookLoc) {
+      setBD(d=>({...d, locId: pendingBookLoc}));
+      setView("book"); setBStep(2);
+      setPendingBookLoc(null);
+    } else if (pendingBookLoc === "") {
+      setView("book"); setBStep(1);
+      setPendingBookLoc(null);
+    } else {
+      setView("customer");
+      loadCustBooks(u.id);
+    }
   };
 
   const custCancelBooking = async (bookingId) => {
@@ -183,6 +202,8 @@ export default function App() {
   const [bD, setBD] = useState({ locId:"", roomId:"", ci:"", co:"", nights:1, name:"", phone:"", email:"", nat:"", guests:1, notes:"", disc:0, discT:"pct", method:"Cash" });
   const [bookedDates, setBookedDates] = useState({});
   const [availLoading, setAvailLoading] = useState(false);
+  const [pendingBookLoc, setPendingBookLoc] = useState(null);
+  const [videoModal, setVideoModal] = useState(null); // roomId to show video for // locId to book after login
   const [loginF, setLoginF] = useState({ email:"", pin:"" });
   const [loginErr, setLoginErr] = useState("");
 
@@ -367,6 +388,7 @@ export default function App() {
         status: statusOverride || form.status,
         amenities: amen,
         photos: form.photos || [],
+        video_url: form.video || "",
       };
       if (isEdit) {
         const updated = await api.updateRoom(form.id, payload);
@@ -490,19 +512,21 @@ export default function App() {
     { id:"profile",label:"My Profile",icon:"👤" },
   ];
 
-  const NavBar = () => (
-    <nav style={{ background: BK, height: 62, display:"flex", alignItems:"center", padding:"0 28px", justifyContent:"space-between", flexShrink:0 }}>
+  const NavBar = () => {
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+    return (
+    <nav style={{ background: BK, height: 62, display:"flex", alignItems:"center", padding:"0 18px", justifyContent:"space-between", flexShrink:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setView("land")}>
         <div style={{ width:36, height:36, background:M, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span style={{ color:WH, fontWeight:900, fontSize:12, fontFamily:"'Playfair Display',serif" }}>BNC</span>
         </div>
-        <div>
+        {!isMobile && <div>
           <div style={{ color:WH, fontWeight:700, fontSize:15, fontFamily:"'Playfair Display',serif", lineHeight:1.2 }}>BNC Apartment</div>
           <div style={{ color:G4, fontSize:10, letterSpacing:".12em", textTransform:"uppercase" }}>Serviced Apartments</div>
-        </div>
+        </div>}
       </div>
       <div style={{ display:"flex", gap:8 }}>
-        {view !== "book" && view !== "customer" && <button onClick={()=>{setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
+        {!isMobile && view !== "book" && view !== "customer" && <button onClick={()=>{ if(!customer){setPendingBookLoc("");setCustModal("login"); return;} setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
         {customer && view !== "admin" ? (
           <>
             <button onClick={()=>setView("customer")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
@@ -531,7 +555,7 @@ export default function App() {
         ) : <button onClick={()=>setModal("login")} style={{ background:M, color:WH, border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>Staff Login</button>}
       </div>
     </nav>
-  );
+  );};
 
 
 
@@ -582,7 +606,7 @@ export default function App() {
         </div>
       </div>
       {modal==="login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
-      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => setCustModal(null)} pop={pop}/>}
+      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => { setCustModal(null); setPendingBookLoc(null); }} pop={pop} bookingIntent={pendingBookLoc !== null}/>}
     </div>
   );
 
@@ -649,7 +673,7 @@ export default function App() {
                   {rm.photos && rm.photos.length > 0 && (
                     <div style={{ position: "relative", height: 160 }}>
                       <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                      {rm.photos.length > 1 && <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.55)", color: WH, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99 }}>{rm.photos.length} photos</div>}
+                      {rm.photos.length > 1 && <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.55)", color: WH, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99 }}>{rm.photos.length} photos{rm.video?" · 🎬":""}</div>}
                     </div>
                   )}
                   <div style={{ padding: 16, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
@@ -662,6 +686,12 @@ export default function App() {
                       </div>
                       <div style={{ fontSize: 12, color: G6, marginBottom: 7 }}>{rm.type} · {rm.beds} bed · up to {rm.guests} guests</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 8px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
+                      {rm.video && (
+                        <button onClick={e=>{e.stopPropagation();setVideoModal(rm.id);}}
+                          style={{ marginTop:7, display:"flex", alignItems:"center", gap:6, background:BK, color:WH, border:"none", borderRadius:7, padding:"6px 12px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                          🎬 Watch Room Video
+                        </button>
+                      )}
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontSize: 17, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif" }}>{fmt(rm.price)}</div>
@@ -803,7 +833,28 @@ export default function App() {
         )}
       </div>
       {modal === "login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
-      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => setCustModal(null)} pop={pop}/>}
+      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => { setCustModal(null); setPendingBookLoc(null); }} pop={pop} bookingIntent={pendingBookLoc !== null}/>}
+      {videoModal && (() => {
+        const vRoom = rooms.find(r => r.id === videoModal);
+        const isYT = vRoom?.video?.includes("youtube.com") || vRoom?.video?.includes("youtu.be");
+        const ytId = vRoom?.video?.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1] || "";
+        return (
+          <Modal title={`🎬 ${vRoom?.name} — Room Video`} onClose={() => setVideoModal(null)} wide>
+            {isYT ? (
+              <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 10, overflow: "hidden" }}>
+                <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+                  style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+                  allowFullScreen allow="autoplay" title="Room video"/>
+              </div>
+            ) : (
+              <video src={vRoom?.video} controls autoPlay style={{ width: "100%", borderRadius: 10, maxHeight: 400 }}/>
+            )}
+            <div style={{ marginTop: 14, fontSize: 13, color: G6, textAlign: "center" }}>
+              {vRoom?.name} · {vRoom?.type} · {fmt(vRoom?.price)}/night
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 
@@ -824,7 +875,7 @@ export default function App() {
         {custTab === "bookings" && <CustomerBookingsTab customer={customer} custBooks={custBooks} custLoading={custLoading} onCancel={custCancelBooking} onRefresh={() => loadCustBooks(customer.id)} locs={locs} rooms={rooms}/>}
         {custTab === "profile" && <CustomerProfileTab customer={customer} onUpdate={custUpdateProfile}/>}
       </div>
-      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => setCustModal(null)} pop={pop}/>}
+      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => { setCustModal(null); setPendingBookLoc(null); }} pop={pop} bookingIntent={pendingBookLoc !== null}/>}
     </div>
   );
 
@@ -873,19 +924,6 @@ export default function App() {
 function LoginModal({ loginF, setLoginF, loginErr, doLogin, onClose }) {
   return (
     <Modal title="Staff Login" onClose={onClose}>
-      <div style={{ background: MF, border: `1px solid ${M}30`, borderRadius: 8, padding: "12px 14px", marginBottom: 18, fontSize: 13 }}>
-        <div style={{ fontWeight: 700, color: M, marginBottom: 6 }}>Demo credentials</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
-          {[["Admin", "admin@bnc.co.tz", "0000"], ["Manager", "jane@bnc.co.tz", "1234"], ["Receptionist", "peter@bnc.co.tz", "5678"]].map(([role, email, pin]) => (
-            <button key={role} onClick={() => { setLoginF({ email, pin }); }}
-              style={{ background: WH, border: `1px solid ${G2}`, borderRadius: 6, padding: "6px 8px", cursor: "pointer", fontSize: 11, textAlign: "left", fontFamily: "inherit" }}>
-              <div style={{ fontWeight: 700, color: M, marginBottom: 2 }}>{role}</div>
-              <div style={{ color: G6, fontSize: 10 }}>{email}</div>
-              <div style={{ color: G6, fontSize: 10 }}>PIN: {pin}</div>
-            </button>
-          ))}
-        </div>
-      </div>
       <div style={{ marginBottom: 13 }}>
         <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Email</label>
         <input
@@ -1227,11 +1265,11 @@ function RoomsTab({ rooms, locs, saveRoom, deleteRoom, pop }) {
   const [modal, setModal] = useState(null);
   const [photoModal, setPhotoModal] = useState(null); // roomId being viewed
   const [photoIdx, setPhotoIdx] = useState(0);
-  const [form, setForm] = useState({ id: null, locId: "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "", photos: [] });
+  const [form, setForm] = useState({ id: null, locId: "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "", photos: [], video: "" });
   const [uploading, setUploading] = useState(false);
 
-  const openNew = () => { setForm({ id: null, locId: locs[0]?.id || "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "", photos: [] }); setModal("f"); };
-  const openEdit = r => { setForm({ ...r, amen: r.amen.join(", "), photos: r.photos || [] }); setModal("f"); };
+  const openNew = () => { setForm({ id: null, locId: locs[0]?.id || "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "", photos: [], video: "" }); setModal("f"); };
+  const openEdit = r => { setForm({ ...r, amen: r.amen.join(", "), photos: r.photos || [], video: r.video || "" }); setModal("f"); };
   const save = () => { saveRoom(form, !!form.id); setModal(null); };
 
   const handlePhotoUpload = (e) => {
@@ -1348,6 +1386,17 @@ function RoomsTab({ rooms, locs, saveRoom, deleteRoom, pop }) {
             <div style={{ gridColumn: "1 / -1" }}>
               <Inp label="Amenities (comma separated)" value={form.amen} onChange={e => setForm(f => ({ ...f, amen: e.target.value }))} placeholder="WiFi, AC, Kitchen, Pool" />
             </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Inp label="Room Video URL (YouTube or direct .mp4 link)" value={form.video||""} onChange={e => setForm(f => ({ ...f, video: e.target.value }))} placeholder="https://youtube.com/watch?v=... or https://example.com/room.mp4" />
+              {form.video && (
+                <div style={{ marginTop: -10, marginBottom: 14, fontSize: 12, color: G6 }}>
+                  {form.video.includes("youtube.com") || form.video.includes("youtu.be")
+                    ? "✓ YouTube link detected — will embed as a player"
+                    : "✓ Direct video link detected — will play inline"}
+                  <button onClick={() => setForm(f=>({...f,video:""}))} style={{ marginLeft: 10, background: "none", border: "none", color: ER, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>Remove</button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ── PHOTO UPLOAD ── */}
@@ -1414,9 +1463,26 @@ function RoomsTab({ rooms, locs, saveRoom, deleteRoom, pop }) {
                 style={{ width: "100%", height: 60, objectFit: "cover", borderRadius: 6, cursor: "pointer", border: `2px solid ${i === photoIdx ? M : "transparent"}`, transition: "border-color 0.15s" }} />
             ))}
           </div>
+          {/* Video in gallery */}
+          {viewerRoom?.video && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: G6, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" }}>🎬 Room Video</div>
+              {viewerRoom.video.includes("youtube.com") || viewerRoom.video.includes("youtu.be") ? (
+                <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 8, overflow: "hidden" }}>
+                  <iframe
+                    src={"https://www.youtube.com/embed/" + (viewerRoom.video.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1]||"")}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+                    allowFullScreen title="Room video"
+                  />
+                </div>
+              ) : (
+                <video src={viewerRoom.video} controls style={{ width: "100%", borderRadius: 8, maxHeight: 220 }}/>
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
             <Btn v="ghost" onClick={() => setPhotoModal(null)} style={{ flex: 1, justifyContent: "center" }}>Close</Btn>
-            <Btn onClick={() => { const r = rooms.find(r => r.id === photoModal); if (r) { openEdit(r); setPhotoModal(null); } }} style={{ flex: 1, justifyContent: "center" }}>Edit Photos</Btn>
+            <Btn onClick={() => { const r = rooms.find(r => r.id === photoModal); if (r) { openEdit(r); setPhotoModal(null); } }} style={{ flex: 1, justifyContent: "center" }}>Edit Photos & Video</Btn>
           </div>
         </Modal>
       )}
@@ -1719,25 +1785,28 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
 
       {!rptLoading && rt==="financial" && (
         <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:13,marginBottom:20}}>
-            <KPI label="Gross Revenue"  value={fmt(totRev)}  color={M}  icon="💰"/>
-            <KPI label="Total Expenses" value={fmt(totExp)}  color={ER} icon="📤"/>
-            <KPI label="Net Profit"     value={fmt(net)}     color={net>=0?OK:ER} icon="📈" sub={net>=0?"Profitable":"Loss"}/>
-            <KPI label="Outstanding"    value={fmt(pending)} color={WA} icon="⏳"/>
-            <KPI label="Discounts"      value={fmt(totDisc)} color={IN} icon="🏷️"/>
-            <KPI label="Profit Margin"  value={margin+"%"}   color={net>=0?OK:ER} icon="%"/>
+          {/* ── KPI STRIP ── */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:22}}>
+            <KPI label="Gross Revenue"   value={fmt(totRev)}  color={M}  icon="💰"/>
+            <KPI label="Total Expenses"  value={fmt(totExp)}  color={ER} icon="📤"/>
+            <KPI label="Net Profit"      value={fmt(net)}     color={net>=0?OK:ER} icon="📈" sub={net>=0?"Profitable":"Loss"}/>
+            <KPI label="Outstanding"     value={fmt(pending)} color={WA} icon="⏳"/>
+            <KPI label="Discounts Given" value={fmt(totDisc)} color={IN} icon="🏷️"/>
+            <KPI label="Profit Margin"   value={margin+"%"}   color={net>=0?OK:ER} icon="%"/>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+
+          {/* ROW 1: Revenue vs Expenses + Payment Methods */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
             <Card>
               <ST c="Revenue vs Expenses by Location"/>
               {byLoc.map(loc=>(
-                <div key={loc.id} style={{marginBottom:15}}>
+                <div key={loc.id} style={{marginBottom:14}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:13}}>
-                    <strong>{loc.name}</strong>
+                    <strong>{loc.icon} {loc.name}</strong>
                     <span style={{color:loc.rev-loc.exp>=0?OK:ER,fontWeight:700}}>Net: {fmt(loc.rev-loc.exp)}</span>
                   </div>
                   <div style={{fontSize:12,color:G6,marginBottom:5}}>Rev: {fmt(loc.rev)} · Exp: {fmt(loc.exp)}</div>
-                  <div style={{height:6,background:G1,borderRadius:99,overflow:"hidden"}}>
+                  <div style={{height:7,background:G1,borderRadius:99,overflow:"hidden"}}>
                     <div style={{height:"100%",width:totRev>0?Math.round(loc.rev/totRev*100)+"%":"0%",background:M,borderRadius:99}}/>
                   </div>
                 </div>
@@ -1746,22 +1815,14 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
             <Card>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13}}>
                 <ST c="Payment Methods Breakdown"/>
-                {byMethod.length>0 && (
-                  <button onClick={()=>setPayDrillDown(true)}
-                    style={{background:MF,color:M,border:`1px solid ${M}30`,borderRadius:7,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                    View Details →
-                  </button>
-                )}
+                {byMethod.length>0&&<button onClick={()=>setPayDrillDown(true)} style={{background:MF,color:M,border:`1px solid ${M}30`,borderRadius:7,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>View Details →</button>}
               </div>
-              {byMethod.length===0 && <div style={{color:G4,fontSize:13}}>No payment data for this period</div>}
+              {byMethod.length===0&&<div style={{color:G4,fontSize:13}}>No payment data</div>}
               {byMethod.map((m,i)=>(
                 <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <span style={{color:G6}}>{m.method}</span>
-                    <button onClick={()=>{setPayDrillMethod(m.method);setPayDrillDown(true);}}
-                      style={{background:"none",border:"none",color:M,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>
-                      see payments
-                    </button>
+                    <button onClick={()=>{setPayDrillMethod(m.method);setPayDrillDown(true);}} style={{background:"none",border:"none",color:M,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>see payments</button>
                   </div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontWeight:700}}>{fmt(m.total)}</div>
@@ -1771,75 +1832,126 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
               ))}
               {byMethod.length>0&&<div style={{marginTop:11,padding:"9px 0",borderTop:`2px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:M}}>{fmt(totRev)}</span></div>}
             </Card>
-
-            {/* ── PAYMENT DRILL-DOWN MODAL ── */}
-            {payDrillDown && (
-              <Modal title="Payment Details" onClose={()=>{setPayDrillDown(false);setPayDrillMethod("");}} wide>
-                {/* Method filter chips */}
-                <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:16}}>
-                  <button onClick={()=>setPayDrillMethod("")}
-                    style={{padding:"5px 13px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${!payDrillMethod?M:G2}`,background:!payDrillMethod?M:WH,color:!payDrillMethod?WH:G6}}>
-                    All Methods
-                  </button>
-                  {byMethod.map((m,i)=>(
-                    <button key={i} onClick={()=>setPayDrillMethod(m.method)}
-                      style={{padding:"5px 13px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${payDrillMethod===m.method?M:G2}`,background:payDrillMethod===m.method?M:WH,color:payDrillMethod===m.method?WH:G6}}>
-                      {m.method}
-                    </button>
-                  ))}
-                </div>
-                {/* Summary for selected method */}
-                {payDrillMethod && (()=>{
-                  const total = byMethod.find(m=>m.method===payDrillMethod)?.total||0;
-                  const count = Bk.filter(b=>b.method===payDrillMethod&&b.paid>0).length;
-                  return (
-                    <div style={{background:MF,border:`1px solid ${M}20`,borderRadius:8,padding:"11px 14px",marginBottom:14,display:"flex",gap:20,fontSize:13}}>
-                      <div><span style={{color:G6}}>Method: </span><strong style={{color:M}}>{payDrillMethod}</strong></div>
-                      <div><span style={{color:G6}}>Total: </span><strong>{fmt(total)}</strong></div>
-                      <div><span style={{color:G6}}>Transactions: </span><strong>{count}</strong></div>
-                    </div>
-                  );
-                })()}
-                {/* Payments table */}
-                <Tbl
-                  hdr={["Booking","Guest","Room","Date","Method","Paid","Balance","Status"]}
-                  rows={Bk
-                    .filter(b => b.paid > 0 && (!payDrillMethod || b.method === payDrillMethod))
-                    .sort((a,b)=>b.id.localeCompare(a.id))
-                    .map(b=>{
-                      const rm = rooms.find(r=>r.id===b.roomId);
-                      const bal = b.total - b.paid;
-                      return [
-                        <span style={{color:M,fontWeight:700,fontSize:12}}>{b.id}</span>,
-                        <div>
-                          <div style={{fontWeight:700}}>{b.gName}</div>
-                          <div style={{fontSize:11,color:G6}}>{b.gPhone}</div>
-                        </div>,
-                        <div style={{fontSize:12}}>
-                          <div>{rm?.name||"—"}</div>
-                          <div style={{fontSize:11,color:G6}}>{locs.find(l=>l.id===b.locId)?.name||""}</div>
-                        </div>,
-                        <div style={{fontSize:12}}>
-                          <div>{b.ci}</div>
-                          <div style={{color:G6}}>{b.nights}n</div>
-                        </div>,
-                        <span style={{background:G1,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700,color:G8}}>{b.method}</span>,
-                        <span style={{color:OK,fontWeight:700}}>{fmt(b.paid)}</span>,
-                        <span style={{color:bal>0?ER:OK,fontWeight:700}}>{fmt(bal)}</span>,
-                        <Badge s={b.status}/>
-                      ];
-                    })
-                  }
-                />
-                {Bk.filter(b=>b.paid>0&&(!payDrillMethod||b.method===payDrillMethod)).length===0 && (
-                  <div style={{textAlign:"center",padding:"20px 0",color:G4,fontSize:14}}>No payments found for this filter</div>
-                )}
-              </Modal>
-            )}
           </div>
+
+          {/* ROW 2: Payment Methods by Location + Revenue Collection Summary */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+            <Card>
+              <ST c="Payment Methods by Location"/>
+              {byLoc.map(loc=>{
+                const lm=Bk.filter(b=>b.locId===loc.id&&b.paid>0).reduce((a,b)=>{a[b.method]=(a[b.method]||0)+b.paid;return a;},{});
+                const lt=Object.values(lm).reduce((s,v)=>s+v,0);
+                if(!lt) return null;
+                return (
+                  <div key={loc.id} style={{marginBottom:14,paddingBottom:12,borderBottom:`1px solid ${G1}`}}>
+                    <div style={{fontWeight:700,fontSize:13,marginBottom:7}}>{loc.icon} {loc.name} <span style={{color:G4,fontWeight:400}}>· {fmt(lt)}</span></div>
+                    {Object.entries(lm).sort((a,b)=>b[1]-a[1]).map(([m,v])=>(
+                      <div key={m} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                        <span style={{fontSize:12,color:G6,width:100,flexShrink:0}}>{m}</span>
+                        <div style={{flex:1,height:5,background:G1,borderRadius:99,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:Math.round(v/lt*100)+"%",background:M,borderRadius:99}}/>
+                        </div>
+                        <span style={{fontSize:12,fontWeight:700,minWidth:80,textAlign:"right"}}>{fmt(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+              {byLoc.every(loc=>!Bk.filter(b=>b.locId===loc.id&&b.paid>0).length)&&<div style={{color:G4,fontSize:13}}>No data yet</div>}
+            </Card>
+            <Card>
+              <ST c="Revenue Collection Summary"/>
+              {[
+                ["Total Invoiced", fmt(Bk.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+b.total,0)), M],
+                ["Collected", fmt(totRev), OK],
+                ["Outstanding", fmt(pending), ER],
+                ["Collection Rate", totRev+pending>0?Math.round(totRev/(totRev+pending)*100)+"%":"—", M],
+                ["Discounts", fmt(totDisc), IN],
+                ["Avg per Booking", Bk.filter(b=>b.status!=="cancelled").length?fmt(Math.round(totRev/Bk.filter(b=>b.status!=="cancelled").length)):"—", G6],
+                ["Total Expenses", fmt(totExp), ER],
+                ["Net Profit", fmt(net), net>=0?OK:ER],
+                ["Profit Margin", margin+"%", net>=0?OK:ER],
+              ].map(([k,v,col])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                  <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:col}}>{v}</span>
+                </div>
+              ))}
+            </Card>
+          </div>
+
+          {/* ROW 3: Top Rooms + Revenue by Status */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+            <Card>
+              <ST c="Top Performing Rooms"/>
+              {rooms.map(rm=>({...rm,rev:Bk.filter(b=>b.roomId===rm.id&&b.status!=="cancelled").reduce((s,b)=>s+b.paid,0),stays:Bk.filter(b=>b.roomId===rm.id&&b.status!=="cancelled").length})).sort((a,b)=>b.rev-a.rev).slice(0,6).map((rm,i)=>{
+                const maxR=rooms.map(r=>Bk.filter(b=>b.roomId===r.id&&b.status!=="cancelled").reduce((s,b)=>s+b.paid,0)).reduce((m,v)=>Math.max(m,v),1);
+                return (
+                  <div key={rm.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                    <div style={{width:22,height:22,background:i===0?GOLD:i===1?"#aaa":G2,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i<2?WH:G6,flexShrink:0}}>{i+1}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rm.name}</div>
+                      <div style={{height:4,background:G1,borderRadius:99,marginTop:3,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:Math.round(rm.rev/maxR*100)+"%",background:i===0?GOLD:M,borderRadius:99}}/>
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:M}}>{fmt(rm.rev)}</div>
+                      <div style={{fontSize:11,color:G6}}>{rm.stays} stays</div>
+                    </div>
+                  </div>
+                );
+              })}
+              {!rooms.length&&<div style={{color:G4,fontSize:13}}>No rooms yet</div>}
+            </Card>
+            <Card>
+              <ST c="Revenue by Booking Status"/>
+              {[["checkedOut","Checked Out",OK],["checkedIn","Checked In",M],["confirmed","Confirmed",IN],["pending","Pending",WA],["cancelled","Cancelled",ER]].map(([s,label,col])=>{
+                const val=Bk.filter(b=>b.status===s).reduce((sum,b)=>sum+b.paid,0);
+                const pct=totRev>0?Math.round(val/totRev*100):0;
+                return (
+                  <div key={s} style={{marginBottom:11}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
+                      <span style={{color:G6}}>{label}</span>
+                      <span style={{fontWeight:700,color:col}}>{fmt(val)} <span style={{fontSize:11,color:G4}}>({pct}%)</span></span>
+                    </div>
+                    <div style={{height:5,background:G1,borderRadius:99,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:pct+"%",background:col,borderRadius:99}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          </div>
+
+          {/* DRILL-DOWN MODAL */}
+          {payDrillDown && (
+            <Modal title="Payment Details" onClose={()=>{setPayDrillDown(false);setPayDrillMethod("");}} wide>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:16}}>
+                <button onClick={()=>setPayDrillMethod("")} style={{padding:"5px 13px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${!payDrillMethod?M:G2}`,background:!payDrillMethod?M:WH,color:!payDrillMethod?WH:G6}}>All Methods</button>
+                {byMethod.map((m,i)=>(
+                  <button key={i} onClick={()=>setPayDrillMethod(m.method)} style={{padding:"5px 13px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${payDrillMethod===m.method?M:G2}`,background:payDrillMethod===m.method?M:WH,color:payDrillMethod===m.method?WH:G6}}>{m.method}</button>
+                ))}
+              </div>
+              {payDrillMethod&&(()=>{const total=byMethod.find(m=>m.method===payDrillMethod)?.total||0;const count=Bk.filter(b=>b.method===payDrillMethod&&b.paid>0).length;return <div style={{background:MF,border:`1px solid ${M}20`,borderRadius:8,padding:"11px 14px",marginBottom:14,display:"flex",gap:20,fontSize:13}}><div><span style={{color:G6}}>Method: </span><strong style={{color:M}}>{payDrillMethod}</strong></div><div><span style={{color:G6}}>Total: </span><strong>{fmt(total)}</strong></div><div><span style={{color:G6}}>Transactions: </span><strong>{count}</strong></div></div>})()}
+              <Tbl hdr={["Booking","Guest","Room","Check-in","Method","Paid","Balance","Status"]}
+                rows={Bk.filter(b=>b.paid>0&&(!payDrillMethod||b.method===payDrillMethod)).sort((a,b)=>b.id.localeCompare(a.id)).map(b=>{
+                  const rm=rooms.find(r=>r.id===b.roomId);const bal=b.total-b.paid;
+                  return [
+                    <span style={{color:M,fontWeight:700,fontSize:12}}>{b.id}</span>,
+                    <div><div style={{fontWeight:700}}>{b.gName}</div><div style={{fontSize:11,color:G6}}>{b.gPhone}</div></div>,
+                    <div style={{fontSize:12}}><div>{rm?.name||"—"}</div><div style={{fontSize:11,color:G6}}>{locs.find(l=>l.id===b.locId)?.name||""}</div></div>,
+                    <div style={{fontSize:12}}><div>{b.ci}</div><div style={{color:G6}}>{b.nights}n</div></div>,
+                    <span style={{background:G1,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700,color:G8}}>{b.method}</span>,
+                    <span style={{color:OK,fontWeight:700}}>{fmt(b.paid)}</span>,
+                    <span style={{color:bal>0?ER:OK,fontWeight:700}}>{fmt(bal)}</span>,
+                    <Badge s={b.status}/>
+                  ];
+                })}/>
+              {!Bk.filter(b=>b.paid>0&&(!payDrillMethod||b.method===payDrillMethod)).length&&<div style={{textAlign:"center",padding:"20px 0",color:G4}}>No payments found</div>}
+            </Modal>
+          )}
         </div>
       )}
-
       {!rptLoading && rt==="occupancy" && (
         <div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:13,marginBottom:20}}>
@@ -2218,7 +2330,7 @@ function NewBookModal({ rooms, locs, user, onClose, onSave, payMethods }) {
 }
 
 /* ─── CUSTOMER AUTH MODAL ────────────────────────────────── */
-function CustomerAuthModal({ mode, setMode, onLogin, onRegister, onClose, pop }) {
+function CustomerAuthModal({ mode, setMode, onLogin, onRegister, onClose, pop, bookingIntent }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "", nationality: "", password: "", confirm: "" });
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -2246,6 +2358,11 @@ function CustomerAuthModal({ mode, setMode, onLogin, onRegister, onClose, pop })
 
   return (
     <Modal title={mode === "login" ? "Sign In to Your Account" : "Create Account"} onClose={onClose}>
+      {bookingIntent && (
+        <div style={{ background: MF, border: `1px solid ${M}30`, borderRadius: 8, padding: "10px 13px", marginBottom: 16, fontSize: 13, color: M, fontWeight: 700 }}>
+          🛏️ Please sign in or create an account to book a room and track your reservations.
+        </div>
+      )}
       {mode === "register" && (
         <>
           <label style={lblStyle}>Full Name</label>

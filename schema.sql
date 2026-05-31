@@ -161,3 +161,6 @@ INSERT INTO payment_methods (name, sort_order) VALUES
   ('Bank Transfer', 6),
   ('Card',          7)
 ON CONFLICT (name) DO NOTHING;
+
+-- Migration: add video_url to rooms
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS video_url TEXT;

@@ -22,12 +22,12 @@ module.exports = async function handler(req, res) {
 
     // POST — create room
     if (req.method === 'POST') {
-      const { location_id: loc, name, type, beds, max_guests, price_per_night, status, amenities, photos } = req.body || {};
+      const { location_id: loc, name, type, beds, max_guests, price_per_night, status, amenities, photos, video_url } = req.body || {};
       if (!loc || !name || !price_per_night) return res.status(400).json({ error: 'location_id, name, price_per_night required' });
       const rows = await sql`
-        INSERT INTO rooms (location_id, name, type, beds, max_guests, price_per_night, status, amenities, photos)
+        INSERT INTO rooms (location_id, name, type, beds, max_guests, price_per_night, status, amenities, photos, video_url)
         VALUES (${loc}, ${name}, ${type || 'Standard'}, ${beds || 1}, ${max_guests || 2},
-                ${price_per_night}, ${status || 'available'}, ${amenities || []}, ${photos || []})
+                ${price_per_night}, ${status || 'available'}, ${amenities || []}, ${photos || []}, ${video_url || null})
         RETURNING *
       `;
       return res.status(201).json(rows[0]);
@@ -36,7 +36,7 @@ module.exports = async function handler(req, res) {
     // PUT — update room (details or photos)
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'id required' });
-      const { name, type, beds, max_guests, price_per_night, status, amenities, photos } = req.body || {};
+      const { name, type, beds, max_guests, price_per_night, status, amenities, photos, video_url } = req.body || {};
       const rows = await sql`
         UPDATE rooms SET
           name            = COALESCE(${name            ?? null}, name),
@@ -46,7 +46,8 @@ module.exports = async function handler(req, res) {
           price_per_night = COALESCE(${price_per_night ?? null}, price_per_night),
           status          = COALESCE(${status          ?? null}, status),
           amenities       = COALESCE(${amenities       ?? null}, amenities),
-          photos          = COALESCE(${photos          ?? null}, photos)
+          photos          = COALESCE(${photos          ?? null}, photos),
+          video_url       = COALESCE(${video_url       ?? null}, video_url)
         WHERE id = ${id}
         RETURNING *
       `;
