@@ -44,6 +44,7 @@ export const api = {
   createBooking:  d            => post('/bookings', d),
   updateBooking:  (id, d)      => put(`/bookings?id=${id}`, d),
   recordPayment:  (id, amount) => put(`/bookings?id=${id}`, { add_payment: amount }),
+  extendBooking:  (id, d)      => put(`/bookings?id=${id}&action=extend`, d),
   deleteBooking:  id           => del(`/bookings?id=${id}`),
   getExpenses:    locId        => get('/expenses' + (locId ? `?location_id=${locId}` : '')),
   createExpense:  d            => post('/expenses', d),

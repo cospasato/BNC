@@ -9,7 +9,7 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 
-  const { id, location_id, status: statusFilter } = req.query;
+  const { id, location_id, status: statusFilter, customer_cancel } = req.query;
 
   try {
     // GET /api/bookings
@@ -31,7 +31,8 @@ module.exports = async function handler(req, res) {
       const {
         room_id, location_id: loc, guest_name, guest_phone, guest_email,
         guest_nationality, check_in, check_out, nights, base_amount,
-        discount, discount_type, total_amount, paid_amount, payment_method, notes, staff_id
+        discount, discount_type, total_amount, paid_amount,
+        payment_method, notes, staff_id, customer_id
       } = req.body || {};
       if (!guest_name || !guest_phone || !check_in || !check_out)
         return res.status(400).json({ error: 'guest_name, guest_phone, check_in, check_out required' });
@@ -40,40 +41,80 @@ module.exports = async function handler(req, res) {
           room_id, location_id, guest_name, guest_phone, guest_email,
           guest_nationality, check_in, check_out, nights, base_amount,
           discount, discount_type, total_amount, paid_amount,
-          status, payment_method, notes, staff_id
+          status, payment_method, notes, staff_id, customer_id
         ) VALUES (
           ${room_id || null}, ${loc || null}, ${guest_name}, ${guest_phone},
           ${guest_email || null}, ${guest_nationality || null},
           ${check_in}, ${check_out}, ${nights || 1}, ${base_amount || 0},
           ${discount || 0}, ${discount_type || 'pct'}, ${total_amount || 0},
           ${paid_amount || 0}, 'pending', ${payment_method || 'Cash'},
-          ${notes || null}, ${staff_id || null}
+          ${notes || null}, ${staff_id || null}, ${customer_id || null}
         )
         RETURNING *
       `;
       return res.status(201).json(rows[0]);
     }
 
-    // PUT /api/bookings?id=X — update status or payment
+    // PUT /api/bookings?id=X&action=extend — extend stay
+    if (req.method === 'PUT' && req.query.action === 'extend') {
+      const { extra_nights, extra_amount, new_checkout } = req.body || {};
+      if (!id || !extra_nights || !new_checkout)
+        return res.status(400).json({ error: 'id, extra_nights, new_checkout required' });
+
+      // Fetch current booking
+      const curr = await sql`SELECT * FROM bookings WHERE id = ${id}`;
+      if (!curr.length) return res.status(404).json({ error: 'Booking not found' });
+      const b = curr[0];
+      if (b.status !== 'checkedIn')
+        return res.status(400).json({ error: 'Can only extend a checked-in booking' });
+
+      const newNights   = Number(b.nights)        + Number(extra_nights);
+      const newBase     = Number(b.base_amount)   + Number(extra_amount);
+      const newTotal    = Number(b.total_amount)  + Number(extra_amount);
+
+      const rows = await sql`
+        UPDATE bookings SET
+          check_out    = ${new_checkout},
+          nights       = ${newNights},
+          base_amount  = ${newBase},
+          total_amount = ${newTotal}
+        WHERE id = ${id}
+        RETURNING *
+      `;
+      return res.status(200).json(rows[0]);
+    }
+
+    // PUT /api/bookings?id=X&customer_cancel=1 — customer cancels own booking
+    if (req.method === 'PUT' && customer_cancel) {
+      const { customer_id: cid } = req.body || {};
+      if (!id || !cid) return res.status(400).json({ error: 'id and customer_id required' });
+      const check = await sql`SELECT status, customer_id FROM bookings WHERE id = ${id}`;
+      if (!check.length) return res.status(404).json({ error: 'Booking not found' });
+      if (check[0].customer_id !== cid) return res.status(403).json({ error: 'Not your booking' });
+      if (!['pending','confirmed'].includes(check[0].status))
+        return res.status(400).json({ error: 'Only pending or confirmed bookings can be cancelled' });
+      const rows = await sql`
+        UPDATE bookings SET status = 'cancelled', total_amount = paid_amount
+        WHERE id = ${id} RETURNING *
+      `;
+      await sql`UPDATE rooms SET status = 'available' WHERE id = (SELECT room_id FROM bookings WHERE id = ${id})`;
+      return res.status(200).json(rows[0]);
+    }
+
+    // PUT /api/bookings?id=X — admin update status or payment
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'id required' });
       const { status, paid_amount, add_payment } = req.body || {};
       let rows;
-
       if (add_payment !== undefined) {
-        // Record a payment
         rows = await sql`
           UPDATE bookings
           SET paid_amount = LEAST(total_amount, paid_amount + ${Number(add_payment)})
           WHERE id = ${id} RETURNING *
         `;
       } else if (status === 'cancelled') {
-        // Cancellation: set total_amount = paid_amount so outstanding balance becomes 0
-        // Any amount already paid is retained (refund is handled offline)
         rows = await sql`
-          UPDATE bookings SET
-            status       = 'cancelled',
-            total_amount = paid_amount
+          UPDATE bookings SET status = 'cancelled', total_amount = paid_amount
           WHERE id = ${id} RETURNING *
         `;
       } else {
@@ -84,7 +125,6 @@ module.exports = async function handler(req, res) {
           WHERE id = ${id} RETURNING *
         `;
       }
-
       if (!rows.length) return res.status(404).json({ error: `Booking '${id}' not found` });
       const b = rows[0];
       if (b.status === 'checkedIn')

@@ -124,3 +124,19 @@ ON CONFLICT (id) DO NOTHING;
 -- MIGRATION: Add photos column to rooms (run if upgrading)
 -- ============================================================
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}';
+
+-- ============================================================
+-- MIGRATION: Add customers table (run if upgrading)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS customers (
+  id          TEXT        PRIMARY KEY DEFAULT 'C' || upper(substr(md5(random()::text), 1, 6)),
+  name        TEXT        NOT NULL,
+  email       TEXT        UNIQUE NOT NULL,
+  phone       TEXT,
+  nationality TEXT,
+  password_hash TEXT      NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Link bookings to customer accounts (optional — existing bookings keep NULL)
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_id TEXT REFERENCES customers(id);

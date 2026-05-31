@@ -120,12 +120,62 @@ export default function App() {
   const [books, setBooks] = useState([]);
   const [exps, setExps]   = useState([]);
   const [staff, setStaff] = useState([]);
-  const [user, setUser]   = useState(null);
+  const [user, setUser]       = useState(null);
+  const [customer, setCustomer] = useState(null); // logged-in customer
   const [view, setView]   = useState("land");
   const [aTab, setATab]   = useState("dash");
   const [modal, setModal] = useState(null);
+  const [custModal, setCustModal] = useState(null); // "login" | "register"
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // customer portal state
+  const [custBooks, setCustBooks] = useState([]);
+  const [custLoading, setCustLoading] = useState(false);
+  const [custTab, setCustTab] = useState("bookings"); // bookings | profile
+
+  const loadCustBooks = async (cid) => {
+    setCustLoading(true);
+    try {
+      const data = await api.customerBookings(cid);
+      setCustBooks(data);
+    } catch (e) { /* ignore */ }
+    setCustLoading(false);
+  };
+
+  const custLogin = async (email, password) => {
+    const u = await api.customerLogin({ email, password });
+    setCustomer(u);
+    setCustModal(null);
+    setView("customer");
+    loadCustBooks(u.id);
+  };
+
+  const custRegister = async (form) => {
+    const u = await api.customerRegister(form);
+    setCustomer(u);
+    setCustModal(null);
+    setView("customer");
+    pop("Welcome, " + u.name + "! Account created.");
+  };
+
+  const custCancelBooking = async (bookingId) => {
+    if (!window.confirm("Cancel this booking? This cannot be undone.")) return;
+    try {
+      await api.customerCancel(bookingId, customer.id);
+      loadCustBooks(customer.id);
+      pop("Booking cancelled");
+    } catch (err) { pop(err.message, "err"); }
+  };
+
+  const custUpdateProfile = async (form) => {
+    try {
+      const updated = await api.customerUpdate(customer.id, form);
+      setCustomer(u => ({ ...u, ...updated }));
+      pop("Profile updated");
+      return true;
+    } catch (err) { pop(err.message, "err"); return false; }
+  };
 
   // booking wizard state
   const [bStep, setBStep] = useState(1);
@@ -225,6 +275,7 @@ export default function App() {
         check_in: bD.ci, check_out: bD.co, nights: bD.nights,
         base_amount: bBase, discount: bD.disc, discount_type: bD.discT,
         total_amount: bTotal, payment_method: bD.method, notes: bD.notes,
+        customer_id: customer?.id || null,
       });
       setBooks(p => [...p, mapBook(created)]);
       pop("Booking confirmed! ID: " + created.id);
@@ -242,6 +293,18 @@ export default function App() {
       setBooks(p => p.filter(b => b.id !== id));
       pop(`Booking deleted`);
     } catch (err) { pop(err.message || 'Delete failed', 'err'); }
+  };
+
+  const extendBooking = async (id, extraNights, extraAmount, newCheckout) => {
+    try {
+      const updated = await api.extendBooking(id, {
+        extra_nights: extraNights,
+        extra_amount: extraAmount,
+        new_checkout: newCheckout,
+      });
+      setBooks(p => p.map(b => b.id === id ? mapBook(updated) : b));
+      pop(`Stay extended by ${extraNights} night${extraNights > 1 ? "s" : ""} — new checkout: ${newCheckout}`);
+    } catch (err) { pop(err.message || "Extension failed", "err"); }
   };
 
   const updBook = async (id, status) => {
@@ -411,8 +474,23 @@ export default function App() {
         </div>
       </div>
       <div style={{ display:"flex", gap:8 }}>
-        {view !== "book" && <button onClick={()=>{setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
-        {user ? (
+        {view !== "book" && view !== "customer" && <button onClick={()=>{setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
+        {customer && view !== "admin" ? (
+          <>
+            <button onClick={()=>setView("customer")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
+              <div style={{ width:22, height:22, background:"#C9A84C", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:BK, flexShrink:0 }}>
+                {(customer.name||"?").split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2)}
+              </div>
+              <span>{customer.name}</span>
+            </button>
+            <button onClick={()=>{setCustomer(null);setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
+          </>
+        ) : !customer && view !== "admin" ? (
+          <>
+            <button onClick={()=>setCustModal("login")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>My Account</button>
+            <button onClick={()=>setModal("login")} style={{ background:M, color:WH, border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>Staff</button>
+          </>
+        ) : user ? (
           <>
             <button onClick={()=>setATab("profile")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
               <div style={{ width:22, height:22, background:M, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:WH, border:"1.5px solid rgba(255,255,255,.3)", flexShrink:0 }}>
@@ -638,14 +716,38 @@ export default function App() {
                 </div>
               ))}
             </Card>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
               <Btn v="out" onClick={() => { setView("land"); setBStep(1); setBD({ locId: "", roomId: "", ci: "", co: "", nights: 1, name: "", phone: "", email: "", nat: "", guests: 1, notes: "", disc: 0, discT: "pct", method: "Cash" }); }}>← Back to Home</Btn>
-              <Btn onClick={() => setModal("login")}>Staff Login</Btn>
+              {customer
+                ? <Btn onClick={() => { setView("customer"); setCustTab("bookings"); loadCustBooks(customer.id); }}>View My Bookings</Btn>
+                : <Btn onClick={() => setCustModal("register")}>Create Account to Track Bookings</Btn>
+              }
             </div>
           </div>
         )}
       </div>
       {modal === "login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
+    </div>
+  );
+
+  // ── CUSTOMER PORTAL ──
+  if (view === "customer" && customer) return (
+    <div style={{ minHeight: "100vh", background: G1, fontFamily: "'DM Sans',sans-serif" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+      <NavBar/>
+      <div style={{ background: WH, borderBottom: `1px solid ${G2}`, display: "flex" }}>
+        {[["bookings","My Bookings","📋"],["newbooking","Book a Room","🛏️"],["profile","My Profile","👤"]].map(([id,label,icon]) => (
+          <button key={id} onClick={() => { if(id==="newbooking"){setView("book");setBStep(1);}else setCustTab(id); }}
+            style={{ padding: "12px 18px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: custTab === id ? M : G6, borderBottom: `3px solid ${custTab === id ? M : "transparent"}`, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
+        {custTab === "bookings" && <CustomerBookingsTab customer={customer} custBooks={custBooks} custLoading={custLoading} onCancel={custCancelBooking} onRefresh={() => loadCustBooks(customer.id)} locs={locs} rooms={rooms}/>}
+        {custTab === "profile" && <CustomerProfileTab customer={customer} onUpdate={custUpdateProfile}/>}
+      </div>
+      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => setCustModal(null)} pop={pop}/>}
     </div>
   );
 
@@ -674,7 +776,7 @@ export default function App() {
       <div style={{ flex:1, overflow:"auto", padding:22 }}>
         {loading && <Spinner/>}
         {!loading && aTab==="dash"    && <DashTab books={books} rooms={rooms} exps={exps} locs={locs} allRooms={rooms} totRev={totRev} totExp={totExp} netPro={netPro} pending={pending} occPct={occPct} setATab={setATab}/>}
-        {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} deleteBooking={deleteBooking} onNew={()=>setModal("newBook")} pop={pop} user={user}/>}
+        {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} deleteBooking={deleteBooking} extendBooking={extendBooking} onNew={()=>setModal("newBook")} pop={pop} user={user}/>}
         {!loading && aTab==="rooms"   && <RoomsTab rooms={rooms} locs={locs} saveRoom={saveRoom} deleteRoom={deleteRoom} pop={pop}/>}
         {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay}/>}
         {!loading && aTab==="exps"    && <ExpsTab exps={exps} locs={locs} user={user} saveExp={saveExp} pop={pop}/>}
@@ -790,53 +892,209 @@ function DashTab({ books, rooms, exps, locs, allRooms, totRev, totExp, netPro, p
 }
 
 /* ─── BOOKINGS TAB ───────────────────────────────────────── */
-function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, onNew, pop, user }) {
+function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBooking, onNew, pop, user }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState(null);
   const [payAmt, setPayAmt] = useState("");
-  const filtered = books.filter(b => (filter === "all" || b.status === filter) && (!search || b.gName.toLowerCase().includes(search.toLowerCase()) || b.id.toLowerCase().includes(search.toLowerCase()))).sort((a, b) => b.id.localeCompare(a.id));
+  // checkout / extend modal
+  const [coModal, setCoModal] = useState(null); // booking id
+  // extend form
+  const [extNights, setExtNights] = useState(1);
+
+  const todayDate = td();
+
+  const filtered = books
+    .filter(b => (filter === "all" || b.status === filter) &&
+      (!search || b.gName.toLowerCase().includes(search.toLowerCase()) || b.id.toLowerCase().includes(search.toLowerCase())))
+    .sort((a, b) => b.id.localeCompare(a.id));
+
   const selB = books.find(b => b.id === sel);
   const selR = rooms.find(r => r.id === selB?.roomId);
+
+  // bookings due for checkout today (checkedIn and checkout date = today)
+  const dueToday = books.filter(b => b.status === "checkedIn" && b.co === todayDate);
+
+  // For extend modal
+  const coBook = books.find(b => b.id === coModal);
+  const coRoom = rooms.find(r => r.id === coBook?.roomId);
+  const extExtra = coRoom ? coRoom.price * extNights : 0;
+  const newCheckout = coBook ? (() => {
+    const d = new Date(coBook.co);
+    d.setDate(d.getDate() + extNights);
+    return d.toISOString().split("T")[0];
+  })() : "";
+
+  const doExtend = () => {
+    if (!coBook || extNights < 1) return;
+    extendBooking(coBook.id, extNights, extExtra, newCheckout);
+    setCoModal(null); setExtNights(1);
+  };
+
+  const doCheckout = () => {
+    updBook(coBook.id, "checkedOut");
+    setCoModal(null);
+  };
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: 0 }}>Bookings</h2>
         <Btn onClick={onNew}>+ New Booking</Btn>
       </div>
+
+      {/* ── DUE TODAY ALERT ── */}
+      {dueToday.length > 0 && (
+        <div style={{ background: "#FFF8E1", border: `1px solid #F9A825`, borderRadius: 10, padding: "13px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 22 }}>⏰</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#5D4037", marginBottom: 4 }}>
+              {dueToday.length} guest{dueToday.length > 1 ? "s" : ""} checking out today
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {dueToday.map(b => {
+                const rm = rooms.find(r => r.id === b.roomId);
+                return (
+                  <button key={b.id} onClick={() => setCoModal(b.id)}
+                    style={{ background: WH, border: `1px solid #F9A825`, borderRadius: 8, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#5D4037", fontFamily: "inherit" }}>
+                    {b.gName} · {rm?.name || b.id} →
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FILTERS ── */}
       <div style={{ display: "flex", gap: 7, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
         {["all", "pending", "confirmed", "checkedIn", "checkedOut", "cancelled"].map(s => (
           <button key={s} onClick={() => setFilter(s)} style={{ padding: "5px 13px", borderRadius: 99, fontSize: 12, fontWeight: 700, border: `1px solid ${filter === s ? M : G2}`, background: filter === s ? M : WH, color: filter === s ? WH : G6, cursor: "pointer", fontFamily: "inherit" }}>
             {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+            {s === "checkedIn" && dueToday.length > 0 && <span style={{ marginLeft: 5, background: "#F9A825", color: WH, borderRadius: 99, padding: "0 5px", fontSize: 10 }}>{dueToday.length}</span>}
           </button>
         ))}
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search guest or ID…" style={{ marginLeft: "auto", padding: "6px 11px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 13, outline: "none", minWidth: 190, fontFamily: "inherit" }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search guest or ID…"
+          style={{ marginLeft: "auto", padding: "6px 11px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 13, outline: "none", minWidth: 190, fontFamily: "inherit" }} />
       </div>
+
+      {/* ── TABLE ── */}
       <Card>
         <Tbl hdr={["ID", "Guest", "Location / Room", "Dates", "Amount", "Paid", "Status", "Actions"]}
           rows={filtered.map(b => {
-            const rm = rooms.find(r => r.id === b.roomId);
+            const rm  = rooms.find(r => r.id === b.roomId);
             const loc = locs.find(l => l.id === b.locId);
             const bal = b.total - b.paid;
+            const isDueToday = b.status === "checkedIn" && b.co === todayDate;
             return [
               <span style={{ color: M, fontWeight: 700, fontSize: 12, cursor: "pointer" }} onClick={() => setSel(b.id)}>{b.id}</span>,
-              <div><div style={{ fontWeight: 700 }}>{b.gName}</div><div style={{ fontSize: 11, color: G6 }}>{b.gPhone}</div></div>,
-              <div><div style={{ fontSize: 12 }}>{loc?.name}</div><div style={{ fontSize: 11, color: G6 }}>{rm?.name}</div></div>,
-              <div style={{ fontSize: 12 }}><div>{b.ci}</div><div style={{ color: G6 }}>{b.co} ({b.nights}n)</div></div>,
-              <div><div style={{ fontWeight: 700 }}>{fmt(b.total)}</div>{b.disc > 0 && <div style={{ fontSize: 11, color: OK }}>Disc: {b.discT === "pct" ? b.disc + "%" : fmt(b.disc)}</div>}</div>,
-              <div><div style={{ color: bal > 0 ? ER : OK, fontWeight: 700 }}>{fmt(b.paid)}</div>{bal > 0 && <div style={{ fontSize: 11, color: ER }}>Bal: {fmt(bal)}</div>}</div>,
+              <div>
+                <div style={{ fontWeight: 700 }}>{b.gName}</div>
+                <div style={{ fontSize: 11, color: G6 }}>{b.gPhone}</div>
+              </div>,
+              <div>
+                <div style={{ fontSize: 12 }}>{loc?.name}</div>
+                <div style={{ fontSize: 11, color: G6 }}>{rm?.name}</div>
+              </div>,
+              <div style={{ fontSize: 12 }}>
+                <div>{b.ci}</div>
+                <div style={{ color: isDueToday ? "#F9A825" : G6, fontWeight: isDueToday ? 700 : 400 }}>
+                  {b.co} ({b.nights}n){isDueToday ? " ⏰ Today" : ""}
+                </div>
+              </div>,
+              <div>
+                <div style={{ fontWeight: 700 }}>{fmt(b.total)}</div>
+                {b.disc > 0 && <div style={{ fontSize: 11, color: OK }}>Disc: {b.discT === "pct" ? b.disc + "%" : fmt(b.disc)}</div>}
+              </div>,
+              <div>
+                <div style={{ color: bal > 0 ? ER : OK, fontWeight: 700 }}>{fmt(b.paid)}</div>
+                {bal > 0 && <div style={{ fontSize: 11, color: ER }}>Bal: {fmt(bal)}</div>}
+              </div>,
               <Badge s={b.status} />,
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {b.status === "pending" && <button onClick={() => updBook(b.id, "confirmed")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${OK}`, color: OK, background: "none", cursor: "pointer", fontWeight: 700 }}>Confirm</button>}
-                {b.status === "confirmed" && <button onClick={() => updBook(b.id, "checkedIn")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${M}`, color: M, background: "none", cursor: "pointer", fontWeight: 700 }}>Check In</button>}
-                {b.status === "checkedIn" && <button onClick={() => updBook(b.id, "checkedOut")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${G6}`, color: G6, background: "none", cursor: "pointer", fontWeight: 700 }}>Check Out</button>}
+                {b.status === "pending"   && <button onClick={() => updBook(b.id, "confirmed")}  style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${OK}`, color: OK, background: "none", cursor: "pointer", fontWeight: 700 }}>Confirm</button>}
+                {b.status === "confirmed" && <button onClick={() => updBook(b.id, "checkedIn")}  style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${M}`, color: M, background: "none", cursor: "pointer", fontWeight: 700 }}>Check In</button>}
+                {b.status === "checkedIn" && <button onClick={() => setCoModal(b.id)} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${isDueToday ? "#F9A825" : G6}`, color: isDueToday ? "#5D4037" : G6, background: isDueToday ? "#FFF8E1" : "none", cursor: "pointer", fontWeight: 700 }}>Check Out / Extend</button>}
                 {bal > 0 && b.status !== "cancelled" && <button onClick={() => setSel(b.id)} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${IN}`, color: IN, background: "none", cursor: "pointer", fontWeight: 700 }}>Pay</button>}
-                {!["cancelled", "checkedOut"].includes(b.status) && <button onClick={() => updBook(b.id, "cancelled")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${ER}`, color: ER, background: "none", cursor: "pointer", fontWeight: 700 }}>Cancel</button>}
+                {!["cancelled","checkedOut"].includes(b.status) && <button onClick={() => updBook(b.id, "cancelled")} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${ER}`, color: ER, background: "none", cursor: "pointer", fontWeight: 700 }}>Cancel</button>}
                 {b.status === "cancelled" && user?.role === "Admin" && <button onClick={() => deleteBooking(b.id, b.gName)} style={{ padding: "3px 7px", fontSize: 11, borderRadius: 6, border: `1px solid ${ER}`, color: WH, background: ER, cursor: "pointer", fontWeight: 700 }}>Delete</button>}
               </div>
             ];
           })} />
       </Card>
+
+      {/* ── CHECKOUT / EXTEND MODAL ── */}
+      {coModal && coBook && (
+        <Modal title={`${coBook.gName} — Checking Out Today`} onClose={() => { setCoModal(null); setExtNights(1); }} wide>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+            {[["Guest", coBook.gName], ["Room", coRoom?.name], ["Check-in", coBook.ci], ["Original Checkout", coBook.co], ["Total Nights", coBook.nights], ["Amount Due", fmt(coBook.total - coBook.paid)]].map(([k, v]) => (
+              <div key={k} style={{ fontSize: 13 }}>
+                <span style={{ color: G6 }}>{k}: </span>
+                <span style={{ fontWeight: 700 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Two action panels */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+
+            {/* CHECK OUT */}
+            <div style={{ border: `2px solid ${G2}`, borderRadius: 12, padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: BK, fontFamily: "'Playfair Display',serif" }}>✓ Check Out</div>
+              <div style={{ fontSize: 13, color: G6, lineHeight: 1.6 }}>End the stay today. The room will be marked as available.</div>
+              {(coBook.total - coBook.paid) > 0 && (
+                <div style={{ background: ERB, borderRadius: 8, padding: "9px 12px", fontSize: 12, color: ER, fontWeight: 700 }}>
+                  ⚠ Outstanding balance: {fmt(coBook.total - coBook.paid)}<br/>
+                  <span style={{ fontWeight: 400, color: G6 }}>Collect payment before checking out.</span>
+                </div>
+              )}
+              <Btn v="ghost" onClick={doCheckout} style={{ width: "100%", justifyContent: "center", marginTop: "auto" }}>
+                Confirm Check Out
+              </Btn>
+            </div>
+
+            {/* EXTEND STAY */}
+            <div style={{ border: `2px solid ${M}`, borderRadius: 12, padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: M, fontFamily: "'Playfair Display',serif" }}>📅 Extend Stay</div>
+              <div style={{ fontSize: 13, color: G6, lineHeight: 1.6 }}>Guest wants to stay longer. Add extra nights at the same nightly rate.</div>
+
+              {/* Extra nights picker */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Extra Nights</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button onClick={() => setExtNights(n => Math.max(1, n - 1))}
+                    style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${G2}`, background: WH, cursor: "pointer", fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                  <span style={{ fontSize: 20, fontWeight: 700, minWidth: 28, textAlign: "center", fontFamily: "'Playfair Display',serif" }}>{extNights}</span>
+                  <button onClick={() => setExtNights(n => n + 1)}
+                    style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${M}`, background: M, cursor: "pointer", fontSize: 16, fontWeight: 700, color: WH, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                  <input type="number" min={1} value={extNights} onChange={e => setExtNights(Math.max(1, Number(e.target.value)))}
+                    style={{ width: 60, padding: "6px 10px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, fontFamily: "inherit", textAlign: "center", outline: "none" }} />
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div style={{ background: MF, borderRadius: 8, padding: "11px 13px" }}>
+                {[
+                  ["Rate / night", fmt(coRoom?.price)],
+                  ["Extra charge", fmt(extExtra)],
+                  ["New checkout", newCheckout],
+                  ["Total nights", coBook.nights + extNights],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0", borderBottom: `1px solid ${M}15` }}>
+                    <span style={{ color: G6 }}>{k}</span>
+                    <span style={{ fontWeight: 700, color: M }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <Btn onClick={doExtend} style={{ width: "100%", justifyContent: "center", marginTop: "auto" }}>
+                Extend by {extNights} Night{extNights > 1 ? "s" : ""}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── BOOKING DETAIL MODAL ── */}
       {sel && selB && (
         <Modal title={`Booking ${selB.id}`} onClose={() => { setSel(null); setPayAmt(""); }} wide>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
@@ -857,6 +1115,12 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, onNew, p
               ))}
             </div>
           </div>
+          {selB.status === "checkedIn" && (
+            <div style={{ marginTop: 16, padding: "11px 14px", background: MF, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, color: M, fontWeight: 700 }}>Guest is currently checked in</span>
+              <Btn onClick={() => { setSel(null); setCoModal(selB.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>Check Out / Extend →</Btn>
+            </div>
+          )}
           {(selB.total - selB.paid) > 0 && selB.status !== "cancelled" && (
             <div style={{ marginTop: 18, padding: 14, background: G1, borderRadius: 10 }}>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Record Payment</div>
@@ -868,7 +1132,7 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, onNew, p
           )}
           {selB.status === "cancelled" && (
             <div style={{ marginTop: 18, padding: 14, background: ERB, borderRadius: 10, fontSize: 13, color: ER }}>
-              ✗ This booking is cancelled — no outstanding balance. {selB.paid > 0 && `${fmt(selB.paid)} already collected is retained.`}
+              ✗ This booking is cancelled — no outstanding balance.{selB.paid > 0 ? ` ${fmt(selB.paid)} already collected is retained.` : ""}
             </div>
           )}
           {selB.notes && <div style={{ marginTop: 14, fontSize: 13, color: G6 }}>📝 {selB.notes}</div>}
@@ -1618,5 +1882,272 @@ function NewBookModal({ rooms, locs, user, onClose, onSave }) {
         <Btn onClick={save} disabled={!form.roomId || !form.name || !form.phone || !form.ci || !form.co} style={{ flex: 1, justifyContent: "center" }}>Create Booking</Btn>
       </div>
     </Modal>
+  );
+}
+
+/* ─── CUSTOMER AUTH MODAL ────────────────────────────────── */
+function CustomerAuthModal({ mode, setMode, onLogin, onRegister, onClose, pop }) {
+  const [form, setForm] = useState({ name: "", email: "", phone: "", nationality: "", password: "", confirm: "" });
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const doLogin = async () => {
+    setErr(""); setLoading(true);
+    try { await onLogin(form.email.trim(), form.password); }
+    catch (e) { setErr(e.message); }
+    setLoading(false);
+  };
+
+  const doRegister = async () => {
+    setErr("");
+    if (!form.name || !form.email || !form.password) return setErr("Name, email and password are required");
+    if (form.password.length < 6) return setErr("Password must be at least 6 characters");
+    if (form.password !== form.confirm) return setErr("Passwords do not match");
+    setLoading(true);
+    try { await onRegister({ name: form.name, email: form.email, phone: form.phone, nationality: form.nationality, password: form.password }); }
+    catch (e) { setErr(e.message); }
+    setLoading(false);
+  };
+
+  const inpStyle = { width: "100%", padding: "9px 12px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, color: BK, outline: "none", boxSizing: "border-box", fontFamily: "inherit", marginBottom: 13 };
+  const lblStyle = { display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" };
+
+  return (
+    <Modal title={mode === "login" ? "Sign In to Your Account" : "Create Account"} onClose={onClose}>
+      {mode === "register" && (
+        <>
+          <label style={lblStyle}>Full Name</label>
+          <input style={inpStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="John Doe" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+            <div>
+              <label style={lblStyle}>Phone</label>
+              <input style={inpStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+255 7XX XXX XXX" />
+            </div>
+            <div>
+              <label style={lblStyle}>Nationality</label>
+              <input style={inpStyle} value={form.nationality} onChange={e => setForm(f => ({ ...f, nationality: e.target.value }))} placeholder="Tanzanian" />
+            </div>
+          </div>
+        </>
+      )}
+      <label style={lblStyle}>Email Address</label>
+      <input type="email" style={inpStyle} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="your@email.com"
+        onKeyDown={e => e.key === "Enter" && mode === "login" && doLogin()} />
+      <label style={lblStyle}>Password</label>
+      <input type="password" style={inpStyle} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={mode === "register" ? "Min 6 characters" : "••••••"}
+        onKeyDown={e => e.key === "Enter" && mode === "login" && doLogin()} />
+      {mode === "register" && (
+        <>
+          <label style={lblStyle}>Confirm Password</label>
+          <input type="password" style={inpStyle} value={form.confirm} onChange={e => setForm(f => ({ ...f, confirm: e.target.value }))} placeholder="Re-enter password" />
+        </>
+      )}
+      {err && <div style={{ background: ERB, color: ER, borderRadius: 8, padding: "9px 13px", fontSize: 13, marginBottom: 14 }}>{err}</div>}
+      <Btn onClick={mode === "login" ? doLogin : doRegister} disabled={loading} style={{ width: "100%", justifyContent: "center", padding: "11px", marginBottom: 14 }}>
+        {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+      </Btn>
+      <div style={{ textAlign: "center", fontSize: 13, color: G6 }}>
+        {mode === "login" ? (
+          <>Don't have an account? <button onClick={() => { setMode("register"); setErr(""); }} style={{ background: "none", border: "none", color: M, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>Create one</button></>
+        ) : (
+          <>Already have an account? <button onClick={() => { setMode("login"); setErr(""); }} style={{ background: "none", border: "none", color: M, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>Sign in</button></>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── CUSTOMER BOOKINGS TAB ──────────────────────────────── */
+function CustomerBookingsTab({ customer, custBooks, custLoading, onCancel, onRefresh }) {
+  const [sel, setSel] = useState(null);
+  const selB = custBooks.find(b => b.id === sel);
+
+  const statusLabel = { pending: "Awaiting Confirmation", confirmed: "Confirmed", checkedIn: "Checked In", checkedOut: "Completed", cancelled: "Cancelled" };
+  const upcoming = custBooks.filter(b => ["pending","confirmed"].includes(b.status));
+  const active   = custBooks.filter(b => b.status === "checkedIn");
+  const past     = custBooks.filter(b => ["checkedOut","cancelled"].includes(b.status));
+
+  if (custLoading) return <div style={{ textAlign: "center", padding: 60, color: G4 }}>Loading your bookings…</div>;
+
+  if (!custBooks.length) return (
+    <div style={{ textAlign: "center", padding: "60px 20px" }}>
+      <div style={{ fontSize: 52, marginBottom: 16 }}>🛏️</div>
+      <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: BK, marginBottom: 10 }}>No bookings yet</h3>
+      <p style={{ color: G6, fontSize: 15, marginBottom: 24 }}>Browse our properties and make your first booking.</p>
+    </div>
+  );
+
+  const BookingCard = ({ b }) => {
+    const bal = Number(b.total_amount) - Number(b.paid_amount);
+    const photos = b.room_photos || [];
+    return (
+      <Card style={{ marginBottom: 14, overflow: "hidden", padding: 0 }}>
+        <div style={{ display: "flex" }}>
+          {photos.length > 0 ? (
+            <div style={{ width: 110, flexShrink: 0, background: G2 }}>
+              <img src={photos[0]} alt={b.room_name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            </div>
+          ) : (
+            <div style={{ width: 110, flexShrink: 0, background: `linear-gradient(135deg,${MD},${M})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>🛏️</div>
+          )}
+          <div style={{ flex: 1, padding: "14px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Playfair Display',serif", color: BK }}>{b.room_name || "Room"}</div>
+                <div style={{ fontSize: 12, color: G6 }}>{b.location_icon} {b.location_name} · {b.location_city}</div>
+              </div>
+              <Badge s={b.status} label={statusLabel[b.status] || b.status} />
+            </div>
+            <div style={{ display: "flex", gap: 16, fontSize: 13, color: G6, marginBottom: 10 }}>
+              <span>📅 {b.check_in} → {b.check_out}</span>
+              <span>🌙 {b.nights} night{b.nights > 1 ? "s" : ""}</span>
+            </div>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <span style={{ fontSize: 16, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif" }}>{fmt(b.total_amount)}</span>
+                {bal > 0 && b.status !== "cancelled" && <span style={{ fontSize: 12, color: ER, marginLeft: 8 }}>Balance: {fmt(bal)}</span>}
+                {bal === 0 && b.status !== "cancelled" && <span style={{ fontSize: 12, color: OK, marginLeft: 8 }}>✓ Paid in full</span>}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setSel(b.id)} style={{ padding: "5px 12px", fontSize: 12, borderRadius: 6, border: `1px solid ${G2}`, background: "none", cursor: "pointer", color: G6, fontFamily: "inherit", fontWeight: 600 }}>Details</button>
+                {["pending","confirmed"].includes(b.status) && (
+                  <button onClick={() => onCancel(b.id)} style={{ padding: "5px 12px", fontSize: 12, borderRadius: 6, border: `1px solid ${ER}`, background: "none", cursor: "pointer", color: ER, fontFamily: "inherit", fontWeight: 600 }}>Cancel</button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: 0 }}>My Bookings</h2>
+        <button onClick={onRefresh} style={{ background: "none", border: `1px solid ${G2}`, borderRadius: 7, padding: "6px 12px", fontSize: 12, cursor: "pointer", color: G6, fontFamily: "inherit" }}>↻ Refresh</button>
+      </div>
+
+      {/* Summary strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 22 }}>
+        {[["Total", custBooks.length, BK],["Active", active.length, M],["Upcoming", upcoming.length, IN],["Completed", custBooks.filter(b=>b.status==="checkedOut").length, OK]].map(([l,v,c]) => (
+          <div key={l} style={{ background: WH, border: `1px solid ${G2}`, borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: G6, textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700, marginBottom: 4 }}>{l}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: c, fontFamily: "'Playfair Display',serif" }}>{v}</div>
+          </div>
+        ))}
+      </div>
+
+      {active.length > 0 && <><div style={{ fontSize: 12, fontWeight: 700, color: M, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>Currently Staying</div>{active.map(b => <BookingCard key={b.id} b={b}/>)}</>}
+      {upcoming.length > 0 && <><div style={{ fontSize: 12, fontWeight: 700, color: IN, textTransform: "uppercase", letterSpacing: ".08em", margin: "16px 0 10px" }}>Upcoming</div>{upcoming.map(b => <BookingCard key={b.id} b={b}/>)}</>}
+      {past.length > 0 && <><div style={{ fontSize: 12, fontWeight: 700, color: G6, textTransform: "uppercase", letterSpacing: ".08em", margin: "16px 0 10px" }}>Past & Cancelled</div>{past.map(b => <BookingCard key={b.id} b={b}/>)}</>}
+
+      {/* Detail modal */}
+      {sel && selB && (
+        <Modal title={`Booking ${selB.id}`} onClose={() => setSel(null)}>
+          {selB.room_photos?.length > 0 && (
+            <img src={selB.room_photos[0]} alt={selB.room_name} style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8, marginBottom: 16 }} />
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 17, fontFamily: "'Playfair Display',serif" }}>{selB.room_name}</div>
+              <div style={{ fontSize: 13, color: G6 }}>{selB.location_icon} {selB.location_name}, {selB.location_city}</div>
+            </div>
+            <Badge s={selB.status} label={statusLabel[selB.status]} />
+          </div>
+          {[["Booking ID", selB.id],["Check-in", selB.check_in],["Check-out", selB.check_out],["Nights", selB.nights],["Guests", selB.guests || 1],["Payment Method", selB.payment_method],["Base Amount", fmt(selB.base_amount)],selB.discount > 0 && ["Discount", selB.discount_type === "pct" ? selB.discount + "%" : fmt(selB.discount)],["Total", fmt(selB.total_amount)],["Paid", fmt(selB.paid_amount)],selB.status !== "cancelled" && ["Balance", fmt(selB.total_amount - selB.paid_amount)]].filter(Boolean).map(([k,v]) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${G1}`, fontSize: 13 }}>
+              <span style={{ color: G6 }}>{k}</span>
+              <span style={{ fontWeight: 700 }}>{v}</span>
+            </div>
+          ))}
+          {selB.notes && <div style={{ marginTop: 12, padding: "10px 12px", background: G1, borderRadius: 8, fontSize: 13, color: G6 }}>📝 {selB.notes}</div>}
+          {["pending","confirmed"].includes(selB.status) && (
+            <div style={{ marginTop: 16 }}>
+              <Btn v="danger" onClick={() => { onCancel(selB.id); setSel(null); }} style={{ width: "100%", justifyContent: "center" }}>Cancel This Booking</Btn>
+              <div style={{ fontSize: 12, color: G4, textAlign: "center", marginTop: 8 }}>Cancellation is immediate and cannot be undone.</div>
+            </div>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ─── CUSTOMER PROFILE TAB ───────────────────────────────── */
+function CustomerProfileTab({ customer, onUpdate }) {
+  const [form, setForm] = useState({ name: customer?.name || "", phone: customer?.phone || "", nationality: customer?.nationality || "" });
+  const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", confirm: "" });
+  const [section, setSection] = useState("details");
+  const [pwErr, setPwErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const saveDetails = async () => {
+    setSaving(true);
+    await onUpdate({ name: form.name, phone: form.phone, nationality: form.nationality });
+    setSaving(false);
+  };
+
+  const savePassword = async () => {
+    setPwErr("");
+    if (!pwForm.current_password) return setPwErr("Enter your current password");
+    if (pwForm.new_password.length < 6) return setPwErr("New password must be at least 6 characters");
+    if (pwForm.new_password !== pwForm.confirm) return setPwErr("Passwords do not match");
+    setSaving(true);
+    const ok = await onUpdate({ current_password: pwForm.current_password, new_password: pwForm.new_password });
+    setSaving(false);
+    if (ok) setPwForm({ current_password: "", new_password: "", confirm: "" });
+  };
+
+  const inpStyle = { width: "100%", padding: "9px 12px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, color: BK, outline: "none", boxSizing: "border-box", fontFamily: "inherit", marginBottom: 13 };
+  const lblStyle = { display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" };
+  const initials = (customer?.name || "?").split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+
+  return (
+    <div style={{ maxWidth: 520 }}>
+      <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: "0 0 22px" }}>My Profile</h2>
+      <Card style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+        <div style={{ width: 52, height: 52, background: `linear-gradient(135deg,${M},${ML})`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: WH, fontWeight: 700, fontSize: 18, fontFamily: "'Playfair Display',serif", flexShrink: 0 }}>{initials}</div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 17, fontFamily: "'Playfair Display',serif" }}>{customer?.name}</div>
+          <div style={{ fontSize: 13, color: G6, marginTop: 2 }}>{customer?.email}</div>
+          <div style={{ fontSize: 12, color: G4, marginTop: 2 }}>Member since {customer?.created_at ? new Date(customer.created_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : ""}</div>
+        </div>
+      </Card>
+
+      <div style={{ display: "flex", gap: 0, marginBottom: 20, border: `1px solid ${G2}`, borderRadius: 8, overflow: "hidden" }}>
+        {[["details","Personal Details"],["password","Change Password"]].map(([id,label]) => (
+          <button key={id} onClick={() => { setSection(id); setPwErr(""); }}
+            style={{ flex: 1, padding: "10px", border: "none", background: section === id ? M : WH, color: section === id ? WH : G6, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
+        ))}
+      </div>
+
+      {section === "details" && (
+        <Card>
+          <label style={lblStyle}>Full Name</label>
+          <input style={inpStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          <label style={lblStyle}>Phone Number</label>
+          <input style={inpStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+255 7XX XXX XXX" />
+          <label style={lblStyle}>Nationality</label>
+          <input style={inpStyle} value={form.nationality} onChange={e => setForm(f => ({ ...f, nationality: e.target.value }))} placeholder="Tanzanian" />
+          <div style={{ background: G1, borderRadius: 8, padding: "9px 13px", fontSize: 12, color: G6, marginBottom: 14 }}>Email address cannot be changed. Contact us if needed.</div>
+          <Btn onClick={saveDetails} disabled={saving || !form.name} style={{ width: "100%", justifyContent: "center" }}>{saving ? "Saving…" : "Save Changes"}</Btn>
+        </Card>
+      )}
+
+      {section === "password" && (
+        <Card>
+          <label style={lblStyle}>Current Password</label>
+          <input type="password" style={inpStyle} value={pwForm.current_password} onChange={e => setPwForm(f => ({ ...f, current_password: e.target.value }))} placeholder="Enter current password" />
+          <div style={{ height: 1, background: G2, margin: "4px 0 16px" }} />
+          <label style={lblStyle}>New Password</label>
+          <input type="password" style={inpStyle} value={pwForm.new_password} onChange={e => setPwForm(f => ({ ...f, new_password: e.target.value }))} placeholder="Min 6 characters" />
+          <label style={lblStyle}>Confirm New Password</label>
+          <input type="password" style={inpStyle} value={pwForm.confirm} onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))} placeholder="Re-enter new password" />
+          {pwErr && <div style={{ background: ERB, color: ER, borderRadius: 8, padding: "9px 13px", fontSize: 13, marginBottom: 14 }}>{pwErr}</div>}
+          <Btn onClick={savePassword} disabled={saving} style={{ width: "100%", justifyContent: "center" }}>{saving ? "Updating…" : "Update Password"}</Btn>
+        </Card>
+      )}
+    </div>
   );
 }
