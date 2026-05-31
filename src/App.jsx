@@ -246,7 +246,7 @@ export default function App() {
         if (status === "checkedOut" || status === "cancelled") setRooms(p => p.map(r => r.id === b.roomId ? { ...r, status: "available" } : r));
       }
       pop("Status updated");
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
   const recPay = async (id, amount) => {
@@ -254,7 +254,7 @@ export default function App() {
       const updated = await api.recordPayment(id, Number(amount));
       setBooks(p => p.map(b => b.id === id ? mapBook(updated) : b));
       pop("Payment recorded");
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
   const saveRoom = async (form, isEdit, statusOverride) => {
@@ -276,7 +276,7 @@ export default function App() {
         setRooms(p => [...p, mapRoom(created)]);
         pop("Room created");
       }
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
   const saveExp = async (form) => {
@@ -288,7 +288,7 @@ export default function App() {
       });
       setExps(p => [...p, mapExp(created)]);
       pop("Expense recorded");
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
   const saveStaff = async (form, isEdit) => {
@@ -303,7 +303,7 @@ export default function App() {
         setStaff(p => [...p, mapStaff(created)]);
         pop("Account created");
       }
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
   const toggleStaff = async (s) => {
@@ -311,7 +311,7 @@ export default function App() {
       const updated = await api.updateStaff(s.id, { active: !s.active });
       setStaff(p => p.map(st => st.id === s.id ? mapStaff(updated) : st));
       pop(!s.active ? "Activated" : "Deactivated");
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
   const saveLoc = async (form, isEdit) => {
@@ -321,11 +321,18 @@ export default function App() {
         setLocs(p => p.map(l => l.id === form.id ? mapLoc(updated) : l));
         pop("Location updated");
       } else {
-        const created = await api.createLocation({ name: form.name, city: form.city, address: form.addr, icon: form.icon, description: form.desc });
+        const created = await api.createLocation({ name: form.name, city: form.city, address: form.addr || '', icon: form.icon, description: form.desc || '' });
         setLocs(p => [...p, mapLoc(created)]);
         pop("Location added");
       }
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) {
+      const msg = err.message || '';
+      if (msg.includes('schema.sql') || msg.includes('does not exist') || msg.includes('Table not found')) {
+        pop("⚠ DB not set up. Visit /api/setup for details.", "err");
+      } else {
+        pop(msg || "Failed to save location", "err");
+      }
+    }
   };
 
   const createNewBooking = async (form, base, da, total) => {
@@ -341,7 +348,7 @@ export default function App() {
       setBooks(p => [...p, mapBook(created)]);
       setModal(null);
       pop("Booking created: " + created.id);
-    } catch (err) { pop(err.message, "err"); }
+    } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
   const ATABS = [

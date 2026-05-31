@@ -35,6 +35,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('Expenses error:', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: dbError(err) });
   }
 }
