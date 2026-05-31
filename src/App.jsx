@@ -115,12 +115,12 @@ const Spinner = () => (
 
 /* ─── MAIN APP ───────────────────────────────────────────── */
 export default function App() {
-  const [locs, setLocs]       = useState([]);
-  const [rooms, setRooms]     = useState([]);
-  const [books, setBooks]     = useState([]);
-  const [exps, setExps]       = useState([]);
-  const [staff, setStaff]     = useState([]);
-  const [payMethods, setPayMethods] = useState(['Cash','Mobile Money','Bank Transfer','Card']);
+  const [locs, setLocs]   = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [books, setBooks] = useState([]);
+  const [exps, setExps]   = useState([]);
+  const [staff, setStaff] = useState([]);
+  const [payMethods, setPayMethods] = useState(["Cash"]);
   const [user, setUser]       = useState(null);
   const [customer, setCustomer] = useState(null); // logged-in customer
   const [view, setView]   = useState("land");
@@ -180,8 +180,8 @@ export default function App() {
 
   // booking wizard state
   const [bStep, setBStep] = useState(1);
-  const [bD, setBD] = useState({ locId:"", roomId:"", ci:"", co:"", nights:1, name:"", phone:"", email:"", nat:"", guests:1, notes:"", disc:0, discT:"pct", method:"" });
-  const [bookedDates, setBookedDates] = useState({}); // { roomId: [{ci,co},...] }
+  const [bD, setBD] = useState({ locId:"", roomId:"", ci:"", co:"", nights:1, name:"", phone:"", email:"", nat:"", guests:1, notes:"", disc:0, discT:"pct", method:"Cash" });
+  const [bookedDates, setBookedDates] = useState({});
   const [availLoading, setAvailLoading] = useState(false);
   const [loginF, setLoginF] = useState({ email:"", pin:"" });
   const [loginErr, setLoginErr] = useState("");
@@ -194,18 +194,20 @@ export default function App() {
     setLoading(true);
     try {
       const locId = u.role === "Admin" ? undefined : u.locId;
-      const [l, r, b, e, s] = await Promise.all([
+      const [l, r, b, e, s, pm] = await Promise.all([
         api.getLocations(),
         api.getRooms(locId),
         api.getBookings(locId),
         api.getExpenses(locId),
         u.role === "Admin" ? api.getStaff() : Promise.resolve([]),
+        api.getPayMethods().catch(()=>[]),
       ]);
       if (l?.length) setLocs(l.map(mapLoc));
       if (r?.length) setRooms(r.map(mapRoom));
       if (b?.length) setBooks(b.map(mapBook));
       if (e?.length) setExps(e.map(mapExp));
       if (s?.length) setStaff(s.map(mapStaff));
+      if (pm?.length) setPayMethods(pm.filter(p=>p.active).map(p=>p.name));
     } catch {
       // DB not configured yet — app still works with empty data
       console.warn("DB not reachable — running in demo mode");
@@ -217,7 +219,7 @@ export default function App() {
   // Load public data (locations + rooms) for booking portal
   const loadPublic = useCallback(async () => {
     try {
-      const [l, r, pm] = await Promise.all([api.getLocations(), api.getRooms(), api.getPayMethods()]);
+      const [l, r, pm] = await Promise.all([api.getLocations(), api.getRooms(), api.getPayMethods().catch(()=>[])]);
       setLocs(l.map(mapLoc));
       setRooms(r.map(mapRoom));
       if (pm?.length) setPayMethods(pm.filter(p=>p.active).map(p=>p.name));
@@ -266,33 +268,32 @@ export default function App() {
   };
 
   /* ── BOOKING HELPERS ── */
-  // Fetch booked date ranges when a location is chosen
   useEffect(() => {
     if (bD.locId && bStep >= 2) {
       setAvailLoading(true);
       api.getBookedDates(bD.locId)
-        .then(data => setBookedDates(data || {}))
+        .then(data => setBookedDates(data||{}))
         .catch(() => setBookedDates({}))
         .finally(() => setAvailLoading(false));
     }
   }, [bD.locId, bStep]);
 
-  // Check if a room is available for the selected dates
-  const isRoomAvailableForDates = (roomId) => {
-    if (!bD.ci || !bD.co) return true; // no dates selected yet
-    const bookings = bookedDates[roomId] || [];
-    return !bookings.some(b => b.ci < bD.co && b.co > bD.ci);
+  // Set default payment method from payMethods list
+  useEffect(() => {
+    if (payMethods?.length && (bD.method === "Cash" || !bD.method)) {
+      setBD(d => ({...d, method: payMethods[0]}));
+    }
+  }, [payMethods]);
+
+  const isAvailableForDates = (roomId) => {
+    if (!bD.ci || !bD.co) return true;
+    return !(bookedDates[roomId]||[]).some(b => b.ci < bD.co && b.co > bD.ci);
   };
 
   const selRoom = rooms.find(r => r.id === bD.roomId);
   const bBase = selRoom ? selRoom.price * bD.nights : 0;
   const bDiscAmt = bD.discT === "pct" ? bBase * bD.disc / 100 : Number(bD.disc);
   const bTotal = bBase - bDiscAmt;
-
-  // Set default method from payMethods when they load
-  useEffect(() => {
-    if (payMethods?.length && !bD.method) setBD(d => ({ ...d, method: payMethods[0] }));
-  }, [payMethods]);
 
   const confirmBook = async () => {
     try {
@@ -635,17 +636,16 @@ export default function App() {
           <div>
             <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, marginBottom: 6, color: BK }}>Select a Room</h2>
             <p style={{ color: G6, marginBottom: 20, fontSize: 13 }}>{locs.find(l => l.id === bD.locId)?.name}</p>
-            {availLoading && <div style={{ padding: "12px 0", fontSize: 13, color: G6 }}>Checking availability…</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {availLoading && <div style={{padding:"8px 0",fontSize:13,color:G6}}>Checking availability…</div>}
               {rooms.filter(r => r.locId === bD.locId).map(rm => {
-                const physicallyOccupied = rm.status !== "available";
-                const dateUnavailable = !isRoomAvailableForDates(rm.id);
-                const unavailable = physicallyOccupied || dateUnavailable;
-                const unavailReason = physicallyOccupied ? rm.status : dateUnavailable && bD.ci && bD.co ? "dates taken" : null;
+                const occupied = rm.status !== "available";
+                const dateTaken = !isAvailableForDates(rm.id);
+                const unavail = occupied || dateTaken;
                 return (
                 <div key={rm.id}
-                  onClick={() => !unavailable && setBD(d => ({ ...d, roomId: rm.id }))}
-                  style={{ background: WH, borderRadius: 12, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: unavailable ? "not-allowed" : "pointer", opacity: unavailable ? .55 : 1, overflow: "hidden", transition: "border-color .15s" }}>
+                  onClick={() => !unavail && setBD(d => ({ ...d, roomId: rm.id }))}
+                  style={{ background: WH, borderRadius: 12, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: unavail ? "not-allowed" : "pointer", opacity: unavail ? .55 : 1, overflow: "hidden", transition: "border-color .15s" }}>
                   {rm.photos && rm.photos.length > 0 && (
                     <div style={{ position: "relative", height: 160 }}>
                       <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -656,9 +656,7 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                         <span style={{ fontSize: 15, fontWeight: 700, color: BK, fontFamily: "'Playfair Display',serif" }}>{rm.name}</span>
-                        {unavailReason === "dates taken"
-                          ? <span style={{ background: WAB, color: WA, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>Dates Unavailable</span>
-                          : <Badge s={rm.status} />}
+                        {dateTaken && bD.ci && bD.co ? <span style={{background:WAB,color:WA,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>Dates Taken</span> : <Badge s={rm.status}/>}
                       </div>
                       <div style={{ fontSize: 12, color: G6, marginBottom: 7 }}>{rm.type} · {rm.beds} bed · up to {rm.guests} guests</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 8px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
@@ -698,13 +696,11 @@ export default function App() {
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
               <Btn v="ghost" onClick={() => setBStep(2)}>← Back</Btn>
               <Btn onClick={() => {
-                if (bD.roomId && !isRoomAvailableForDates(bD.roomId)) {
-                  setBD(d => ({...d, roomId: ""}));
-                  pop("Your selected room is not available for those dates. Please select another room.", "err");
+                if (bD.roomId && !isAvailableForDates(bD.roomId)) {
+                  setBD(d=>({...d, roomId:""}));
+                  pop("That room is not available for those dates. Please choose another.", "err");
                   setBStep(2);
-                } else {
-                  setBStep(4);
-                }
+                } else setBStep(4);
               }} disabled={!bD.ci || !bD.co}>Continue →</Btn>
             </div>
           </div>
@@ -722,7 +718,7 @@ export default function App() {
                 <Inp label="Nationality" value={bD.nat} onChange={e => setBD(d => ({ ...d, nat: e.target.value }))} placeholder="Tanzanian" />
                 <Sel label="Guests" value={bD.guests} onChange={e => setBD(d => ({ ...d, guests: e.target.value }))}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} guest{n > 1 ? "s" : ""}</option>)}</Sel>
                 <Sel label="Payment Method" value={bD.method} onChange={e => setBD(d => ({ ...d, method: e.target.value }))}>
-                  {(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => <option key={pm}>{pm}</option>)}
+                  {(payMethods.length ? payMethods : ["Cash"]).map(pm => <option key={pm}>{pm}</option>)}
                 </Sel>
               </div>
               <Inp label="Special Requests" value={bD.notes} onChange={e => setBD(d => ({ ...d, notes: e.target.value }))} placeholder="Early check-in, extra towels…" />
@@ -824,11 +820,11 @@ export default function App() {
         {!loading && aTab==="dash"    && <DashTab books={books} rooms={rooms} exps={exps} locs={locs} allRooms={rooms} totRev={totRev} totExp={totExp} netPro={netPro} pending={pending} occPct={occPct} setATab={setATab}/>}
         {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} deleteBooking={deleteBooking} extendBooking={extendBooking} onNew={()=>setModal("newBook")} pop={pop} user={user} payMethods={payMethods}/>}
         {!loading && aTab==="rooms"   && <RoomsTab rooms={rooms} locs={locs} saveRoom={saveRoom} deleteRoom={deleteRoom} pop={pop}/>}
-        {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay} payMethods={payMethods}/>}
+        {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay} payMethods={payMethods} setPayMethods={setPayMethods}/>}
         {!loading && aTab==="exps"    && <ExpsTab exps={exps} locs={locs} user={user} saveExp={saveExp} pop={pop}/>}
         {!loading && aTab==="reports" && <ReportsTab books={books} exps={exps} rooms={rooms} locs={locs} allRooms={rooms} user={user}/>}
         {!loading && aTab==="locs"    && user?.role==="Admin" && <LocsTab locs={locs} saveLoc={saveLoc} deleteLoc={deleteLoc} rooms={rooms} books={books} pop={pop}/>}
-        {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} locs={locs} pop={pop} payMethods={payMethods} setPayMethods={setPayMethods}/>}
+        {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} locs={locs} pop={pop}/>}
         {!loading && aTab==="profile" && <ProfileTab user={user} updateProfile={updateProfile}/>}
       </div>
       {modal==="newBook" && <NewBookModal rooms={rooms} locs={locs} user={user} onClose={()=>setModal(null)} onSave={createNewBooking} payMethods={payMethods}/>}
@@ -958,8 +954,7 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBo
 
   const selB = books.find(b => b.id === sel);
   const selR = rooms.find(r => r.id === selB?.roomId);
-  // auto-set method to booking's method when opening detail
-  useEffect(() => { if (selB) setPayMethod(selB.method || (payMethods?.[0] || "Cash")); }, [sel]);
+  useEffect(() => { if (selB) setPayMethod(selB.method || payMethods?.[0] || "Cash"); }, [sel]);
 
   // bookings due for checkout today (checkedIn and checkout date = today)
   const dueToday = books.filter(b => b.status === "checkedIn" && b.co === todayDate);
@@ -1173,19 +1168,10 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBo
           {(selB.total - selB.paid) > 0 && selB.status !== "cancelled" && (
             <div style={{ marginTop: 18, padding: 14, background: G1, borderRadius: 10 }}>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Record Payment</div>
-              <Inp label={`Amount (max ${fmt(selB.total - selB.paid)})`} type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} placeholder="Enter amount" />
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Payment Method</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => (
-                    <button key={pm} onClick={() => setPayMethod(pm)}
-                      style={{ padding: "6px 13px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: `2px solid ${payMethod === pm ? M : G2}`, background: payMethod === pm ? MF : WH, color: payMethod === pm ? M : G6 }}>
-                      {pm}
-                    </button>
-                  ))}
-                </div>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+                <Inp label={`Amount (max ${fmt(selB.total - selB.paid)})`} type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} style={{ marginBottom: 0 }} />
+                <Btn v="ok" onClick={() => { recPay(selB.id, payAmt); setPayAmt(""); setSel(null); }}>Record</Btn>
               </div>
-              <Btn v="ok" onClick={() => { recPay(selB.id, payAmt, payMethod); setPayAmt(""); setSel(null); }}>Record Payment</Btn>
             </div>
           )}
           {selB.status === "cancelled" && (
@@ -1404,72 +1390,133 @@ function RoomsTab({ rooms, locs, saveRoom, deleteRoom, pop }) {
 }
 
 /* ─── PAYMENTS TAB ───────────────────────────────────────── */
-function PaysTab({ books, rooms, recPay, payMethods }) {
-  const [sel, setSel] = useState(null);
-  const [amt, setAmt] = useState("");
+/* ─── PAYMENTS TAB ───────────────────────────────────────── */
+function PaysTab({ books, rooms, recPay, payMethods, setPayMethods }) {
+  const [sel, setSel]       = useState(null);
+  const [amt, setAmt]       = useState("");
   const [method, setMethod] = useState("");
+  const [newPM, setNewPM]   = useState(false);
+  const [newPMName, setNewPMName] = useState("");
+
   const selB = books.find(b => b.id === sel);
-  const totColl = books.reduce((s, b) => s + b.paid, 0);
-  const totPend = books.filter(b => b.status !== "cancelled").reduce((s, b) => s + (b.total - b.paid), 0);
-  const totDisc = books.reduce((s, b) => s + (b.base - b.total), 0);
+  const totColl = books.reduce((s,b)=>s+b.paid,0);
+  const totPend = books.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+(b.total-b.paid),0);
+  const totDisc = books.reduce((s,b)=>s+(b.base-b.total),0);
 
   const openRecord = (id) => {
-    const b = books.find(b => b.id === id);
-    setSel(id);
-    setAmt("");
-    setMethod(b?.method || (payMethods?.[0] || "Cash"));
+    const b = books.find(b=>b.id===id);
+    setSel(id); setAmt("");
+    setMethod(b?.method || payMethods?.[0] || "Cash");
   };
+
+  const addPayMethod = async () => {
+    if (!newPMName.trim()) return;
+    try {
+      await api.createPayMethod(newPMName.trim());
+      setPayMethods(prev => [...prev, newPMName.trim()]);
+      setNewPMName(""); setNewPM(false);
+    } catch(e) { alert(e.message); }
+  };
+
+  const removePayMethod = async (pm) => {
+    if (!window.confirm(`Remove "${pm}" as a payment method?`)) return;
+    try {
+      const full = await api.getPayMethods();
+      const found = full.find(p => p.name === pm);
+      if (found) await api.deletePayMethod(found.id);
+      setPayMethods(prev => prev.filter(p => p !== pm));
+    } catch(e) { alert(e.message); }
+  };
+
+  const PmChips = ({selected, onSelect}) => (
+    <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+      {(payMethods.length ? payMethods : ["Cash"]).map(pm => (
+        <button key={pm} onClick={()=>onSelect(pm)}
+          style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+            border:`2px solid ${selected===pm?M:G2}`,background:selected===pm?MF:WH,color:selected===pm?M:G6,transition:"all .15s"}}>
+          {pm}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div>
-      <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: "0 0 18px" }}>Payments</h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 13, marginBottom: 20 }}>
-        <KPI label="Total Collected" value={fmt(totColl)} color={OK} icon="✅" />
-        <KPI label="Outstanding" value={fmt(totPend)} color={ER} icon="⚠️" />
-        <KPI label="Discounts Given" value={fmt(totDisc)} color={WA} icon="🏷️" />
-        <KPI label="Total Bookings" value={books.length} icon="📋" />
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:"0 0 18px"}}>Payments</h2>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:13,marginBottom:20}}>
+        <KPI label="Total Collected" value={fmt(totColl)} color={OK} icon="✅"/>
+        <KPI label="Outstanding"     value={fmt(totPend)} color={ER} icon="⚠️"/>
+        <KPI label="Discounts Given" value={fmt(totDisc)} color={WA} icon="🏷️"/>
+        <KPI label="Total Bookings"  value={books.length} icon="📋"/>
       </div>
-      <Card>
-        <Tbl hdr={["Booking", "Guest", "Total", "Paid", "Balance", "Method", "Action"]}
-          rows={books.sort((a, b) => b.id.localeCompare(a.id)).map(b => {
-            const bal = b.total - b.paid;
-            return [
-              <span style={{ color: M, fontWeight: 700, fontSize: 12 }}>{b.id}</span>, b.gName, fmt(b.total),
-              <span style={{ color: OK, fontWeight: 700 }}>{fmt(b.paid)}</span>,
-              <span style={{ color: bal > 0 ? ER : OK, fontWeight: 700 }}>{fmt(bal)}</span>,
-              b.method,
-              b.status === "cancelled"
-                ? <span style={{ color: ER, fontSize: 12, fontWeight: 700 }}>✗ Cancelled</span>
-                : bal > 0
-                  ? <button onClick={() => openRecord(b.id)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, background: M, color: WH, border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>Record</button>
-                  : <span style={{ color: OK, fontSize: 12, fontWeight: 700 }}>✓ Settled</span>
-            ];
-          })} />
+
+      {/* ── PAYMENT METHODS MANAGER ── */}
+      <Card style={{marginBottom:18}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div style={{fontWeight:700,fontSize:14,color:BK}}>Payment Methods</div>
+          <Btn onClick={()=>setNewPM(v=>!v)} style={{fontSize:12,padding:"5px 12px"}}>+ Add Method</Btn>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          {(payMethods.length ? payMethods : ["Cash"]).map((pm,i) => (
+            <div key={i} style={{display:"flex",alignItems:"center",gap:5,background:G1,border:`1px solid ${G2}`,borderRadius:8,padding:"6px 12px"}}>
+              <span style={{fontSize:13,fontWeight:700,color:BK}}>{pm}</span>
+              {pm !== "Cash" && (
+                <button onClick={()=>removePayMethod(pm)}
+                  style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,lineHeight:1,padding:0,fontWeight:700}}>×</button>
+              )}
+            </div>
+          ))}
+        </div>
+        {newPM && (
+          <div style={{display:"flex",gap:10,marginTop:12,alignItems:"flex-end"}}>
+            <Inp label="New Method Name" value={newPMName} onChange={e=>setNewPMName(e.target.value)}
+              placeholder="e.g. Cheque, POS Terminal…" style={{marginBottom:0}} onKeyDown={e=>e.key==="Enter"&&addPayMethod()}/>
+            <Btn onClick={addPayMethod}>Add</Btn>
+            <Btn v="ghost" onClick={()=>{setNewPM(false);setNewPMName("");}}>Cancel</Btn>
+          </div>
+        )}
       </Card>
+
+      {/* ── LEDGER ── */}
+      <Card>
+        <Tbl hdr={["Booking","Guest","Total","Paid","Balance","Method","Action"]}
+          rows={books.sort((a,b)=>b.id.localeCompare(a.id)).map(b=>{
+            const bal=b.total-b.paid;
+            return [
+              <span style={{color:M,fontWeight:700,fontSize:12}}>{b.id}</span>, b.gName,
+              fmt(b.total),
+              <span style={{color:OK,fontWeight:700}}>{fmt(b.paid)}</span>,
+              <span style={{color:bal>0?ER:OK,fontWeight:700}}>{fmt(bal)}</span>,
+              b.method,
+              b.status==="cancelled"
+                ? <span style={{color:ER,fontSize:12,fontWeight:700}}>✗ Cancelled</span>
+                : bal>0
+                  ? <button onClick={()=>openRecord(b.id)} style={{padding:"4px 10px",fontSize:12,borderRadius:6,background:M,color:WH,border:"none",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>Record</button>
+                  : <span style={{color:OK,fontSize:12,fontWeight:700}}>✓ Settled</span>
+            ];
+          })}/>
+      </Card>
+
+      {/* ── RECORD PAYMENT MODAL ── */}
       {sel && selB && (
-        <Modal title={`Record Payment — ${selB.id}`} onClose={() => setSel(null)}>
-          <div style={{ marginBottom: 16, padding: 13, background: G1, borderRadius: 8, fontSize: 13 }}>
-            {[["Guest", selB.gName], ["Room", rooms.find(r => r.id === selB.roomId)?.name || "—"], ["Total Due", fmt(selB.total)], ["Already Paid", fmt(selB.paid)], ["Balance", fmt(selB.total - selB.paid)]].map(([k, v], i) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, color: i === 4 ? ER : BK }}>
-                <span style={{ color: G6 }}>{k}</span><strong>{v}</strong>
+        <Modal title={`Record Payment — ${selB.id}`} onClose={()=>setSel(null)}>
+          <div style={{marginBottom:16,padding:13,background:G1,borderRadius:8,fontSize:13}}>
+            {[["Guest",selB.gName],["Room",rooms.find(r=>r.id===selB.roomId)?.name||"—"],["Total Due",fmt(selB.total)],["Already Paid",fmt(selB.paid)],["Balance",fmt(selB.total-selB.paid)]].map(([k,v],i)=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                <span style={{color:G6}}>{k}</span>
+                <strong style={{color:i===4?ER:BK}}>{v}</strong>
               </div>
             ))}
           </div>
-          <Inp label="Payment Amount (TZS)" type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder={`Max: ${fmt(selB.total - selB.paid)}`} />
-          <div style={{ marginBottom: 13 }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Payment Method</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-              {(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => (
-                <button key={pm} onClick={() => setMethod(pm)}
-                  style={{ padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: `2px solid ${method === pm ? M : G2}`, background: method === pm ? MF : WH, color: method === pm ? M : G6, transition: "all .15s" }}>
-                  {pm}
-                </button>
-              ))}
-            </div>
+          <Inp label="Amount (TZS)" type="number" value={amt} onChange={e=>setAmt(e.target.value)}
+            placeholder={`Max: ${fmt(selB.total-selB.paid)}`}/>
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Payment Method</label>
+            <PmChips selected={method} onSelect={setMethod}/>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Btn v="ghost" onClick={() => setSel(null)} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn v="ok" onClick={() => { recPay(selB.id, amt, method); setSel(null); }} disabled={!amt || !method} style={{ flex: 1, justifyContent: "center" }}>Confirm Payment</Btn>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setSel(null)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn v="ok" onClick={()=>{recPay(selB.id,amt,method);setSel(null);}} disabled={!amt||!method} style={{flex:1,justifyContent:"center"}}>Confirm Payment</Btn>
           </div>
         </Modal>
       )}
@@ -1477,7 +1524,6 @@ function PaysTab({ books, rooms, recPay, payMethods }) {
   );
 }
 
-/* ─── EXPENSES TAB ───────────────────────────────────────── */
 function ExpsTab({ exps, locs, user, saveExp, pop }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ locId: locs[0]?.id || "", cat: "Utilities", desc: "", amt: "", date: td() });
@@ -1519,218 +1565,191 @@ function ExpsTab({ exps, locs, user, saveExp, pop }) {
 }
 
 /* ─── REPORTS TAB ────────────────────────────────────────── */
+/* ─── REPORTS TAB ────────────────────────────────────────── */
 function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
-  const [rt, setRt] = useState("financial");
+  const [rt, setRt]             = useState("financial");
   const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [reportData, setReportData] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
+  const [dateTo, setDateTo]     = useState("");
+  const [rptLoading, setRptLoading] = useState(false);
+  const [rptData, setRptData]   = useState(null);
 
-  // Quick presets
-  const applyPreset = (preset) => {
+  const fmtD = d => d.toISOString().split("T")[0];
+
+  const applyPreset = (p) => {
     const now = new Date();
-    const fmt = d => d.toISOString().split("T")[0];
-    if (preset === "today") {
-      const t = fmt(now); setDateFrom(t); setDateTo(t);
-    } else if (preset === "week") {
-      const start = new Date(now); start.setDate(now.getDate() - 7);
-      setDateFrom(fmt(start)); setDateTo(fmt(now));
-    } else if (preset === "month") {
-      setDateFrom(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`);
-      setDateTo(fmt(now));
-    } else if (preset === "lastmonth") {
-      const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
-      const lmEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-      setDateFrom(fmt(lm)); setDateTo(fmt(lmEnd));
-    } else if (preset === "year") {
-      setDateFrom(`${now.getFullYear()}-01-01`); setDateTo(fmt(now));
-    } else {
-      setDateFrom(""); setDateTo("");
+    if (p==="all")       { setDateFrom(""); setDateTo(""); }
+    else if (p==="today"){ const t=fmtD(now); setDateFrom(t); setDateTo(t); }
+    else if (p==="week") { const s=new Date(now); s.setDate(now.getDate()-7); setDateFrom(fmtD(s)); setDateTo(fmtD(now)); }
+    else if (p==="month"){ setDateFrom(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`); setDateTo(fmtD(now)); }
+    else if (p==="lastmonth") {
+      const lm=new Date(now.getFullYear(),now.getMonth()-1,1), lmE=new Date(now.getFullYear(),now.getMonth(),0);
+      setDateFrom(fmtD(lm)); setDateTo(fmtD(lmE));
     }
+    else if (p==="year") { setDateFrom(`${now.getFullYear()}-01-01`); setDateTo(fmtD(now)); }
   };
 
-  const fetchReport = async () => {
-    setReportLoading(true);
-    try {
-      const data = await api.getReports(null, dateFrom || undefined, dateTo || undefined);
-      setReportData(data);
-    } catch(e) { /* fallback to local */ }
-    setReportLoading(false);
+  useEffect(() => {
+    if (!dateFrom && !dateTo) { setRptData(null); return; }
+    setRptLoading(true);
+    api.getReports(null, dateFrom||undefined, dateTo||undefined)
+      .then(d => setRptData(d)).catch(()=>setRptData(null))
+      .finally(()=>setRptLoading(false));
+  }, [dateFrom, dateTo]);
+
+  // ── Unified data source ──
+  const B = rptData ? null
+    : (dateFrom||dateTo) ? books.filter(b=>(!dateFrom||b.ci>=dateFrom)&&(!dateTo||b.ci<=dateTo))
+    : books;
+  const E = rptData ? null
+    : (dateFrom||dateTo) ? exps.filter(e=>(!dateFrom||e.date>=dateFrom)&&(!dateTo||e.date<=dateTo))
+    : exps;
+  const Bk = B||books, Ek = E||exps;
+
+  const totRev  = rptData ? rptData.revenue.collected  : Bk.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+b.paid,0);
+  const totExp  = rptData ? rptData.expenses.total      : Ek.reduce((s,e)=>s+e.amt,0);
+  const net     = totRev - totExp;
+  const totDisc = rptData ? rptData.revenue.discounts   : Bk.reduce((s,b)=>s+(b.base-b.total),0);
+  const pending = rptData ? rptData.revenue.pending     : Bk.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+(b.total-b.paid),0);
+  const margin  = totRev>0 ? Math.round(net/totRev*100) : 0;
+
+  const byLoc = rptData
+    ? rptData.by_location.map(l=>({...l,rev:l.revenue,exp:l.expenses,cnt:l.bookings}))
+    : locs.map(loc=>({id:loc.id,name:loc.name,icon:loc.icon,city:loc.city,
+        rev:Bk.filter(b=>b.locId===loc.id&&b.status!=="cancelled").reduce((s,b)=>s+b.paid,0),
+        exp:Ek.filter(e=>e.locId===loc.id).reduce((s,e)=>s+e.amt,0),
+        cnt:Bk.filter(b=>b.locId===loc.id).length}));
+
+  const byMethod = rptData
+    ? rptData.by_method.map(m=>({method:m.method,total:m.total}))
+    : Object.entries(Bk.reduce((a,b)=>{a[b.method]=(a[b.method]||0)+b.paid;return a;},{})).map(([method,total])=>({method,total}));
+
+  const byCat = rptData
+    ? Object.fromEntries(rptData.expenses.by_category.map(e=>[e.category,e.total]))
+    : Ek.reduce((a,e)=>{a[e.cat]=(a[e.cat]||0)+e.amt;return a;},{});
+
+  const bkSt = rptData ? rptData.bookings : {
+    total:Bk.length, active:Bk.filter(b=>b.status==="checkedIn").length,
+    completed:Bk.filter(b=>b.status==="checkedOut").length, cancelled:Bk.filter(b=>b.status==="cancelled").length,
+    pending:Bk.filter(b=>b.status==="pending").length, confirmed:Bk.filter(b=>b.status==="confirmed").length,
   };
 
-  useEffect(() => { if (dateFrom || dateTo) fetchReport(); else setReportData(null); }, [dateFrom, dateTo]);
+  const occ     = rooms.length ? Math.round(rooms.filter(r=>r.status==="occupied").length/rooms.length*100) : 0;
+  const avgRate = rooms.length ? Math.round(rooms.reduce((s,r)=>s+r.price,0)/rooms.length) : 0;
 
-  // Use server data if date filter active, else compute locally from in-memory books/exps
-  const filteredBooks = reportData
-    ? null // use reportData directly
-    : (dateFrom || dateTo)
-      ? books.filter(b => { const d = b.ci; return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo); })
-      : books;
-  const filteredExps = reportData
-    ? null
-    : (dateFrom || dateTo)
-      ? exps.filter(e => { const d = e.date; return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo); })
-      : exps;
-
-  const src = reportData ? {
-    totRev: reportData.revenue.collected,
-    totExp: reportData.expenses.total,
-    net:    reportData.revenue.net_profit,
-    totDisc: reportData.revenue.discounts,
-    pending: reportData.revenue.pending,
-    bStats:  reportData.bookings,
-    byLoc:   reportData.by_location.map(l => ({ ...l, rev: l.revenue, exp: l.expenses, cnt: l.bookings })),
-    byMethod: reportData.by_method.map(m => ({ method: m.method, total: m.total })),
-    byCat:   Object.fromEntries(reportData.expenses.by_category.map(e => [e.category, e.total])),
-  } : {
-    totRev: (filteredBooks||books).filter(b=>b.status!=="cancelled").reduce((s,b)=>s+b.paid,0),
-    totExp: (filteredExps||exps).reduce((s,e)=>s+e.amt,0),
-    net:    0,
-    totDisc: (filteredBooks||books).reduce((s,b)=>s+(b.base-b.total),0),
-    pending: (filteredBooks||books).filter(b=>b.status!=="cancelled").reduce((s,b)=>s+(b.total-b.paid),0),
-    byLoc: locs.map(loc=>({ id:loc.id, name:loc.name, icon:loc.icon, city:loc.city, rev:(filteredBooks||books).filter(b=>b.locId===loc.id&&b.status!=="cancelled").reduce((s,b)=>s+b.paid,0), exp:(filteredExps||exps).filter(e=>e.locId===loc.id).reduce((s,e)=>s+e.amt,0), cnt:(filteredBooks||books).filter(b=>b.locId===loc.id).length })),
-    byMethod: Object.entries((filteredBooks||books).reduce((a,b)=>{a[b.method]=(a[b.method]||0)+b.paid;return a;},{})).map(([method,total])=>({method,total})),
-    byCat: (filteredExps||exps).reduce((a,e)=>{a[e.cat]=(a[e.cat]||0)+e.amt;return a;},{}),
-    bStats: {
-      total: (filteredBooks||books).length,
-      active: (filteredBooks||books).filter(b=>b.status==="checkedIn").length,
-      completed: (filteredBooks||books).filter(b=>b.status==="checkedOut").length,
-      cancelled: (filteredBooks||books).filter(b=>b.status==="cancelled").length,
-    },
-  };
-  src.net = src.totRev - src.totExp;
-  src.margin = src.totRev > 0 ? Math.round(src.net / src.totRev * 100) : 0;
-  const { totRev, totExp, net, totDisc, pending, margin, byLoc: byLocRaw, byMethod: byMethodRaw, byCat, bStats } = src;
-  // Occupancy still from live room data (not date-filtered)
-  const occ = rooms.length ? Math.round(rooms.filter(r => r.status === "occupied").length / rooms.length * 100) : 0;
-  const avgRate = rooms.length ? Math.round(rooms.reduce((s, r) => s + r.price, 0) / rooms.length) : 0;
-  const byLoc = byLocRaw || locs.map(loc => ({
-    ...loc,
-    rev: books.filter(b => b.locId === loc.id && b.status !== "cancelled").reduce((s, b) => s + b.paid, 0),
-    exp: exps.filter(e => e.locId === loc.id).reduce((s, e) => s + e.amt, 0),
-    cnt: books.filter(b => b.locId === loc.id).length,
-  }));
-  const byMethod = byMethodRaw || Object.entries(books.reduce((a,b)=>{a[b.method]=(a[b.method]||0)+b.paid;return a;},{})).map(([method,total])=>({method,total}));
-  // byStat as object for the booking status breakdown  
-  const byStatObj = Array.isArray(byStat) ? byStat : byStat;
-  const byStat = bStats || books.reduce((a, b) => { a[b.status] = (a[b.status] || 0) + 1; return a; }, {});
+  const ST = ({c}) => <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:15,margin:"0 0 13px",borderLeft:`4px solid ${M}`,paddingLeft:11,color:BK}}>{c}</h3>;
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: 0 }}>Reports & Analytics</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-          {/* Quick presets */}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {[["All Time","all"],["Today","today"],["This Week","week"],["This Month","month"],["Last Month","lastmonth"],["This Year","year"]].map(([label, preset]) => {
-              const isActive = preset === "all" ? !dateFrom && !dateTo : (() => {
-                // rough active check
-                const now = new Date(); const fmt = d => d.toISOString().split("T")[0];
-                if (preset==="today") return dateFrom === fmt(now);
-                if (preset==="month") return dateFrom === `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`;
-                if (preset==="year") return dateFrom === `${now.getFullYear()}-01-01`;
-                return false;
-              })();
-              return (
-                <button key={preset} onClick={() => applyPreset(preset)}
-                  style={{ padding: "5px 12px", borderRadius: 99, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: `1px solid ${isActive ? M : G2}`, background: isActive ? M : WH, color: isActive ? WH : G6 }}>
-                  {label}
-                </button>
-              );
-            })}
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:"0 0 16px"}}>Reports & Analytics</h2>
+
+      {/* ── DATE FILTER BAR ── */}
+      <Card style={{marginBottom:18}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",flexShrink:0}}>Period:</span>
+          {[["All Time","all"],["Today","today"],["This Week","week"],["This Month","month"],["Last Month","lastmonth"],["This Year","year"]].map(([label,preset])=>{
+            const active = preset==="all"?(!dateFrom&&!dateTo)
+              :preset==="today"?dateFrom===fmtD(new Date())
+              :preset==="month"?dateFrom===`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}-01`
+              :preset==="year"?dateFrom===`${new Date().getFullYear()}-01-01`:false;
+            return (
+              <button key={preset} onClick={()=>applyPreset(preset)}
+                style={{padding:"5px 13px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                  border:`1px solid ${active?M:G2}`,background:active?M:WH,color:active?WH:G6,transition:"all .15s"}}>
+                {label}
+              </button>
+            );
+          })}
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+              style={{padding:"5px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:13,fontFamily:"inherit",color:BK,outline:"none"}}/>
+            <span style={{color:G6,fontSize:13}}>→</span>
+            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+              style={{padding:"5px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:13,fontFamily:"inherit",color:BK,outline:"none"}}/>
+            {(dateFrom||dateTo) && <button onClick={()=>{setDateFrom("");setDateTo("");}} style={{padding:"5px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:12,cursor:"pointer",color:ER,fontFamily:"inherit",background:WH}}>✕ Clear</button>}
           </div>
-          {/* Custom date range */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              style={{ padding: "5px 10px", border: `1px solid ${G2}`, borderRadius: 7, fontSize: 13, fontFamily: "inherit", color: BK, outline: "none" }} />
-            <span style={{ color: G6, fontSize: 13 }}>to</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              style={{ padding: "5px 10px", border: `1px solid ${G2}`, borderRadius: 7, fontSize: 13, fontFamily: "inherit", color: BK, outline: "none" }} />
-            {(dateFrom || dateTo) && (
-              <button onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ padding: "5px 10px", border: `1px solid ${G2}`, borderRadius: 7, fontSize: 12, cursor: "pointer", color: ER, fontFamily: "inherit", background: WH }}>✕ Clear</button>
-            )}
-          </div>
-          {(dateFrom || dateTo) && (
-            <div style={{ fontSize: 12, color: M, fontWeight: 700 }}>
-              {reportLoading ? "Loading…" : `Showing: ${dateFrom || "start"} → ${dateTo || "today"}`}
-            </div>
-          )}
         </div>
-      </div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${G2}` }}>
-        {["financial", "occupancy", "location", "expenses", "bookings"].map(t => (
-          <button key={t} onClick={() => setRt(t)} style={{ padding: "10px 15px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: rt === t ? M : G6, borderBottom: `3px solid ${rt === t ? M : "transparent"}`, textTransform: "capitalize", fontFamily: "inherit" }}>{t}</button>
+        {(dateFrom||dateTo) && <div style={{marginTop:8,fontSize:12,color:M,fontWeight:700}}>{rptLoading?"Loading…":`Showing: ${dateFrom||"start"} → ${dateTo||"today"}`}</div>}
+      </Card>
+
+      {/* ── SUB-TABS ── */}
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${G2}`}}>
+        {["financial","occupancy","location","expenses","bookings"].map(t=>(
+          <button key={t} onClick={()=>setRt(t)} style={{padding:"10px 15px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:rt===t?M:G6,borderBottom:`3px solid ${rt===t?M:"transparent"}`,textTransform:"capitalize",fontFamily:"inherit"}}>{t}</button>
         ))}
       </div>
 
-      {rt === "financial" && (
+      {rptLoading && <div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
+
+      {!rptLoading && rt==="financial" && (
         <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 13, marginBottom: 20 }}>
-            <KPI label="Gross Revenue" value={fmt(totRev)} color={M} icon="💰" />
-            <KPI label="Total Expenses" value={fmt(totExp)} color={ER} icon="📤" />
-            <KPI label="Net Profit" value={fmt(net)} color={net >= 0 ? OK : ER} icon="📈" sub={net >= 0 ? "Profitable" : "Loss"} />
-            <KPI label="Pending Revenue" value={fmt(pending)} color={WA} icon="⏳" />
-            <KPI label="Discounts Given" value={fmt(totDisc)} color={IN} icon="🏷️" />
-            <KPI label="Profit Margin" value={margin + "%"} color={net >= 0 ? OK : ER} icon="%" />
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:13,marginBottom:20}}>
+            <KPI label="Gross Revenue"  value={fmt(totRev)}  color={M}  icon="💰"/>
+            <KPI label="Total Expenses" value={fmt(totExp)}  color={ER} icon="📤"/>
+            <KPI label="Net Profit"     value={fmt(net)}     color={net>=0?OK:ER} icon="📈" sub={net>=0?"Profitable":"Loss"}/>
+            <KPI label="Outstanding"    value={fmt(pending)} color={WA} icon="⏳"/>
+            <KPI label="Discounts"      value={fmt(totDisc)} color={IN} icon="🏷️"/>
+            <KPI label="Profit Margin"  value={margin+"%"}   color={net>=0?OK:ER} icon="%"/>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <Card>
-              <SecTitle>Revenue vs Expenses by Location</SecTitle>
-              {byLoc.map(loc => (
-                <div key={loc.id} style={{ marginBottom: 15 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, fontSize: 13 }}>
+              <ST c="Revenue vs Expenses by Location"/>
+              {byLoc.map(loc=>(
+                <div key={loc.id} style={{marginBottom:15}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:13}}>
                     <strong>{loc.name}</strong>
-                    <span style={{ color: loc.rev - loc.exp >= 0 ? OK : ER, fontWeight: 700 }}>Net: {fmt(loc.rev - loc.exp)}</span>
+                    <span style={{color:loc.rev-loc.exp>=0?OK:ER,fontWeight:700}}>Net: {fmt(loc.rev-loc.exp)}</span>
                   </div>
-                  <div style={{ fontSize: 12, color: G6, marginBottom: 5 }}>Rev: {fmt(loc.rev)} · Exp: {fmt(loc.exp)}</div>
-                  <div style={{ height: 6, background: G1, borderRadius: 99, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: totRev > 0 ? Math.round(loc.rev / totRev * 100) + "%" : "0%", background: M, borderRadius: 99 }} />
+                  <div style={{fontSize:12,color:G6,marginBottom:5}}>Rev: {fmt(loc.rev)} · Exp: {fmt(loc.exp)}</div>
+                  <div style={{height:6,background:G1,borderRadius:99,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:totRev>0?Math.round(loc.rev/totRev*100)+"%":"0%",background:M,borderRadius:99}}/>
                   </div>
                 </div>
               ))}
             </Card>
             <Card>
-              <SecTitle>Payment Methods</SecTitle>
-              {byMethod.map((m, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${G1}`, fontSize: 13 }}>
-                  <span style={{ color: G6 }}>{m.method}</span><span style={{ fontWeight: 700 }}>{fmt(m.total)}</span>
+              <ST c="Payment Methods Breakdown"/>
+              {byMethod.length===0 && <div style={{color:G4,fontSize:13}}>No payment data for this period</div>}
+              {byMethod.map((m,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                  <span style={{color:G6}}>{m.method}</span>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontWeight:700}}>{fmt(m.total)}</div>
+                    <div style={{fontSize:11,color:G4}}>{totRev>0?Math.round(m.total/totRev*100):0}%</div>
+                  </div>
                 </div>
               ))}
-              <div style={{ marginTop: 11, padding: "9px 0", borderTop: `2px solid ${G2}`, display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700 }}>
-                <span>Total</span><span style={{ color: M }}>{fmt(totRev)}</span>
-              </div>
+              {byMethod.length>0&&<div style={{marginTop:11,padding:"9px 0",borderTop:`2px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:M}}>{fmt(totRev)}</span></div>}
             </Card>
           </div>
         </div>
       )}
 
-      {rt === "occupancy" && (
+      {!rptLoading && rt==="occupancy" && (
         <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 13, marginBottom: 20 }}>
-            <KPI label="Overall Occupancy" value={occ + "%"} icon="🛏️" />
-            <KPI label="Occupied Rooms" value={rooms.filter(r => r.status === "occupied").length} color={M} sub={`of ${rooms.length} total`} />
-            <KPI label="Available Rooms" value={rooms.filter(r => r.status === "available").length} color={OK} />
-            <KPI label="Maintenance" value={rooms.filter(r => r.status === "maintenance").length} color={WA} />
-            <KPI label="Avg Nightly Rate" value={fmt(avgRate)} color={M} />
-            <KPI label="Total Rooms" value={rooms.length} />
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:13,marginBottom:20}}>
+            <KPI label="Overall Occupancy" value={occ+"%"} icon="🛏️"/>
+            <KPI label="Occupied"    value={rooms.filter(r=>r.status==="occupied").length}    color={M}  sub={`of ${rooms.length}`}/>
+            <KPI label="Available"   value={rooms.filter(r=>r.status==="available").length}   color={OK}/>
+            <KPI label="Maintenance" value={rooms.filter(r=>r.status==="maintenance").length} color={WA}/>
+            <KPI label="Avg Nightly Rate" value={fmt(avgRate)} color={M}/>
           </div>
           <Card>
-            <SecTitle>Occupancy by Location</SecTitle>
-            {locs.map(loc => {
-              const lr = allRooms.filter(r => r.locId === loc.id);
-              const o = lr.filter(r => r.status === "occupied").length;
-              const pct = lr.length ? Math.round(o / lr.length * 100) : 0;
+            <ST c="Occupancy by Location"/>
+            {locs.map(loc=>{
+              const lr=allRooms.filter(r=>r.locId===loc.id);
+              const o=lr.filter(r=>r.status==="occupied").length;
+              const pct=lr.length?Math.round(o/lr.length*100):0;
               return (
-                <div key={loc.id} style={{ marginBottom: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 14 }}>
-                    <strong style={{ fontFamily: "'Playfair Display',serif" }}>{loc.name}</strong>
-                    <span style={{ color: M, fontWeight: 700 }}>{pct}% ({o}/{lr.length})</span>
+                <div key={loc.id} style={{marginBottom:16}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:14}}>
+                    <strong style={{fontFamily:"'Playfair Display',serif"}}>{loc.name}</strong>
+                    <span style={{color:M,fontWeight:700}}>{pct}% ({o}/{lr.length})</span>
                   </div>
-                  <div style={{ height: 10, background: G1, borderRadius: 99, overflow: "hidden", marginBottom: 5 }}>
-                    <div style={{ height: "100%", width: pct + "%", background: `linear-gradient(90deg,${M},${ML})`, borderRadius: 99 }} />
+                  <div style={{height:10,background:G1,borderRadius:99,overflow:"hidden",marginBottom:5}}>
+                    <div style={{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${M},${ML})`,borderRadius:99}}/>
                   </div>
-                  <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
-                    {["available", "occupied", "maintenance"].map(s => <span key={s} style={{ color: sC(s) }}>{lr.filter(r => r.status === s).length} {s}</span>)}
+                  <div style={{display:"flex",gap:12,fontSize:12}}>
+                    {["available","occupied","maintenance"].map(s=><span key={s} style={{color:sC(s)}}>{lr.filter(r=>r.status===s).length} {s}</span>)}
                   </div>
                 </div>
               );
@@ -1739,21 +1758,21 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
         </div>
       )}
 
-      {rt === "location" && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 14 }}>
-          {byLoc.map(loc => {
-            const lb = books.filter(b => b.locId === loc.id);
-            const act = lb.filter(b => ["confirmed", "checkedIn"].includes(b.status)).length;
-            const done = lb.filter(b => b.status === "checkedOut").length;
+      {!rptLoading && rt==="location" && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14}}>
+          {byLoc.map(loc=>{
+            const lb=Bk.filter(b=>b.locId===loc.id);
+            const act=lb.filter(b=>["confirmed","checkedIn"].includes(b.status)).length;
+            const done=lb.filter(b=>b.status==="checkedOut").length;
             return (
               <Card key={loc.id}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${G1}` }}>
-                  <span style={{ fontSize: 26 }}>{loc.icon}</span>
-                  <div><div style={{ fontWeight: 700, fontFamily: "'Playfair Display',serif", fontSize: 15 }}>{loc.name}</div><div style={{ fontSize: 11, color: G6 }}>{loc.city}</div></div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,paddingBottom:12,borderBottom:`1px solid ${G1}`}}>
+                  <span style={{fontSize:26}}>{loc.icon}</span>
+                  <div><div style={{fontWeight:700,fontFamily:"'Playfair Display',serif",fontSize:15}}>{loc.name}</div><div style={{fontSize:11,color:G6}}>{loc.city}</div></div>
                 </div>
-                {[["Total Revenue", fmt(loc.rev), OK], ["Total Expenses", fmt(loc.exp), ER], ["Net Profit", fmt(loc.rev - loc.exp), loc.rev - loc.exp >= 0 ? OK : ER], ["Total Bookings", loc.cnt, BK], ["Active Stays", act, M], ["Completed Stays", done, G6]].map(([k, v, c]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13, borderBottom: `1px solid ${G1}` }}>
-                    <span style={{ color: G6 }}>{k}</span><span style={{ fontWeight: 700, color: c }}>{v}</span>
+                {[["Total Revenue",fmt(loc.rev),OK],["Total Expenses",fmt(loc.exp),ER],["Net Profit",fmt(loc.rev-loc.exp),loc.rev-loc.exp>=0?OK:ER],["Total Bookings",loc.cnt,BK],["Active Stays",act,M],["Completed",done,G6]].map(([k,v,col])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:13,borderBottom:`1px solid ${G1}`}}>
+                    <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:col}}>{v}</span>
                   </div>
                 ))}
               </Card>
@@ -1762,41 +1781,46 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
         </div>
       )}
 
-      {rt === "expenses" && (
+      {!rptLoading && rt==="expenses" && (
         <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 11, marginBottom: 16 }}>
-            {Object.entries(byCat).map(([c, a]) => <KPI key={c} label={c} value={fmt(a)} />)}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:11,marginBottom:16}}>
+            {Object.entries(byCat).map(([cat,amt])=><KPI key={cat} label={cat} value={fmt(amt)}/>)}
+            {!Object.keys(byCat).length&&<div style={{color:G4,fontSize:14}}>No expenses in this period</div>}
           </div>
-          <Card><SecTitle>All Expenses</SecTitle>
-            <Tbl hdr={["Date", "Location", "Category", "Description", "Amount"]}
-              rows={exps.sort((a, b) => b.date.localeCompare(a.date)).map(e => [
-                e.date, locs.find(l => l.id === e.locId)?.name || "-", e.cat, e.desc, <span style={{ fontWeight: 700, color: ER }}>{fmt(e.amt)}</span>
-              ])} />
+          {Object.keys(byCat).length>0&&<KPI label="Total Expenses" value={fmt(totExp)} color={ER} icon="📤"/>}
+          <Card style={{marginTop:14}}>
+            <ST c="All Expenses"/>
+            <Tbl hdr={["Date","Location","Category","Description","Amount"]}
+              rows={Ek.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>[
+                e.date, locs.find(l=>l.id===e.locId)?.name||"-", e.cat, e.desc,
+                <span style={{fontWeight:700,color:ER}}>{fmt(e.amt)}</span>
+              ])}/>
           </Card>
         </div>
       )}
 
-      {rt === "bookings" && (
+      {!rptLoading && rt==="bookings" && (
         <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 11, marginBottom: 18 }}>
-            {[["pending",(bsSrc=>bsSrc?.pending||(books.filter(b=>b.status==="pending").length))(bStats)],["confirmed",(bsSrc=>bsSrc?.confirmed||(books.filter(b=>b.status==="confirmed").length))(bStats)],["checkedIn",bStats?.active||(books.filter(b=>b.status==="checkedIn").length)],["checkedOut",bStats?.completed||(books.filter(b=>b.status==="checkedOut").length)],["cancelled",bStats?.cancelled||(books.filter(b=>b.status==="cancelled").length)]].map(([s, c]) => (
-              <div key={s} style={{ background: sB(s), border: `1px solid ${sC(s)}30`, borderRadius: 12, padding: "13px 15px" }}>
-                <div style={{ fontSize: 11, color: sC(s), fontWeight: 700, textTransform: "uppercase", marginBottom: 5 }}>{s}</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: sC(s), fontFamily: "'Playfair Display',serif" }}>{c}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:11,marginBottom:18}}>
+            {[["pending",bkSt.pending||0],["confirmed",bkSt.confirmed||0],["checkedIn",bkSt.active||0],["checkedOut",bkSt.completed||0],["cancelled",bkSt.cancelled||0]].map(([s,count])=>(
+              <div key={s} style={{background:sB(s),border:`1px solid ${sC(s)}30`,borderRadius:12,padding:"13px 15px"}}>
+                <div style={{fontSize:11,color:sC(s),fontWeight:700,textTransform:"uppercase",marginBottom:5}}>{s}</div>
+                <div style={{fontSize:26,fontWeight:700,color:sC(s),fontFamily:"'Playfair Display',serif"}}>{count}</div>
               </div>
             ))}
           </div>
-          <Card><SecTitle>Booking Revenue Analysis</SecTitle>
-            <Tbl hdr={["Booking", "Guest", "Base", "Discount", "Total", "Paid", "Balance", "Status"]}
-              rows={books.sort((a, b) => b.id.localeCompare(a.id)).map(b => {
-                const bal = b.total - b.paid;
+          <Card>
+            <ST c="Booking Revenue Analysis"/>
+            <Tbl hdr={["Booking","Guest","Base","Discount","Total","Paid","Balance","Status"]}
+              rows={Bk.sort((a,b)=>b.id.localeCompare(a.id)).map(b=>{
+                const bal=b.total-b.paid;
                 return [
-                  <span style={{ color: M, fontWeight: 700, fontSize: 11 }}>{b.id}</span>, b.gName, fmt(b.base),
-                  b.disc > 0 ? <span style={{ color: OK, fontSize: 12 }}>{b.discT === "pct" ? b.disc + "%" : fmt(b.disc)}</span> : "—",
-                  fmt(b.total), <span style={{ color: OK }}>{fmt(b.paid)}</span>,
-                  <span style={{ color: bal > 0 ? ER : OK }}>{fmt(bal)}</span>, <Badge s={b.status} />
+                  <span style={{color:M,fontWeight:700,fontSize:11}}>{b.id}</span>, b.gName, fmt(b.base),
+                  b.disc>0?<span style={{color:OK,fontSize:12}}>{b.discT==="pct"?b.disc+"%":fmt(b.disc)}</span>:"—",
+                  fmt(b.total),<span style={{color:OK}}>{fmt(b.paid)}</span>,
+                  <span style={{color:bal>0?ER:OK}}>{fmt(bal)}</span>,<Badge s={b.status}/>
                 ];
-              })} />
+              })}/>
           </Card>
         </div>
       )}
@@ -1804,7 +1828,6 @@ function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
   );
 }
 
-/* ─── LOCATIONS TAB ──────────────────────────────────────── */
 function LocsTab({ locs, saveLoc, deleteLoc, rooms, books, pop }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ id: null, name: "", city: "", addr: "", icon: "🏙️", desc: "" });
@@ -1861,11 +1884,9 @@ function LocsTab({ locs, saveLoc, deleteLoc, rooms, books, pop }) {
 }
 
 /* ─── STAFF TAB ──────────────────────────────────────────── */
-function StaffTab({ staff, saveStaff, toggleStaff, locs, pop, payMethods, setPayMethods }) {
+function StaffTab({ staff, saveStaff, toggleStaff, locs, pop }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ id: null, name: "", email: "", phone: "", role: "Receptionist", locId: "", pin: "", active: true });
-  const [newPM, setNewPM] = useState(false);
-  const [newPMName, setNewPMName] = useState("");
   const save = () => { if(!form.name||!form.email||!form.pin)return; saveStaff(form,!!form.id); setModal(false); };
   return (
     <div>
@@ -1900,53 +1921,6 @@ function StaffTab({ staff, saveStaff, toggleStaff, locs, pop, payMethods, setPay
           </Card>
         ))}
       </div>
-      {/* ── PAYMENT METHODS ── */}
-      <div style={{ marginTop: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, margin: 0 }}>Payment Methods</h3>
-          <Btn onClick={() => setNewPM(true)} style={{ fontSize: 12, padding: "6px 13px" }}>+ Add Method</Btn>
-        </div>
-        <Card>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {(payMethods || []).map((pm, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: G1, border: `1px solid ${G2}`, borderRadius: 8, padding: "7px 12px" }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: BK }}>{pm}</span>
-                <button onClick={async () => {
-                    if (!window.confirm(`Remove "${pm}" as a payment method?`)) return;
-                    try {
-                      // Get full list from DB to find id
-                      const full = await api.getPayMethods();
-                      const found = full.find(p => p.name === pm);
-                      if (found) {
-                        await api.deletePayMethod(found.id);
-                        setPayMethods(prev => prev.filter(p => p !== pm));
-                        pop("Payment method removed");
-                      }
-                    } catch(e) { pop(e.message, "err"); }
-                  }}
-                  style={{ background: "none", border: "none", color: ER, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, fontWeight: 700 }}>×</button>
-              </div>
-            ))}
-            {(!payMethods || payMethods.length === 0) && <div style={{ color: G4, fontSize: 13 }}>No payment methods configured</div>}
-          </div>
-        </Card>
-        {newPM && (
-          <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "flex-end" }}>
-            <Inp label="New Payment Method Name" value={newPMName} onChange={e => setNewPMName(e.target.value)} placeholder="e.g. Cheque, Crypto..." style={{ marginBottom: 0 }} />
-            <Btn onClick={async () => {
-                if (!newPMName.trim()) return;
-                try {
-                  await api.createPayMethod(newPMName.trim());
-                  setPayMethods(prev => [...prev, newPMName.trim()]);
-                  setNewPMName(""); setNewPM(false);
-                  pop("Payment method added");
-                } catch(e) { pop(e.message, "err"); }
-              }}>Add</Btn>
-            <Btn v="ghost" onClick={() => { setNewPM(false); setNewPMName(""); }}>Cancel</Btn>
-          </div>
-        )}
-      </div>
-
       {modal && (
         <Modal title={form.id ? "Edit Staff" : "Create Staff Account"} onClose={() => setModal(false)}>
           <Inp label="Full Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Mwangi" />
@@ -2079,7 +2053,7 @@ function ProfileTab({ user, updateProfile }) {
 
 /* ─── NEW BOOKING MODAL ──────────────────────────────────── */
 function NewBookModal({ rooms, locs, user, onClose, onSave, payMethods }) {
-  const [form, setForm] = useState({ locId: locs[0]?.id || "", roomId: "", name: "", phone: "", email: "", nat: "", ci: td(), co: "", nights: 1, disc: 0, discT: "pct", method: payMethods?.[0] || "Cash", notes: "", paid: 0 });
+  const [form, setForm] = useState({ locId: locs[0]?.id || "", roomId: "", name: "", phone: "", email: "", nat: "", ci: td(), co: "", nights: 1, disc: 0, discT: "pct", method: payMethods?.[0]||"Cash", notes: "", paid: 0 });
   const lr = rooms.filter(r => r.locId === form.locId && r.status === "available");
   const sr = rooms.find(r => r.id === form.roomId);
   const base = sr ? sr.price * form.nights : 0;
@@ -2105,7 +2079,7 @@ function NewBookModal({ rooms, locs, user, onClose, onSave, payMethods }) {
         <Inp label="Nationality" value={form.nat} onChange={e => setForm(f => ({ ...f, nat: e.target.value }))} />
         <Sel label="Discount Type" value={form.discT} onChange={e => setForm(f => ({ ...f, discT: e.target.value }))}><option value="pct">Percentage (%)</option><option value="fix">Fixed Amount (TZS)</option></Sel>
         <Inp label={form.discT === "pct" ? "Discount %" : "Discount (TZS)"} type="number" value={form.disc} onChange={e => setForm(f => ({ ...f, disc: e.target.value }))} min={0} />
-        <Sel label="Payment Method" value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))}>{(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => <option key={pm}>{pm}</option>)}</Sel>
+        <Sel label="Payment Method" value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))}>{(payMethods?.length?payMethods:["Cash"]).map(pm=><option key={pm}>{pm}</option>)}</Sel>
         <Inp label="Initial Payment (TZS)" type="number" value={form.paid} onChange={e => setForm(f => ({ ...f, paid: e.target.value }))} placeholder="0" />
       </div>
       <Inp label="Notes / Special Requests" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Special requests…" />
