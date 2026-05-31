@@ -554,6 +554,7 @@ export default function App() {
         </div>
       </div>
       {modal==="login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
+      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => setCustModal(null)} pop={pop}/>}
     </div>
   );
 
@@ -727,6 +728,7 @@ export default function App() {
         )}
       </div>
       {modal === "login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
+      {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => setCustModal(null)} pop={pop}/>}
     </div>
   );
 

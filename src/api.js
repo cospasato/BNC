@@ -31,26 +31,46 @@ const put  = (path, b)  => req('PUT',    path, b)
 const del  = path       => req('DELETE', path)
 
 export const api = {
-  login:          (email, pin) => post('/auth', { email, pin }),
-  getLocations:   ()           => get('/locations'),
-  createLocation: d            => post('/locations', d),
-  updateLocation: (id, d)      => put(`/locations?id=${id}`, d),
-  deleteLocation: id           => del(`/locations?id=${id}`),
-  getRooms:       locId        => get('/rooms' + (locId ? `?location_id=${locId}` : '')),
-  createRoom:     d            => post('/rooms', d),
-  updateRoom:     (id, d)      => put(`/rooms?id=${id}`, d),
-  deleteRoom:     id           => del(`/rooms?id=${id}`),
-  getBookings:    locId        => get('/bookings' + (locId ? `?location_id=${locId}` : '')),
-  createBooking:  d            => post('/bookings', d),
-  updateBooking:  (id, d)      => put(`/bookings?id=${id}`, d),
-  recordPayment:  (id, amount) => put(`/bookings?id=${id}`, { add_payment: amount }),
-  extendBooking:  (id, d)      => put(`/bookings?id=${id}&action=extend`, d),
-  deleteBooking:  id           => del(`/bookings?id=${id}`),
-  getExpenses:    locId        => get('/expenses' + (locId ? `?location_id=${locId}` : '')),
-  createExpense:  d            => post('/expenses', d),
-  getStaff:       ()           => get('/staff'),
-  createStaff:    d            => post('/staff', d),
-  updateStaff:    (id, d)      => put(`/staff?id=${id}`, d),
-  updateProfile:  d            => put('/staff?me=1', d),
-  getReports:     locId        => get('/reports' + (locId ? `?location_id=${locId}` : '')),
+  // Staff auth
+  login:           (email, pin) => post('/auth', { email, pin }),
+
+  // Locations
+  getLocations:    ()           => get('/locations'),
+  createLocation:  d            => post('/locations', d),
+  updateLocation:  (id, d)      => put(`/locations?id=${id}`, d),
+  deleteLocation:  id           => del(`/locations?id=${id}`),
+
+  // Rooms
+  getRooms:        locId        => get('/rooms' + (locId ? `?location_id=${locId}` : '')),
+  createRoom:      d            => post('/rooms', d),
+  updateRoom:      (id, d)      => put(`/rooms?id=${id}`, d),
+  deleteRoom:      id           => del(`/rooms?id=${id}`),
+
+  // Bookings
+  getBookings:     locId        => get('/bookings' + (locId ? `?location_id=${locId}` : '')),
+  createBooking:   d            => post('/bookings', d),
+  updateBooking:   (id, d)      => put(`/bookings?id=${id}`, d),
+  recordPayment:   (id, amount) => put(`/bookings?id=${id}`, { add_payment: amount }),
+  extendBooking:   (id, d)      => put(`/bookings?id=${id}&action=extend`, d),
+  deleteBooking:   id           => del(`/bookings?id=${id}`),
+
+  // Expenses
+  getExpenses:     locId        => get('/expenses' + (locId ? `?location_id=${locId}` : '')),
+  createExpense:   d            => post('/expenses', d),
+
+  // Staff
+  getStaff:        ()           => get('/staff'),
+  createStaff:     d            => post('/staff', d),
+  updateStaff:     (id, d)      => put(`/staff?id=${id}`, d),
+  updateProfile:   d            => put('/staff?me=1', d),
+
+  // Reports
+  getReports:      locId        => get('/reports' + (locId ? `?location_id=${locId}` : '')),
+
+  // Customers
+  customerRegister: d           => post('/customers?action=register', d),
+  customerLogin:    d           => post('/customers?action=login', d),
+  customerBookings: id          => get(`/customers?customer_id=${id}`),
+  customerUpdate:   (id, d)     => put(`/customers?customer_id=${id}`, d),
+  customerCancel:   (id, cid)   => put(`/bookings?id=${id}&customer_cancel=1`, { customer_id: cid }),
 }
