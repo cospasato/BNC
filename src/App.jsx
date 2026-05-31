@@ -164,13 +164,13 @@ export default function App() {
       setPendingBookLoc(null);
     } else if (pendingBookLoc) {
       setBD(d=>({...d, locId: pendingBookLoc}));
-      setView("book"); setBStep(2);
+      navTo("book", 2);
       setPendingBookLoc(null);
     } else if (pendingBookLoc === "") {
-      setView("book"); setBStep(1);
+      navTo("book", 1);
       setPendingBookLoc(null);
     } else {
-      setView("customer");
+      navTo("customer");
       loadCustBooks(u.id);
     }
   };
@@ -186,13 +186,13 @@ export default function App() {
       setPendingBookLoc(null);
     } else if (pendingBookLoc) {
       setBD(d=>({...d, locId: pendingBookLoc}));
-      setView("book"); setBStep(2);
+      navTo("book", 2);
       setPendingBookLoc(null);
     } else if (pendingBookLoc === "") {
-      setView("book"); setBStep(1);
+      navTo("book", 1);
       setPendingBookLoc(null);
     } else {
-      setView("customer");
+      navTo("customer");
       loadCustBooks(u.id);
     }
   };
@@ -281,6 +281,37 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount only
 
+  // ── BROWSER HISTORY (back/forward button support) ──
+  // Push a state entry whenever the user navigates to a new view or booking step
+  const navTo = (newView, step = 1) => {
+    window.history.pushState({ view: newView, step }, "");
+    setView(newView);
+    if (newView === "book") setBStep(step);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const goStep = (step) => {
+    window.history.pushState({ view: "book", step }, "");
+    setBStep(step);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    // Push initial state so the very first back press doesn't exit the app
+    window.history.replaceState({ view, step: bStep }, "");
+
+    const onPop = (e) => {
+      const state = e.state;
+      if (!state) { setView("land"); return; }
+      setView(state.view || "land");
+      if (state.view === "book") setBStep(state.step || 1);
+      if (state.view === "admin") setATab(state.tab || "dash");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* ── AUTH ── */
   /* Local fallback credentials — work even before Neon is set up */
   const LOCAL_USERS = [
@@ -299,7 +330,7 @@ export default function App() {
     if (local) {
       setUser(local);
       try { localStorage.setItem("bnc_staff", JSON.stringify(local)); } catch {}
-      setView("admin");
+      navTo("admin");
       setATab("dash");
       setModal(null);
       await loadAll(local);
@@ -311,7 +342,7 @@ export default function App() {
       const u = await api.login(email, pin);
       setUser(u);
       try { localStorage.setItem("bnc_staff", JSON.stringify(u)); } catch {}
-      setView("admin");
+      navTo("admin");
       setATab("dash");
       setModal(null);
       await loadAll(u);
@@ -562,7 +593,7 @@ export default function App() {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
     return (
     <nav style={{ background: BK, height: 62, display:"flex", alignItems:"center", padding:"0 18px", justifyContent:"space-between", flexShrink:0 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setView("land")}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>navTo("land")}>
         <div style={{ width:36, height:36, background:M, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span style={{ color:WH, fontWeight:900, fontSize:12, fontFamily:"'Playfair Display',serif" }}>BNC</span>
         </div>
@@ -572,16 +603,16 @@ export default function App() {
         </div>}
       </div>
       <div style={{ display:"flex", gap:8 }}>
-        {!isMobile && view !== "book" && view !== "customer" && <button onClick={()=>{setView("book");setBStep(1);window.scrollTo({top:0,behavior:"smooth"});}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
+        {!isMobile && view !== "book" && view !== "customer" && <button onClick={()=>{navTo("book",1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
         {customer && view !== "admin" ? (
           <>
-            <button onClick={()=>setView("customer")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
+            <button onClick={()=>navTo("customer")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
               <div style={{ width:22, height:22, background:"#C9A84C", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:BK, flexShrink:0 }}>
                 {(customer.name||"?").split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2)}
               </div>
               <span>{customer.name}</span>
             </button>
-            <button onClick={()=>{setCustomer(null);try{localStorage.removeItem("bnc_customer");}catch{} setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
+            <button onClick={()=>{setCustomer(null);try{localStorage.removeItem("bnc_customer");}catch{} navTo("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
           </>
         ) : !customer && view !== "admin" ? (
           <>
@@ -596,7 +627,7 @@ export default function App() {
               </div>
               <span>{user?.name}</span> <span style={{ color:GOLD }}>· {user?.role}</span>
             </button>
-            <button onClick={()=>{setUser(null);try{localStorage.removeItem("bnc_staff");}catch{} setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
+            <button onClick={()=>{setUser(null);try{localStorage.removeItem("bnc_staff");}catch{} navTo("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
           </>
         ) : <button onClick={()=>setModal("login")} style={{ background:M, color:WH, border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>Staff Login</button>}
       </div>
@@ -618,7 +649,7 @@ export default function App() {
         <p style={{ color:"rgba(255,255,255,.7)", fontSize:17, maxWidth:480, margin:"0 auto 32px", lineHeight:1.7 }}>
           Luxury serviced apartments across Tanzania. Book direct for the best rates.
         </p>
-        <button onClick={()=>setView("book")} style={{ background:M, color:WH, border:`2px solid ${GOLD}`, borderRadius:10, padding:"13px 34px", fontSize:16, cursor:"pointer", fontWeight:700, fontFamily:"'Playfair Display',serif" }}>
+        <button onClick={()=>navTo("book",1)} style={{ background:M, color:WH, border:`2px solid ${GOLD}`, borderRadius:10, padding:"13px 34px", fontSize:16, cursor:"pointer", fontWeight:700, fontFamily:"'Playfair Display',serif" }}>
           Explore & Book →
         </button>
       </div>
@@ -632,7 +663,7 @@ export default function App() {
             const avail = rooms.filter(r=>r.locId===loc.id&&r.status==="available").length;
             return (
               <div key={loc.id}
-                onClick={()=>{setBD(d=>({...d,locId:loc.id}));setView("book");setBStep(2);window.scrollTo({top:0,behavior:"smooth"});}}
+                onClick={()=>{setBD(d=>({...d,locId:loc.id}));navTo("book",2);}}
                 onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-5px)";e.currentTarget.style.boxShadow=`0 14px 36px rgba(107,27,42,.16)`;}}
                 onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}
                 style={{ background:WH, border:`1px solid ${G2}`, borderRadius:16, overflow:"hidden", cursor:"pointer", transition:"transform .2s,box-shadow .2s" }}>
@@ -685,7 +716,7 @@ export default function App() {
               {locs.map(loc => {
                 const avail = rooms.filter(r => r.locId === loc.id && r.status === "available").length;
                 return (
-                  <div key={loc.id} onClick={() => { setBD(d => ({ ...d, locId: loc.id })); setBStep(2); }}
+                  <div key={loc.id} onClick={() => { setBD(d => ({ ...d, locId: loc.id })); goStep(2); }}
                     style={{ background: WH, borderRadius: 12, overflow: "hidden", cursor: "pointer", border: `2px solid ${bD.locId === loc.id ? M : G2}`, transition: "border-color .15s" }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = M}
                     onMouseLeave={e => e.currentTarget.style.borderColor = bD.locId === loc.id ? M : G2}>
@@ -717,9 +748,9 @@ export default function App() {
                   onClick={() => !unavail && setBD(d => ({ ...d, roomId: rm.id }))}
                   style={{ background: WH, borderRadius: 12, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: unavail ? "not-allowed" : "pointer", opacity: unavail ? .55 : 1, overflow: "hidden", transition: "border-color .15s" }}>
                   {rm.photos && rm.photos.length > 0 && (
-                    <div style={{ position: "relative", height: 160, cursor: "pointer" }}
+                    <div style={{ position: "relative", paddingTop: "62%", cursor: "pointer" }}
                       onClick={e => { e.stopPropagation(); setRoomDetail(rm.id); }}>
-                      <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      <img src={rm.photos[0]} alt={rm.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background .2s" }}
                         onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.12)"}
                         onMouseLeave={e => e.currentTarget.style.background = "rgba(0,0,0,0)"}/>
@@ -762,7 +793,7 @@ export default function App() {
                         Not available {bD.ci} → {bD.co}
                       </div>
                       <button
-                        onClick={e => { e.stopPropagation(); setBD(d => ({ ...d, roomId: rm.id })); setBStep(3); }}
+                        onClick={e => { e.stopPropagation(); setBD(d => ({ ...d, roomId: rm.id })); goStep(3); }}
                         style={{ background: WA, color: WH, border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>
                         Change Dates →
                       </button>
@@ -773,8 +804,8 @@ export default function App() {
               })}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <Btn v="ghost" onClick={() => setBStep(1)}>← Back</Btn>
-              <Btn onClick={() => setBStep(3)} disabled={!bD.roomId}>Continue →</Btn>
+              <Btn v="ghost" onClick={() => goStep(1)}>← Back</Btn>
+              <Btn onClick={() => goStep(3)} disabled={!bD.roomId}>Continue →</Btn>
             </div>
           </div>
         )}
@@ -791,7 +822,7 @@ export default function App() {
                   </div>
                   <div style={{ fontSize: 13, color: G6 }}>
                     Pick different dates below, or{" "}
-                    <button onClick={() => { setBD(d => ({ ...d, roomId: "" })); setBStep(2); }}
+                    <button onClick={() => { setBD(d => ({ ...d, roomId: "" })); goStep(2); }}
                       style={{ background: "none", border: "none", color: M, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0, textDecoration: "underline" }}>
                       choose a different room
                     </button>
@@ -814,15 +845,15 @@ export default function App() {
               )}
             </Card>
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-              <Btn v="ghost" onClick={() => setBStep(2)}>← Back</Btn>
+              <Btn v="ghost" onClick={() => goStep(2)}>← Back</Btn>
               <Btn onClick={() => {
                 if (bD.roomId && !isAvailableForDates(bD.roomId)) {
                   // dates changed but room still conflicts — clear room, go back to select
                   setBD(d=>({...d, roomId:""}));
                   pop("Those dates are taken for that room — pick a different room.", "err");
-                  setBStep(2);
+                  goStep(2);
                 } else {
-                  setBStep(4);
+                  goStep(4);
                 }
               }} disabled={!bD.ci || !bD.co}>Continue →</Btn>
             </div>
@@ -860,7 +891,7 @@ export default function App() {
               </div>
             </Card>
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-              <Btn v="ghost" onClick={() => setBStep(3)}>← Back</Btn>
+              <Btn v="ghost" onClick={() => goStep(3)}>← Back</Btn>
               {customer
                 ? <Btn onClick={confirmBook} disabled={!bD.name || !bD.phone}>Confirm Booking →</Btn>
                 : <div style={{ flex: 1 }}>
@@ -893,9 +924,9 @@ export default function App() {
               ))}
             </Card>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-              <Btn v="out" onClick={() => { setView("land"); setBStep(1); setBD({ locId: "", roomId: "", ci: "", co: "", nights: 1, name: "", phone: "", email: "", nat: "", guests: 1, notes: "", disc: 0, discT: "pct", method: "Cash" }); }}>← Back to Home</Btn>
+              <Btn v="out" onClick={() => { navTo("land"); setBStep(1); setBD({ locId: "", roomId: "", ci: "", co: "", nights: 1, name: "", phone: "", email: "", nat: "", guests: 1, notes: "", disc: 0, discT: "pct", method: "Cash" }); }}>← Back to Home</Btn>
               {customer
-                ? <Btn onClick={() => { setView("customer"); setCustTab("bookings"); loadCustBooks(customer.id); }}>View My Bookings</Btn>
+                ? <Btn onClick={() => { navTo("customer"); setCustTab("bookings"); loadCustBooks(customer.id); }}>View My Bookings</Btn>
                 : <Btn onClick={() => setCustModal("register")}>Create Account to Track Bookings</Btn>
               }
             </div>
@@ -921,13 +952,13 @@ export default function App() {
                 if (!avail || dateTakenForThisRoom) return;
                 setBD(d => ({ ...d, roomId: dr.id }));
                 setRoomDetail(null);
-                setBStep(3); // go to dates
+                goStep(3); // go to dates
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               onChangeDates={() => {
                 setBD(d => ({ ...d, roomId: dr.id }));
                 setRoomDetail(null);
-                setBStep(3);
+                goStep(3);
               }}
             />
           </Modal>
@@ -965,7 +996,7 @@ export default function App() {
       <NavBar/>
       <div style={{ background: WH, borderBottom: `1px solid ${G2}`, display: "flex", overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
         {[["bookings","My Bookings","📋"],["newbooking","Book a Room","🛏️"],["profile","My Profile","👤"]].map(([id,label,icon]) => (
-          <button key={id} onClick={() => { if(id==="newbooking"){setView("book");setBStep(1);window.scrollTo({top:0,behavior:"smooth"});}else setCustTab(id); }}
+          <button key={id} onClick={() => { if(id==="newbooking"){navTo("book",1);}else setCustTab(id); }}
             style={{ padding: "12px 16px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: custTab === id ? M : G6, borderBottom: `3px solid ${custTab === id ? M : "transparent"}`, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", flexShrink: 0 }}>
             {icon} {label}
           </button>
@@ -1454,9 +1485,9 @@ function RoomsTab({ rooms, locs, saveRoom, deleteRoom, pop }) {
                 <Card key={rm.id} style={{ borderLeft: `4px solid ${sC(rm.status)}`, padding: 0, overflow: "hidden" }}>
                   {/* Photo strip */}
                   {rm.photos && rm.photos.length > 0 ? (
-                    <div style={{ position: "relative", height: 150, cursor: "pointer", background: G1 }}
+                    <div style={{ position: "relative", paddingTop: "66%", cursor: "pointer", background: G1 }}
                       onClick={() => { setPhotoModal(rm.id); setPhotoIdx(0); }}>
-                      <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      <img src={rm.photos[0]} alt={rm.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                       {rm.photos.length > 1 && (
                         <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.55)", color: WH, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99 }}>
                           +{rm.photos.length - 1} more
@@ -2557,7 +2588,7 @@ function RoomDetailContent({ dr, loc, isYT, ytId, avail, dateTakenForThisRoom, b
       {photos.length > 0 && (
         <div style={{ borderRadius: 10, overflow: "hidden", marginBottom: 16, position: "relative", background: BK }}>
           <img src={photos[photoIdx]} alt={`${dr.name} photo ${photoIdx + 1}`}
-            style={{ width: "100%", height: 260, objectFit: "cover", display: "block" }} />
+            style={{ width: "100%", height: "min(380px, 55vw)", objectFit: "cover", display: "block" }} />
           {photos.length > 1 && (
             <>
               <button onClick={() => setPhotoIdx(i => (i - 1 + photos.length) % photos.length)}
@@ -2791,9 +2822,9 @@ function CustomerBookingsTab({ customer, custBooks, custLoading, onCancel, onRef
 
         {/* Cover photo — full width on mobile */}
         {photos.length > 0 && (
-          <div style={{ position:"relative", height:160, background:G2 }}>
+          <div style={{ position:"relative", paddingTop:"60%", background:G2 }}>
             <img src={photos[0]} alt={b.room_name}
-              style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+              style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
             <div style={{ position:"absolute", top:10, right:10 }}>
               <span style={{ background:sB(b.status), color:sC(b.status), padding:"4px 11px", borderRadius:99,
                 fontSize:11, fontWeight:700, backdropFilter:"blur(4px)" }}>
