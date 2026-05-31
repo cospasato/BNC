@@ -153,5 +153,11 @@ CREATE TABLE IF NOT EXISTS payment_methods (
 );
 
 INSERT INTO payment_methods (name, sort_order) VALUES
-  ('Cash', 1), ('Mobile Money', 2), ('Bank Transfer', 3), ('Card', 4)
+  ('Cash',          1),
+  ('M-Pesa',        2),
+  ('Tigo Pesa',     3),
+  ('Airtel Money',  4),
+  ('Halopesa',      5),
+  ('Bank Transfer', 6),
+  ('Card',          7)
 ON CONFLICT (name) DO NOTHING;

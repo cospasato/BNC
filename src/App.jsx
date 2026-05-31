@@ -120,7 +120,7 @@ export default function App() {
   const [books, setBooks] = useState([]);
   const [exps, setExps]   = useState([]);
   const [staff, setStaff] = useState([]);
-  const [payMethods, setPayMethods] = useState(["Cash"]);
+  const [payMethods, setPayMethods] = useState(["Cash","M-Pesa","Tigo Pesa","Airtel Money","Halopesa","Bank Transfer","Card"]);
   const [user, setUser]       = useState(null);
   const [customer, setCustomer] = useState(null); // logged-in customer
   const [view, setView]   = useState("land");
