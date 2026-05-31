@@ -1,11 +1,11 @@
-const { getDb, setCors, dbError } = require('../_db.js');
+const { getDb, setCors, dbError } = require('./_db.js');
 
 module.exports = async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const { email, pin } = req.body;
+    const { email, pin } = req.body || {};
     if (!email || !pin) return res.status(400).json({ error: 'Email and PIN required' });
     const sql = getDb();
     const rows = await sql`

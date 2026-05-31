@@ -9,7 +9,8 @@ module.exports = async function handler(req, res) {
     const sql = getDb();
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
-      WHERE table_schema='public' AND table_name IN ('locations','rooms','bookings','expenses','staff')
+      WHERE table_schema = 'public'
+        AND table_name IN ('locations','rooms','bookings','expenses','staff')
       ORDER BY table_name
     `;
     const found   = tables.map(t => t.table_name);
@@ -24,7 +25,7 @@ module.exports = async function handler(req, res) {
       sql`SELECT COUNT(*)::int AS n FROM expenses`,
       sql`SELECT COUNT(*)::int AS n FROM staff`,
     ]);
-    return res.status(200).json({ ok: true, message: 'Database configured correctly ✓', counts: { locations:l[0].n, rooms:r[0].n, bookings:b[0].n, expenses:e[0].n, staff:s[0].n } });
+    return res.status(200).json({ ok: true, message: 'Database configured correctly ✓', counts: { locations: l[0].n, rooms: r[0].n, bookings: b[0].n, expenses: e[0].n, staff: s[0].n } });
   } catch (err) {
     return res.status(500).json({ ok: false, error: dbError(err), raw: err.message, fix: 'Check DATABASE_URL is correct and run schema.sql.' });
   }
