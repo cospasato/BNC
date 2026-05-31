@@ -119,3 +119,8 @@ ON CONFLICT (id) DO NOTHING;
 -- SELECT table_name FROM information_schema.tables
 -- WHERE table_schema = 'public'
 -- ORDER BY table_name;
+
+-- ============================================================
+-- MIGRATION: Add photos column to rooms (run if upgrading)
+-- ============================================================
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}';

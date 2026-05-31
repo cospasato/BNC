@@ -39,6 +39,7 @@ export const api = {
   getRooms:       locId        => get('/rooms' + (locId ? `?location_id=${locId}` : '')),
   createRoom:     d            => post('/rooms', d),
   updateRoom:     (id, d)      => put(`/rooms?id=${id}`, d),
+  deleteRoom:     id           => del(`/rooms?id=${id}`),
   getBookings:    locId        => get('/bookings' + (locId ? `?location_id=${locId}` : '')),
   createBooking:  d            => post('/bookings', d),
   updateBooking:  (id, d)      => put(`/bookings?id=${id}`, d),

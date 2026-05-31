@@ -29,7 +29,7 @@ const mapBook = b => b ? ({
 const mapRoom = r => r ? ({
   id: r.id, locId: r.location_id, name: r.name, type: r.type,
   beds: r.beds, guests: r.max_guests, price: Number(r.price_per_night),
-  status: r.status, amen: r.amenities || [],
+  status: r.status, amen: r.amenities || [], photos: r.photos || [],
 }) : null;
 
 const mapLoc = l => l ? ({
@@ -275,6 +275,7 @@ export default function App() {
         price_per_night: Number(form.price),
         status: statusOverride || form.status,
         amenities: amen,
+        photos: form.photos || [],
       };
       if (isEdit) {
         const updated = await api.updateRoom(form.id, payload);
@@ -286,6 +287,15 @@ export default function App() {
         pop("Room created");
       }
     } catch (err) { pop(err.message || 'Operation failed', "err"); }
+  };
+
+  const deleteRoom = async (id, name) => {
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteRoom(id);
+      setRooms(p => p.filter(r => r.id !== id));
+      pop(`"${name}" deleted`);
+    } catch (err) { pop(err.message || 'Delete failed', "err"); }
   };
 
   const saveExp = async (form) => {
@@ -523,18 +533,26 @@ export default function App() {
               {rooms.filter(r => r.locId === bD.locId).map(rm => (
                 <div key={rm.id}
                   onClick={() => rm.status === "available" && setBD(d => ({ ...d, roomId: rm.id }))}
-                  style={{ background: WH, borderRadius: 12, padding: 18, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: rm.status !== "available" ? "not-allowed" : "pointer", opacity: rm.status !== "available" ? .55 : 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, transition: "border-color .15s" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: BK, fontFamily: "'Playfair Display',serif" }}>{rm.name}</span>
-                      <Badge s={rm.status} />
+                  style={{ background: WH, borderRadius: 12, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: rm.status !== "available" ? "not-allowed" : "pointer", opacity: rm.status !== "available" ? .55 : 1, overflow: "hidden", transition: "border-color .15s" }}>
+                  {rm.photos && rm.photos.length > 0 && (
+                    <div style={{ position: "relative", height: 160 }}>
+                      <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      {rm.photos.length > 1 && <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.55)", color: WH, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99 }}>{rm.photos.length} photos</div>}
                     </div>
-                    <div style={{ fontSize: 12, color: G6, marginBottom: 7 }}>{rm.type} · {rm.beds} bed · up to {rm.guests} guests</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 8px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
-                  </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif" }}>{fmt(rm.price)}</div>
-                    <div style={{ fontSize: 11, color: G4 }}>per night</div>
+                  )}
+                  <div style={{ padding: 16, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: BK, fontFamily: "'Playfair Display',serif" }}>{rm.name}</span>
+                        <Badge s={rm.status} />
+                      </div>
+                      <div style={{ fontSize: 12, color: G6, marginBottom: 7 }}>{rm.type} · {rm.beds} bed · up to {rm.guests} guests</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 8px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif" }}>{fmt(rm.price)}</div>
+                      <div style={{ fontSize: 11, color: G4 }}>per night</div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -657,7 +675,7 @@ export default function App() {
         {loading && <Spinner/>}
         {!loading && aTab==="dash"    && <DashTab books={books} rooms={rooms} exps={exps} locs={locs} allRooms={rooms} totRev={totRev} totExp={totExp} netPro={netPro} pending={pending} occPct={occPct} setATab={setATab}/>}
         {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} deleteBooking={deleteBooking} onNew={()=>setModal("newBook")} pop={pop} user={user}/>}
-        {!loading && aTab==="rooms"   && <RoomsTab rooms={rooms} locs={locs} saveRoom={saveRoom} pop={pop}/>}
+        {!loading && aTab==="rooms"   && <RoomsTab rooms={rooms} locs={locs} saveRoom={saveRoom} deleteRoom={deleteRoom} pop={pop}/>}
         {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay}/>}
         {!loading && aTab==="exps"    && <ExpsTab exps={exps} locs={locs} user={user} saveExp={saveExp} pop={pop}/>}
         {!loading && aTab==="reports" && <ReportsTab books={books} exps={exps} rooms={rooms} locs={locs} allRooms={rooms} user={user}/>}
@@ -862,40 +880,102 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, onNew, p
 }
 
 /* ─── ROOMS TAB ──────────────────────────────────────────── */
-function RoomsTab({ rooms, locs, saveRoom, pop }) {
+function RoomsTab({ rooms, locs, saveRoom, deleteRoom, pop }) {
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ id: null, locId: "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "" });
-  const openNew = () => { setForm({ id: null, locId: locs[0]?.id || "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "" }); setModal("f"); };
-  const openEdit = r => { setForm({ ...r, amen: r.amen.join(", ") }); setModal("f"); };
+  const [photoModal, setPhotoModal] = useState(null); // roomId being viewed
+  const [photoIdx, setPhotoIdx] = useState(0);
+  const [form, setForm] = useState({ id: null, locId: "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "", photos: [] });
+  const [uploading, setUploading] = useState(false);
+
+  const openNew = () => { setForm({ id: null, locId: locs[0]?.id || "", name: "", type: "Standard", beds: 1, guests: 2, price: 100000, status: "available", amen: "", photos: [] }); setModal("f"); };
+  const openEdit = r => { setForm({ ...r, amen: r.amen.join(", "), photos: r.photos || [] }); setModal("f"); };
   const save = () => { saveRoom(form, !!form.id); setModal(null); };
+
+  const handlePhotoUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setUploading(true);
+    let done = 0;
+    files.forEach(file => {
+      if (!file.type.startsWith("image/")) { done++; if (done === files.length) setUploading(false); return; }
+      // Resize & compress before storing
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX = 900;
+          let w = img.width, h = img.height;
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL("image/jpeg", 0.75);
+          setForm(f => ({ ...f, photos: [...(f.photos || []), compressed] }));
+          done++;
+          if (done === files.length) setUploading(false);
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removePhoto = (idx) => setForm(f => ({ ...f, photos: f.photos.filter((_, i) => i !== idx) }));
+
+  const viewerRoom = rooms.find(r => r.id === photoModal);
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: 0 }}>Rooms & Units</h2>
         <Btn onClick={openNew}>+ Add Room</Btn>
       </div>
+
       {locs.map(loc => {
         const lr = rooms.filter(r => r.locId === loc.id);
         return (
-          <div key={loc.id} style={{ marginBottom: 24 }}>
+          <div key={loc.id} style={{ marginBottom: 28 }}>
             <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: M, fontFamily: "'Playfair Display',serif" }}>{loc.icon} {loc.name}</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 11 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
               {lr.map(rm => (
-                <Card key={rm.id} style={{ borderLeft: `4px solid ${sC(rm.status)}` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Playfair Display',serif" }}>{rm.name}</div>
-                      <div style={{ fontSize: 12, color: G6 }}>{rm.type} · {rm.beds} bed · {rm.guests} guests max</div>
+                <Card key={rm.id} style={{ borderLeft: `4px solid ${sC(rm.status)}`, padding: 0, overflow: "hidden" }}>
+                  {/* Photo strip */}
+                  {rm.photos && rm.photos.length > 0 ? (
+                    <div style={{ position: "relative", height: 150, cursor: "pointer", background: G1 }}
+                      onClick={() => { setPhotoModal(rm.id); setPhotoIdx(0); }}>
+                      <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      {rm.photos.length > 1 && (
+                        <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.55)", color: WH, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99 }}>
+                          +{rm.photos.length - 1} more
+                        </div>
+                      )}
                     </div>
-                    <Badge s={rm.status} />
-                  </div>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif", marginBottom: 7 }}>{fmt(rm.price)}<span style={{ fontSize: 11, color: G4, fontWeight: 400 }}>/night</span></div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 11 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 7px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
-                  <div style={{ display: "flex", gap: 5 }}>
-                    <button onClick={() => openEdit(rm)} style={{ flex: 1, padding: "6px", fontSize: 12, borderRadius: 6, border: `1px solid ${G2}`, background: "none", cursor: "pointer", color: G6, fontFamily: "inherit" }}>Edit</button>
-                    <select value={rm.status} onChange={e => { saveRoom({...rm, amen: rm.amen.join(", ")}, true, e.target.value); }} style={{ flex: 1, padding: "6px", fontSize: 12, borderRadius: 6, border: `1px solid ${G2}`, background: "none", cursor: "pointer", color: sC(rm.status), fontFamily: "inherit" }}>
-                      <option value="available">Available</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option>
-                    </select>
+                  ) : (
+                    <div style={{ height: 90, background: `linear-gradient(135deg,${MD},${M})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, cursor: "pointer" }}
+                      onClick={() => openEdit(rm)}>
+                      🛏️
+                    </div>
+                  )}
+                  {/* Card body */}
+                  <div style={{ padding: "12px 14px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Playfair Display',serif" }}>{rm.name}</div>
+                        <div style={{ fontSize: 11, color: G6 }}>{rm.type} · {rm.beds} bed · {rm.guests} guests max</div>
+                      </div>
+                      <Badge s={rm.status} />
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif", marginBottom: 7 }}>{fmt(rm.price)}<span style={{ fontSize: 11, color: G4, fontWeight: 400 }}>/night</span></div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 7px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
+                    <div style={{ display: "flex", gap: 5 }}>
+                      <button onClick={() => openEdit(rm)} style={{ flex: 1, padding: "6px", fontSize: 12, borderRadius: 6, border: `1px solid ${G2}`, background: "none", cursor: "pointer", color: G6, fontFamily: "inherit" }}>Edit</button>
+                      <select value={rm.status} onChange={e => saveRoom({...rm, amen: rm.amen.join(", ")}, true, e.target.value)}
+                        style={{ flex: 1, padding: "6px", fontSize: 12, borderRadius: 6, border: `1px solid ${G2}`, background: "none", cursor: "pointer", color: sC(rm.status), fontFamily: "inherit" }}>
+                        <option value="available">Available</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option>
+                      </select>
+                      <button onClick={() => deleteRoom(rm.id, rm.name)} style={{ padding: "6px 10px", fontSize: 12, borderRadius: 6, border: `1px solid ${ER}`, background: "none", cursor: "pointer", color: ER, fontFamily: "inherit", fontWeight: 700 }}>✕</button>
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -904,21 +984,96 @@ function RoomsTab({ rooms, locs, saveRoom, pop }) {
           </div>
         );
       })}
+
+      {/* ── EDIT / ADD MODAL ── */}
       {modal === "f" && (
-        <Modal title={form.id ? "Edit Room" : "Add Room"} onClose={() => setModal(null)}>
-          <Sel label="Location" value={form.locId} onChange={e => setForm(f => ({ ...f, locId: e.target.value }))}>{locs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</Sel>
-          <Inp label="Room Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Deluxe Suite" />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
-            <Sel label="Type" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>{["Standard", "Deluxe", "Suite", "Apartment", "Studio", "Cottage", "Penthouse"].map(t => <option key={t}>{t}</option>)}</Sel>
+        <Modal title={form.id ? "Edit Room" : "Add Room"} onClose={() => setModal(null)} wide>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Sel label="Location" value={form.locId} onChange={e => setForm(f => ({ ...f, locId: e.target.value }))}>{locs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</Sel>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Inp label="Room Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Deluxe Suite" />
+            </div>
+            <Sel label="Type" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>{["Standard","Deluxe","Suite","Apartment","Studio","Cottage","Penthouse"].map(t => <option key={t}>{t}</option>)}</Sel>
             <Sel label="Status" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}><option value="available">Available</option><option value="maintenance">Maintenance</option></Sel>
             <Inp label="Beds" type="number" value={form.beds} onChange={e => setForm(f => ({ ...f, beds: e.target.value }))} min={1} />
             <Inp label="Max Guests" type="number" value={form.guests} onChange={e => setForm(f => ({ ...f, guests: e.target.value }))} min={1} />
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Inp label="Price per Night (TZS)" type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Inp label="Amenities (comma separated)" value={form.amen} onChange={e => setForm(f => ({ ...f, amen: e.target.value }))} placeholder="WiFi, AC, Kitchen, Pool" />
+            </div>
           </div>
-          <Inp label="Price per Night (TZS)" type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
-          <Inp label="Amenities (comma separated)" value={form.amen} onChange={e => setForm(f => ({ ...f, amen: e.target.value }))} placeholder="WiFi, AC, Kitchen" />
-          <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+
+          {/* ── PHOTO UPLOAD ── */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".05em" }}>Room Photos</label>
+
+            {/* Preview grid */}
+            {form.photos && form.photos.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(100px,1fr))", gap: 8, marginBottom: 10 }}>
+                {form.photos.map((src, i) => (
+                  <div key={i} style={{ position: "relative", borderRadius: 8, overflow: "hidden", height: 90 }}>
+                    <img src={src} alt={`Room photo ${i+1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <button onClick={() => removePhoto(i)} style={{ position: "absolute", top: 4, right: 4, width: 20, height: 20, borderRadius: "50%", background: "rgba(0,0,0,0.65)", border: "none", color: WH, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>✕</button>
+                    {i === 0 && <div style={{ position: "absolute", bottom: 4, left: 4, background: M, color: WH, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99 }}>COVER</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload button */}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: `2px dashed ${G2}`, borderRadius: 8, cursor: "pointer", fontSize: 13, color: G6, background: G1, transition: "border-color 0.15s" }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = M}
+              onMouseLeave={e => e.currentTarget.style.borderColor = G2}>
+              <span style={{ fontSize: 20 }}>📷</span>
+              <span>{uploading ? "Processing…" : form.photos?.length > 0 ? "Add more photos" : "Upload photos (JPG, PNG)"}</span>
+              <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ display: "none" }} />
+            </label>
+            <div style={{ fontSize: 11, color: G4, marginTop: 5 }}>First photo is used as the cover. Photos are compressed automatically. Max ~5 photos recommended.</div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
             <Btn v="ghost" onClick={() => setModal(null)} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
             <Btn onClick={save} style={{ flex: 1, justifyContent: "center" }}>Save Room</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── PHOTO VIEWER MODAL ── */}
+      {photoModal && viewerRoom && (
+        <Modal title={viewerRoom.name} onClose={() => setPhotoModal(null)} wide>
+          <div style={{ position: "relative", background: BK, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
+            <img
+              src={viewerRoom.photos[photoIdx]}
+              alt={`${viewerRoom.name} photo ${photoIdx + 1}`}
+              style={{ width: "100%", maxHeight: 420, objectFit: "contain", display: "block" }}
+            />
+            {viewerRoom.photos.length > 1 && (
+              <>
+                <button onClick={() => setPhotoIdx(i => (i - 1 + viewerRoom.photos.length) % viewerRoom.photos.length)}
+                  style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,0.5)", border: "none", color: WH, fontSize: 20, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>‹</button>
+                <button onClick={() => setPhotoIdx(i => (i + 1) % viewerRoom.photos.length)}
+                  style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,0.5)", border: "none", color: WH, fontSize: 20, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>›</button>
+                <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 6 }}>
+                  {viewerRoom.photos.map((_, i) => (
+                    <div key={i} onClick={() => setPhotoIdx(i)} style={{ width: 8, height: 8, borderRadius: "50%", background: i === photoIdx ? WH : "rgba(255,255,255,0.4)", cursor: "pointer", transition: "background 0.2s" }} />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(70px,1fr))", gap: 6 }}>
+            {viewerRoom.photos.map((src, i) => (
+              <img key={i} src={src} alt={`thumb ${i+1}`} onClick={() => setPhotoIdx(i)}
+                style={{ width: "100%", height: 60, objectFit: "cover", borderRadius: 6, cursor: "pointer", border: `2px solid ${i === photoIdx ? M : "transparent"}`, transition: "border-color 0.15s" }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+            <Btn v="ghost" onClick={() => setPhotoModal(null)} style={{ flex: 1, justifyContent: "center" }}>Close</Btn>
+            <Btn onClick={() => { const r = rooms.find(r => r.id === photoModal); if (r) { openEdit(r); setPhotoModal(null); } }} style={{ flex: 1, justifyContent: "center" }}>Edit Photos</Btn>
           </div>
         </Modal>
       )}
