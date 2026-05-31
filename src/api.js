@@ -74,3 +74,14 @@ export const api = {
   customerUpdate:   (id, d)     => put(`/customers?customer_id=${id}`, d),
   customerCancel:   (id, cid)   => put(`/bookings?id=${id}&customer_cancel=1`, { customer_id: cid }),
 }
+
+// Payment methods + availability (appended)
+Object.assign(api, {
+  getPayMethods:     ()           => get('/staff?resource=payment_methods'),
+  createPayMethod:   name         => post('/staff?resource=payment_methods', { name }),
+  updatePayMethod:   (pmId, d)    => put('/staff?resource=payment_methods', { ...d, pmId }),
+  deletePayMethod:   pmId         => req('DELETE', '/staff?resource=payment_methods', { pmId }),
+  getBookedDates:    locId        => get(`/bookings?get_booked_dates=${locId}`),
+  checkAvailability: (roomId, ci, co) => get(`/bookings?check_room=${roomId}&ci=${ci}&co=${co}`),
+  getReports:        (locId, df, dt) => get('/reports' + [locId?`location_id=${locId}`:'', df?`date_from=${df}`:'', dt?`date_to=${dt}`:''].filter(Boolean).reduce((s,p,i)=>s+(i===0?'?':'&')+p, '')),
+})

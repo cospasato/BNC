@@ -115,11 +115,12 @@ const Spinner = () => (
 
 /* ─── MAIN APP ───────────────────────────────────────────── */
 export default function App() {
-  const [locs, setLocs]   = useState([]);
-  const [rooms, setRooms] = useState([]);
-  const [books, setBooks] = useState([]);
-  const [exps, setExps]   = useState([]);
-  const [staff, setStaff] = useState([]);
+  const [locs, setLocs]       = useState([]);
+  const [rooms, setRooms]     = useState([]);
+  const [books, setBooks]     = useState([]);
+  const [exps, setExps]       = useState([]);
+  const [staff, setStaff]     = useState([]);
+  const [payMethods, setPayMethods] = useState(['Cash','Mobile Money','Bank Transfer','Card']);
   const [user, setUser]       = useState(null);
   const [customer, setCustomer] = useState(null); // logged-in customer
   const [view, setView]   = useState("land");
@@ -179,7 +180,9 @@ export default function App() {
 
   // booking wizard state
   const [bStep, setBStep] = useState(1);
-  const [bD, setBD] = useState({ locId:"", roomId:"", ci:"", co:"", nights:1, name:"", phone:"", email:"", nat:"", guests:1, notes:"", disc:0, discT:"pct", method:"Cash" });
+  const [bD, setBD] = useState({ locId:"", roomId:"", ci:"", co:"", nights:1, name:"", phone:"", email:"", nat:"", guests:1, notes:"", disc:0, discT:"pct", method:"" });
+  const [bookedDates, setBookedDates] = useState({}); // { roomId: [{ci,co},...] }
+  const [availLoading, setAvailLoading] = useState(false);
   const [loginF, setLoginF] = useState({ email:"", pin:"" });
   const [loginErr, setLoginErr] = useState("");
 
@@ -214,9 +217,10 @@ export default function App() {
   // Load public data (locations + rooms) for booking portal
   const loadPublic = useCallback(async () => {
     try {
-      const [l, r] = await Promise.all([api.getLocations(), api.getRooms()]);
+      const [l, r, pm] = await Promise.all([api.getLocations(), api.getRooms(), api.getPayMethods()]);
       setLocs(l.map(mapLoc));
       setRooms(r.map(mapRoom));
+      if (pm?.length) setPayMethods(pm.filter(p=>p.active).map(p=>p.name));
     } catch (err) {
       pop("Could not load locations. Check your connection.", "err");
     }
@@ -262,10 +266,33 @@ export default function App() {
   };
 
   /* ── BOOKING HELPERS ── */
+  // Fetch booked date ranges when a location is chosen
+  useEffect(() => {
+    if (bD.locId && bStep >= 2) {
+      setAvailLoading(true);
+      api.getBookedDates(bD.locId)
+        .then(data => setBookedDates(data || {}))
+        .catch(() => setBookedDates({}))
+        .finally(() => setAvailLoading(false));
+    }
+  }, [bD.locId, bStep]);
+
+  // Check if a room is available for the selected dates
+  const isRoomAvailableForDates = (roomId) => {
+    if (!bD.ci || !bD.co) return true; // no dates selected yet
+    const bookings = bookedDates[roomId] || [];
+    return !bookings.some(b => b.ci < bD.co && b.co > bD.ci);
+  };
+
   const selRoom = rooms.find(r => r.id === bD.roomId);
   const bBase = selRoom ? selRoom.price * bD.nights : 0;
   const bDiscAmt = bD.discT === "pct" ? bBase * bD.disc / 100 : Number(bD.disc);
   const bTotal = bBase - bDiscAmt;
+
+  // Set default method from payMethods when they load
+  useEffect(() => {
+    if (payMethods?.length && !bD.method) setBD(d => ({ ...d, method: payMethods[0] }));
+  }, [payMethods]);
 
   const confirmBook = async () => {
     try {
@@ -321,9 +348,9 @@ export default function App() {
     } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
-  const recPay = async (id, amount) => {
+  const recPay = async (id, amount, method) => {
     try {
-      const updated = await api.recordPayment(id, Number(amount));
+      const updated = await api.recordPayment(id, Number(amount), method);
       setBooks(p => p.map(b => b.id === id ? mapBook(updated) : b));
       pop("Payment recorded");
     } catch (err) { pop(err.message || 'Operation failed', "err"); }
@@ -608,11 +635,17 @@ export default function App() {
           <div>
             <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, marginBottom: 6, color: BK }}>Select a Room</h2>
             <p style={{ color: G6, marginBottom: 20, fontSize: 13 }}>{locs.find(l => l.id === bD.locId)?.name}</p>
+            {availLoading && <div style={{ padding: "12px 0", fontSize: 13, color: G6 }}>Checking availability…</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {rooms.filter(r => r.locId === bD.locId).map(rm => (
+              {rooms.filter(r => r.locId === bD.locId).map(rm => {
+                const physicallyOccupied = rm.status !== "available";
+                const dateUnavailable = !isRoomAvailableForDates(rm.id);
+                const unavailable = physicallyOccupied || dateUnavailable;
+                const unavailReason = physicallyOccupied ? rm.status : dateUnavailable && bD.ci && bD.co ? "dates taken" : null;
+                return (
                 <div key={rm.id}
-                  onClick={() => rm.status === "available" && setBD(d => ({ ...d, roomId: rm.id }))}
-                  style={{ background: WH, borderRadius: 12, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: rm.status !== "available" ? "not-allowed" : "pointer", opacity: rm.status !== "available" ? .55 : 1, overflow: "hidden", transition: "border-color .15s" }}>
+                  onClick={() => !unavailable && setBD(d => ({ ...d, roomId: rm.id }))}
+                  style={{ background: WH, borderRadius: 12, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: unavailable ? "not-allowed" : "pointer", opacity: unavailable ? .55 : 1, overflow: "hidden", transition: "border-color .15s" }}>
                   {rm.photos && rm.photos.length > 0 && (
                     <div style={{ position: "relative", height: 160 }}>
                       <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -623,7 +656,9 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                         <span style={{ fontSize: 15, fontWeight: 700, color: BK, fontFamily: "'Playfair Display',serif" }}>{rm.name}</span>
-                        <Badge s={rm.status} />
+                        {unavailReason === "dates taken"
+                          ? <span style={{ background: WAB, color: WA, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>Dates Unavailable</span>
+                          : <Badge s={rm.status} />}
                       </div>
                       <div style={{ fontSize: 12, color: G6, marginBottom: 7 }}>{rm.type} · {rm.beds} bed · up to {rm.guests} guests</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 8px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
@@ -634,7 +669,8 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <Btn v="ghost" onClick={() => setBStep(1)}>← Back</Btn>
@@ -661,7 +697,15 @@ export default function App() {
             </Card>
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
               <Btn v="ghost" onClick={() => setBStep(2)}>← Back</Btn>
-              <Btn onClick={() => setBStep(4)} disabled={!bD.ci || !bD.co}>Continue →</Btn>
+              <Btn onClick={() => {
+                if (bD.roomId && !isRoomAvailableForDates(bD.roomId)) {
+                  setBD(d => ({...d, roomId: ""}));
+                  pop("Your selected room is not available for those dates. Please select another room.", "err");
+                  setBStep(2);
+                } else {
+                  setBStep(4);
+                }
+              }} disabled={!bD.ci || !bD.co}>Continue →</Btn>
             </div>
           </div>
         )}
@@ -678,7 +722,7 @@ export default function App() {
                 <Inp label="Nationality" value={bD.nat} onChange={e => setBD(d => ({ ...d, nat: e.target.value }))} placeholder="Tanzanian" />
                 <Sel label="Guests" value={bD.guests} onChange={e => setBD(d => ({ ...d, guests: e.target.value }))}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} guest{n > 1 ? "s" : ""}</option>)}</Sel>
                 <Sel label="Payment Method" value={bD.method} onChange={e => setBD(d => ({ ...d, method: e.target.value }))}>
-                  <option>Cash</option><option>Mobile Money</option><option>Bank Transfer</option><option>Card</option>
+                  {(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => <option key={pm}>{pm}</option>)}
                 </Sel>
               </div>
               <Inp label="Special Requests" value={bD.notes} onChange={e => setBD(d => ({ ...d, notes: e.target.value }))} placeholder="Early check-in, extra towels…" />
@@ -778,16 +822,16 @@ export default function App() {
       <div style={{ flex:1, overflow:"auto", padding:22 }}>
         {loading && <Spinner/>}
         {!loading && aTab==="dash"    && <DashTab books={books} rooms={rooms} exps={exps} locs={locs} allRooms={rooms} totRev={totRev} totExp={totExp} netPro={netPro} pending={pending} occPct={occPct} setATab={setATab}/>}
-        {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} deleteBooking={deleteBooking} extendBooking={extendBooking} onNew={()=>setModal("newBook")} pop={pop} user={user}/>}
+        {!loading && aTab==="books"   && <BooksTab books={books} rooms={rooms} locs={locs} updBook={updBook} recPay={recPay} deleteBooking={deleteBooking} extendBooking={extendBooking} onNew={()=>setModal("newBook")} pop={pop} user={user} payMethods={payMethods}/>}
         {!loading && aTab==="rooms"   && <RoomsTab rooms={rooms} locs={locs} saveRoom={saveRoom} deleteRoom={deleteRoom} pop={pop}/>}
-        {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay}/>}
+        {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay} payMethods={payMethods}/>}
         {!loading && aTab==="exps"    && <ExpsTab exps={exps} locs={locs} user={user} saveExp={saveExp} pop={pop}/>}
         {!loading && aTab==="reports" && <ReportsTab books={books} exps={exps} rooms={rooms} locs={locs} allRooms={rooms} user={user}/>}
         {!loading && aTab==="locs"    && user?.role==="Admin" && <LocsTab locs={locs} saveLoc={saveLoc} deleteLoc={deleteLoc} rooms={rooms} books={books} pop={pop}/>}
-        {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} locs={locs} pop={pop}/>}
+        {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} locs={locs} pop={pop} payMethods={payMethods} setPayMethods={setPayMethods}/>}
         {!loading && aTab==="profile" && <ProfileTab user={user} updateProfile={updateProfile}/>}
       </div>
-      {modal==="newBook" && <NewBookModal rooms={rooms} locs={locs} user={user} onClose={()=>setModal(null)} onSave={createNewBooking}/>}
+      {modal==="newBook" && <NewBookModal rooms={rooms} locs={locs} user={user} onClose={()=>setModal(null)} onSave={createNewBooking} payMethods={payMethods}/>}
       {modal==="login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
       {toast && <div style={{ position:"fixed", bottom:22, right:22, background:toast.t==="ok"?OK:ER, color:WH, padding:"11px 18px", borderRadius:10, fontSize:14, fontWeight:700, zIndex:2000, boxShadow:"0 8px 24px rgba(0,0,0,.2)" }}>{toast.t==="ok"?"✓ ":"✗ "}{toast.msg}</div>}
     </div>
@@ -894,11 +938,12 @@ function DashTab({ books, rooms, exps, locs, allRooms, totRev, totExp, netPro, p
 }
 
 /* ─── BOOKINGS TAB ───────────────────────────────────────── */
-function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBooking, onNew, pop, user }) {
+function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBooking, onNew, pop, user, payMethods }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState(null);
   const [payAmt, setPayAmt] = useState("");
+  const [payMethod, setPayMethod] = useState("");
   // checkout / extend modal
   const [coModal, setCoModal] = useState(null); // booking id
   // extend form
@@ -913,6 +958,8 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBo
 
   const selB = books.find(b => b.id === sel);
   const selR = rooms.find(r => r.id === selB?.roomId);
+  // auto-set method to booking's method when opening detail
+  useEffect(() => { if (selB) setPayMethod(selB.method || (payMethods?.[0] || "Cash")); }, [sel]);
 
   // bookings due for checkout today (checkedIn and checkout date = today)
   const dueToday = books.filter(b => b.status === "checkedIn" && b.co === todayDate);
@@ -1126,10 +1173,19 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBo
           {(selB.total - selB.paid) > 0 && selB.status !== "cancelled" && (
             <div style={{ marginTop: 18, padding: 14, background: G1, borderRadius: 10 }}>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Record Payment</div>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-                <Inp label={`Amount (max ${fmt(selB.total - selB.paid)})`} type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} style={{ marginBottom: 0 }} />
-                <Btn v="ok" onClick={() => { recPay(selB.id, payAmt); setPayAmt(""); setSel(null); }}>Record</Btn>
+              <Inp label={`Amount (max ${fmt(selB.total - selB.paid)})`} type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} placeholder="Enter amount" />
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Payment Method</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => (
+                    <button key={pm} onClick={() => setPayMethod(pm)}
+                      style={{ padding: "6px 13px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: `2px solid ${payMethod === pm ? M : G2}`, background: payMethod === pm ? MF : WH, color: payMethod === pm ? M : G6 }}>
+                      {pm}
+                    </button>
+                  ))}
+                </div>
               </div>
+              <Btn v="ok" onClick={() => { recPay(selB.id, payAmt, payMethod); setPayAmt(""); setSel(null); }}>Record Payment</Btn>
             </div>
           )}
           {selB.status === "cancelled" && (
@@ -1348,13 +1404,22 @@ function RoomsTab({ rooms, locs, saveRoom, deleteRoom, pop }) {
 }
 
 /* ─── PAYMENTS TAB ───────────────────────────────────────── */
-function PaysTab({ books, rooms, recPay }) {
+function PaysTab({ books, rooms, recPay, payMethods }) {
   const [sel, setSel] = useState(null);
   const [amt, setAmt] = useState("");
+  const [method, setMethod] = useState("");
   const selB = books.find(b => b.id === sel);
   const totColl = books.reduce((s, b) => s + b.paid, 0);
   const totPend = books.filter(b => b.status !== "cancelled").reduce((s, b) => s + (b.total - b.paid), 0);
   const totDisc = books.reduce((s, b) => s + (b.base - b.total), 0);
+
+  const openRecord = (id) => {
+    const b = books.find(b => b.id === id);
+    setSel(id);
+    setAmt("");
+    setMethod(b?.method || (payMethods?.[0] || "Cash"));
+  };
+
   return (
     <div>
       <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: "0 0 18px" }}>Payments</h2>
@@ -1376,24 +1441,35 @@ function PaysTab({ books, rooms, recPay }) {
               b.status === "cancelled"
                 ? <span style={{ color: ER, fontSize: 12, fontWeight: 700 }}>✗ Cancelled</span>
                 : bal > 0
-                  ? <button onClick={() => { setSel(b.id); setAmt(""); }} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, background: M, color: WH, border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>Record</button>
+                  ? <button onClick={() => openRecord(b.id)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, background: M, color: WH, border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>Record</button>
                   : <span style={{ color: OK, fontSize: 12, fontWeight: 700 }}>✓ Settled</span>
             ];
           })} />
       </Card>
       {sel && selB && (
-        <Modal title={`Payment — ${selB.id}`} onClose={() => setSel(null)}>
-          <div style={{ marginBottom: 14, padding: 13, background: G1, borderRadius: 8, fontSize: 13 }}>
-            {[["Guest", selB.gName], ["Total Due", fmt(selB.total)], ["Paid", fmt(selB.paid)], ["Balance", fmt(selB.total - selB.paid)]].map(([k, v], i) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                <span>{k}</span><strong style={{ color: i === 3 ? ER : BK }}>{v}</strong>
+        <Modal title={`Record Payment — ${selB.id}`} onClose={() => setSel(null)}>
+          <div style={{ marginBottom: 16, padding: 13, background: G1, borderRadius: 8, fontSize: 13 }}>
+            {[["Guest", selB.gName], ["Room", rooms.find(r => r.id === selB.roomId)?.name || "—"], ["Total Due", fmt(selB.total)], ["Already Paid", fmt(selB.paid)], ["Balance", fmt(selB.total - selB.paid)]].map(([k, v], i) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, color: i === 4 ? ER : BK }}>
+                <span style={{ color: G6 }}>{k}</span><strong>{v}</strong>
               </div>
             ))}
           </div>
-          <Inp label="Payment Amount (TZS)" type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="Enter amount" />
+          <Inp label="Payment Amount (TZS)" type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder={`Max: ${fmt(selB.total - selB.paid)}`} />
+          <div style={{ marginBottom: 13 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Payment Method</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+              {(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => (
+                <button key={pm} onClick={() => setMethod(pm)}
+                  style={{ padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: `2px solid ${method === pm ? M : G2}`, background: method === pm ? MF : WH, color: method === pm ? M : G6, transition: "all .15s" }}>
+                  {pm}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 10 }}>
             <Btn v="ghost" onClick={() => setSel(null)} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn v="ok" onClick={() => { recPay(selB.id, amt); setSel(null); }} disabled={!amt} style={{ flex: 1, justifyContent: "center" }}>Confirm</Btn>
+            <Btn v="ok" onClick={() => { recPay(selB.id, amt, method); setSel(null); }} disabled={!amt || !method} style={{ flex: 1, justifyContent: "center" }}>Confirm Payment</Btn>
           </div>
         </Modal>
       )}
@@ -1443,29 +1519,144 @@ function ExpsTab({ exps, locs, user, saveExp, pop }) {
 }
 
 /* ─── REPORTS TAB ────────────────────────────────────────── */
-function ReportsTab({ books, exps, rooms, locs, allRooms }) {
+function ReportsTab({ books, exps, rooms, locs, allRooms, payMethods }) {
   const [rt, setRt] = useState("financial");
-  const totRev = books.filter(b => b.status !== "cancelled").reduce((s, b) => s + b.paid, 0);
-  const totExp = exps.reduce((s, e) => s + e.amt, 0);
-  const net = totRev - totExp;
-  const totDisc = books.reduce((s, b) => s + (b.base - b.total), 0);
-  const pending = books.filter(b => b.status !== "cancelled").reduce((s, b) => s + (b.total - b.paid), 0);
-  const margin = totRev > 0 ? Math.round(net / totRev * 100) : 0;
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [reportData, setReportData] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  // Quick presets
+  const applyPreset = (preset) => {
+    const now = new Date();
+    const fmt = d => d.toISOString().split("T")[0];
+    if (preset === "today") {
+      const t = fmt(now); setDateFrom(t); setDateTo(t);
+    } else if (preset === "week") {
+      const start = new Date(now); start.setDate(now.getDate() - 7);
+      setDateFrom(fmt(start)); setDateTo(fmt(now));
+    } else if (preset === "month") {
+      setDateFrom(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`);
+      setDateTo(fmt(now));
+    } else if (preset === "lastmonth") {
+      const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
+      const lmEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(fmt(lm)); setDateTo(fmt(lmEnd));
+    } else if (preset === "year") {
+      setDateFrom(`${now.getFullYear()}-01-01`); setDateTo(fmt(now));
+    } else {
+      setDateFrom(""); setDateTo("");
+    }
+  };
+
+  const fetchReport = async () => {
+    setReportLoading(true);
+    try {
+      const data = await api.getReports(null, dateFrom || undefined, dateTo || undefined);
+      setReportData(data);
+    } catch(e) { /* fallback to local */ }
+    setReportLoading(false);
+  };
+
+  useEffect(() => { if (dateFrom || dateTo) fetchReport(); else setReportData(null); }, [dateFrom, dateTo]);
+
+  // Use server data if date filter active, else compute locally from in-memory books/exps
+  const filteredBooks = reportData
+    ? null // use reportData directly
+    : (dateFrom || dateTo)
+      ? books.filter(b => { const d = b.ci; return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo); })
+      : books;
+  const filteredExps = reportData
+    ? null
+    : (dateFrom || dateTo)
+      ? exps.filter(e => { const d = e.date; return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo); })
+      : exps;
+
+  const src = reportData ? {
+    totRev: reportData.revenue.collected,
+    totExp: reportData.expenses.total,
+    net:    reportData.revenue.net_profit,
+    totDisc: reportData.revenue.discounts,
+    pending: reportData.revenue.pending,
+    bStats:  reportData.bookings,
+    byLoc:   reportData.by_location.map(l => ({ ...l, rev: l.revenue, exp: l.expenses, cnt: l.bookings })),
+    byMethod: reportData.by_method.map(m => ({ method: m.method, total: m.total })),
+    byCat:   Object.fromEntries(reportData.expenses.by_category.map(e => [e.category, e.total])),
+  } : {
+    totRev: (filteredBooks||books).filter(b=>b.status!=="cancelled").reduce((s,b)=>s+b.paid,0),
+    totExp: (filteredExps||exps).reduce((s,e)=>s+e.amt,0),
+    net:    0,
+    totDisc: (filteredBooks||books).reduce((s,b)=>s+(b.base-b.total),0),
+    pending: (filteredBooks||books).filter(b=>b.status!=="cancelled").reduce((s,b)=>s+(b.total-b.paid),0),
+    byLoc: locs.map(loc=>({ id:loc.id, name:loc.name, icon:loc.icon, city:loc.city, rev:(filteredBooks||books).filter(b=>b.locId===loc.id&&b.status!=="cancelled").reduce((s,b)=>s+b.paid,0), exp:(filteredExps||exps).filter(e=>e.locId===loc.id).reduce((s,e)=>s+e.amt,0), cnt:(filteredBooks||books).filter(b=>b.locId===loc.id).length })),
+    byMethod: Object.entries((filteredBooks||books).reduce((a,b)=>{a[b.method]=(a[b.method]||0)+b.paid;return a;},{})).map(([method,total])=>({method,total})),
+    byCat: (filteredExps||exps).reduce((a,e)=>{a[e.cat]=(a[e.cat]||0)+e.amt;return a;},{}),
+    bStats: {
+      total: (filteredBooks||books).length,
+      active: (filteredBooks||books).filter(b=>b.status==="checkedIn").length,
+      completed: (filteredBooks||books).filter(b=>b.status==="checkedOut").length,
+      cancelled: (filteredBooks||books).filter(b=>b.status==="cancelled").length,
+    },
+  };
+  src.net = src.totRev - src.totExp;
+  src.margin = src.totRev > 0 ? Math.round(src.net / src.totRev * 100) : 0;
+  const { totRev, totExp, net, totDisc, pending, margin, byLoc: byLocRaw, byMethod: byMethodRaw, byCat, bStats } = src;
+  // Occupancy still from live room data (not date-filtered)
   const occ = rooms.length ? Math.round(rooms.filter(r => r.status === "occupied").length / rooms.length * 100) : 0;
   const avgRate = rooms.length ? Math.round(rooms.reduce((s, r) => s + r.price, 0) / rooms.length) : 0;
-  const byLoc = locs.map(loc => ({
+  const byLoc = byLocRaw || locs.map(loc => ({
     ...loc,
     rev: books.filter(b => b.locId === loc.id && b.status !== "cancelled").reduce((s, b) => s + b.paid, 0),
     exp: exps.filter(e => e.locId === loc.id).reduce((s, e) => s + e.amt, 0),
     cnt: books.filter(b => b.locId === loc.id).length,
   }));
-  const byCat = exps.reduce((a, e) => { a[e.cat] = (a[e.cat] || 0) + e.amt; return a; }, {});
-  const byMethod = books.reduce((a, b) => { a[b.method] = (a[b.method] || 0) + b.paid; return a; }, {});
-  const byStat = books.reduce((a, b) => { a[b.status] = (a[b.status] || 0) + 1; return a; }, {});
+  const byMethod = byMethodRaw || Object.entries(books.reduce((a,b)=>{a[b.method]=(a[b.method]||0)+b.paid;return a;},{})).map(([method,total])=>({method,total}));
+  // byStat as object for the booking status breakdown  
+  const byStatObj = Array.isArray(byStat) ? byStat : byStat;
+  const byStat = bStats || books.reduce((a, b) => { a[b.status] = (a[b.status] || 0) + 1; return a; }, {});
 
   return (
     <div>
-      <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: "0 0 16px" }}>Reports & Analytics</h2>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: 0 }}>Reports & Analytics</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+          {/* Quick presets */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {[["All Time","all"],["Today","today"],["This Week","week"],["This Month","month"],["Last Month","lastmonth"],["This Year","year"]].map(([label, preset]) => {
+              const isActive = preset === "all" ? !dateFrom && !dateTo : (() => {
+                // rough active check
+                const now = new Date(); const fmt = d => d.toISOString().split("T")[0];
+                if (preset==="today") return dateFrom === fmt(now);
+                if (preset==="month") return dateFrom === `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`;
+                if (preset==="year") return dateFrom === `${now.getFullYear()}-01-01`;
+                return false;
+              })();
+              return (
+                <button key={preset} onClick={() => applyPreset(preset)}
+                  style={{ padding: "5px 12px", borderRadius: 99, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: `1px solid ${isActive ? M : G2}`, background: isActive ? M : WH, color: isActive ? WH : G6 }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {/* Custom date range */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={{ padding: "5px 10px", border: `1px solid ${G2}`, borderRadius: 7, fontSize: 13, fontFamily: "inherit", color: BK, outline: "none" }} />
+            <span style={{ color: G6, fontSize: 13 }}>to</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={{ padding: "5px 10px", border: `1px solid ${G2}`, borderRadius: 7, fontSize: 13, fontFamily: "inherit", color: BK, outline: "none" }} />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ padding: "5px 10px", border: `1px solid ${G2}`, borderRadius: 7, fontSize: 12, cursor: "pointer", color: ER, fontFamily: "inherit", background: WH }}>✕ Clear</button>
+            )}
+          </div>
+          {(dateFrom || dateTo) && (
+            <div style={{ fontSize: 12, color: M, fontWeight: 700 }}>
+              {reportLoading ? "Loading…" : `Showing: ${dateFrom || "start"} → ${dateTo || "today"}`}
+            </div>
+          )}
+        </div>
+      </div>
       <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${G2}` }}>
         {["financial", "occupancy", "location", "expenses", "bookings"].map(t => (
           <button key={t} onClick={() => setRt(t)} style={{ padding: "10px 15px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: rt === t ? M : G6, borderBottom: `3px solid ${rt === t ? M : "transparent"}`, textTransform: "capitalize", fontFamily: "inherit" }}>{t}</button>
@@ -1500,9 +1691,9 @@ function ReportsTab({ books, exps, rooms, locs, allRooms }) {
             </Card>
             <Card>
               <SecTitle>Payment Methods</SecTitle>
-              {Object.entries(byMethod).map(([m, a]) => (
-                <div key={m} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${G1}`, fontSize: 13 }}>
-                  <span style={{ color: G6 }}>{m}</span><span style={{ fontWeight: 700 }}>{fmt(a)}</span>
+              {byMethod.map((m, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${G1}`, fontSize: 13 }}>
+                  <span style={{ color: G6 }}>{m.method}</span><span style={{ fontWeight: 700 }}>{fmt(m.total)}</span>
                 </div>
               ))}
               <div style={{ marginTop: 11, padding: "9px 0", borderTop: `2px solid ${G2}`, display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700 }}>
@@ -1588,7 +1779,7 @@ function ReportsTab({ books, exps, rooms, locs, allRooms }) {
       {rt === "bookings" && (
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 11, marginBottom: 18 }}>
-            {Object.entries(byStat).map(([s, c]) => (
+            {[["pending",(bsSrc=>bsSrc?.pending||(books.filter(b=>b.status==="pending").length))(bStats)],["confirmed",(bsSrc=>bsSrc?.confirmed||(books.filter(b=>b.status==="confirmed").length))(bStats)],["checkedIn",bStats?.active||(books.filter(b=>b.status==="checkedIn").length)],["checkedOut",bStats?.completed||(books.filter(b=>b.status==="checkedOut").length)],["cancelled",bStats?.cancelled||(books.filter(b=>b.status==="cancelled").length)]].map(([s, c]) => (
               <div key={s} style={{ background: sB(s), border: `1px solid ${sC(s)}30`, borderRadius: 12, padding: "13px 15px" }}>
                 <div style={{ fontSize: 11, color: sC(s), fontWeight: 700, textTransform: "uppercase", marginBottom: 5 }}>{s}</div>
                 <div style={{ fontSize: 26, fontWeight: 700, color: sC(s), fontFamily: "'Playfair Display',serif" }}>{c}</div>
@@ -1670,9 +1861,11 @@ function LocsTab({ locs, saveLoc, deleteLoc, rooms, books, pop }) {
 }
 
 /* ─── STAFF TAB ──────────────────────────────────────────── */
-function StaffTab({ staff, saveStaff, toggleStaff, locs, pop }) {
+function StaffTab({ staff, saveStaff, toggleStaff, locs, pop, payMethods, setPayMethods }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ id: null, name: "", email: "", phone: "", role: "Receptionist", locId: "", pin: "", active: true });
+  const [newPM, setNewPM] = useState(false);
+  const [newPMName, setNewPMName] = useState("");
   const save = () => { if(!form.name||!form.email||!form.pin)return; saveStaff(form,!!form.id); setModal(false); };
   return (
     <div>
@@ -1707,6 +1900,53 @@ function StaffTab({ staff, saveStaff, toggleStaff, locs, pop }) {
           </Card>
         ))}
       </div>
+      {/* ── PAYMENT METHODS ── */}
+      <div style={{ marginTop: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, margin: 0 }}>Payment Methods</h3>
+          <Btn onClick={() => setNewPM(true)} style={{ fontSize: 12, padding: "6px 13px" }}>+ Add Method</Btn>
+        </div>
+        <Card>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {(payMethods || []).map((pm, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: G1, border: `1px solid ${G2}`, borderRadius: 8, padding: "7px 12px" }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: BK }}>{pm}</span>
+                <button onClick={async () => {
+                    if (!window.confirm(`Remove "${pm}" as a payment method?`)) return;
+                    try {
+                      // Get full list from DB to find id
+                      const full = await api.getPayMethods();
+                      const found = full.find(p => p.name === pm);
+                      if (found) {
+                        await api.deletePayMethod(found.id);
+                        setPayMethods(prev => prev.filter(p => p !== pm));
+                        pop("Payment method removed");
+                      }
+                    } catch(e) { pop(e.message, "err"); }
+                  }}
+                  style={{ background: "none", border: "none", color: ER, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, fontWeight: 700 }}>×</button>
+              </div>
+            ))}
+            {(!payMethods || payMethods.length === 0) && <div style={{ color: G4, fontSize: 13 }}>No payment methods configured</div>}
+          </div>
+        </Card>
+        {newPM && (
+          <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "flex-end" }}>
+            <Inp label="New Payment Method Name" value={newPMName} onChange={e => setNewPMName(e.target.value)} placeholder="e.g. Cheque, Crypto..." style={{ marginBottom: 0 }} />
+            <Btn onClick={async () => {
+                if (!newPMName.trim()) return;
+                try {
+                  await api.createPayMethod(newPMName.trim());
+                  setPayMethods(prev => [...prev, newPMName.trim()]);
+                  setNewPMName(""); setNewPM(false);
+                  pop("Payment method added");
+                } catch(e) { pop(e.message, "err"); }
+              }}>Add</Btn>
+            <Btn v="ghost" onClick={() => { setNewPM(false); setNewPMName(""); }}>Cancel</Btn>
+          </div>
+        )}
+      </div>
+
       {modal && (
         <Modal title={form.id ? "Edit Staff" : "Create Staff Account"} onClose={() => setModal(false)}>
           <Inp label="Full Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Mwangi" />
@@ -1838,8 +2078,8 @@ function ProfileTab({ user, updateProfile }) {
 }
 
 /* ─── NEW BOOKING MODAL ──────────────────────────────────── */
-function NewBookModal({ rooms, locs, user, onClose, onSave }) {
-  const [form, setForm] = useState({ locId: locs[0]?.id || "", roomId: "", name: "", phone: "", email: "", nat: "", ci: td(), co: "", nights: 1, disc: 0, discT: "pct", method: "Cash", notes: "", paid: 0 });
+function NewBookModal({ rooms, locs, user, onClose, onSave, payMethods }) {
+  const [form, setForm] = useState({ locId: locs[0]?.id || "", roomId: "", name: "", phone: "", email: "", nat: "", ci: td(), co: "", nights: 1, disc: 0, discT: "pct", method: payMethods?.[0] || "Cash", notes: "", paid: 0 });
   const lr = rooms.filter(r => r.locId === form.locId && r.status === "available");
   const sr = rooms.find(r => r.id === form.roomId);
   const base = sr ? sr.price * form.nights : 0;
@@ -1865,7 +2105,7 @@ function NewBookModal({ rooms, locs, user, onClose, onSave }) {
         <Inp label="Nationality" value={form.nat} onChange={e => setForm(f => ({ ...f, nat: e.target.value }))} />
         <Sel label="Discount Type" value={form.discT} onChange={e => setForm(f => ({ ...f, discT: e.target.value }))}><option value="pct">Percentage (%)</option><option value="fix">Fixed Amount (TZS)</option></Sel>
         <Inp label={form.discT === "pct" ? "Discount %" : "Discount (TZS)"} type="number" value={form.disc} onChange={e => setForm(f => ({ ...f, disc: e.target.value }))} min={0} />
-        <Sel label="Payment Method" value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))}><option>Cash</option><option>Mobile Money</option><option>Bank Transfer</option><option>Card</option></Sel>
+        <Sel label="Payment Method" value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))}>{(payMethods || ["Cash","Mobile Money","Bank Transfer","Card"]).map(pm => <option key={pm}>{pm}</option>)}</Sel>
         <Inp label="Initial Payment (TZS)" type="number" value={form.paid} onChange={e => setForm(f => ({ ...f, paid: e.target.value }))} placeholder="0" />
       </div>
       <Inp label="Notes / Special Requests" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Special requests…" />

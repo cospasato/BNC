@@ -140,3 +140,18 @@ CREATE TABLE IF NOT EXISTS customers (
 
 -- Link bookings to customer accounts (optional — existing bookings keep NULL)
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_id TEXT REFERENCES customers(id);
+
+-- ============================================================
+-- MIGRATION: Payment methods (admin-configurable)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS payment_methods (
+  id         TEXT PRIMARY KEY DEFAULT 'PM' || upper(substr(md5(random()::text), 1, 5)),
+  name       TEXT NOT NULL UNIQUE,
+  active     BOOLEAN NOT NULL DEFAULT true,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO payment_methods (name, sort_order) VALUES
+  ('Cash', 1), ('Mobile Money', 2), ('Bank Transfer', 3), ('Card', 4)
+ON CONFLICT (name) DO NOTHING;

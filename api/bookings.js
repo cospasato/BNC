@@ -12,6 +12,38 @@ module.exports = async function handler(req, res) {
   const { id, location_id, status: statusFilter, customer_cancel } = req.query;
 
   try {
+    // GET /api/bookings?check_room=X&ci=DATE&co=DATE — availability check
+    if (req.method === 'GET' && req.query.check_room) {
+      const { check_room, ci, co } = req.query;
+      if (!ci || !co) return res.status(400).json({ error: 'ci and co required' });
+      // A room is unavailable if any active booking overlaps the requested dates
+      const conflicts = await sql`
+        SELECT id, check_in, check_out, status FROM bookings
+        WHERE room_id = ${check_room}
+          AND status NOT IN ('cancelled', 'checkedOut')
+          AND check_in  < ${co}
+          AND check_out > ${ci}
+      `;
+      return res.status(200).json({ available: conflicts.length === 0, conflicts });
+    }
+
+    // GET /api/bookings?location_id=X&get_booked_dates=X — get all booked date ranges per room for a location
+    if (req.method === 'GET' && req.query.get_booked_dates) {
+      const rows = await sql`
+        SELECT room_id, check_in, check_out FROM bookings
+        WHERE location_id = ${req.query.get_booked_dates}
+          AND status NOT IN ('cancelled', 'checkedOut')
+        ORDER BY room_id, check_in ASC
+      `;
+      // Group by room_id
+      const byRoom = {};
+      rows.forEach(r => {
+        if (!byRoom[r.room_id]) byRoom[r.room_id] = [];
+        byRoom[r.room_id].push({ ci: r.check_in?.split?.('T')[0] || r.check_in, co: r.check_out?.split?.('T')[0] || r.check_out });
+      });
+      return res.status(200).json(byRoom);
+    }
+
     // GET /api/bookings
     if (req.method === 'GET') {
       let rows;
@@ -107,11 +139,17 @@ module.exports = async function handler(req, res) {
       const { status, paid_amount, add_payment } = req.body || {};
       let rows;
       if (add_payment !== undefined) {
-        rows = await sql`
-          UPDATE bookings
-          SET paid_amount = LEAST(total_amount, paid_amount + ${Number(add_payment)})
-          WHERE id = ${id} RETURNING *
-        `;
+        const { payment_method: pm } = req.body;
+        rows = pm
+          ? await sql`
+              UPDATE bookings
+              SET paid_amount = LEAST(total_amount, paid_amount + ${Number(add_payment)}),
+                  payment_method = ${pm}
+              WHERE id = ${id} RETURNING *`
+          : await sql`
+              UPDATE bookings
+              SET paid_amount = LEAST(total_amount, paid_amount + ${Number(add_payment)})
+              WHERE id = ${id} RETURNING *`;
       } else if (status === 'cancelled') {
         rows = await sql`
           UPDATE bookings SET status = 'cancelled', total_amount = paid_amount

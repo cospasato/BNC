@@ -101,9 +101,48 @@ module.exports = async function handler(req, res) {
       return res.status(200).json(rows[0]);
     }
 
+    // Payment methods (GET all, POST create, PUT toggle active)
+    if (req.query.resource === 'payment_methods') {
+      if (req.method === 'GET') {
+        const rows = await sql`SELECT * FROM payment_methods ORDER BY sort_order ASC, name ASC`;
+        return res.status(200).json(rows);
+      }
+      if (req.method === 'POST') {
+        const { name } = req.body || {};
+        if (!name) return res.status(400).json({ error: 'name required' });
+        const rows = await sql`
+          INSERT INTO payment_methods (name, sort_order)
+          VALUES (${name}, (SELECT COALESCE(MAX(sort_order),0)+1 FROM payment_methods))
+          RETURNING *
+        `;
+        return res.status(201).json(rows[0]);
+      }
+      if (req.method === 'PUT') {
+        const { pmId, active, name } = req.body || {};
+        if (!pmId) return res.status(400).json({ error: 'pmId required' });
+        const rows = await sql`
+          UPDATE payment_methods SET
+            active = COALESCE(${active ?? null}, active),
+            name   = COALESCE(${name   ?? null}, name)
+          WHERE id = ${pmId} RETURNING *
+        `;
+        if (!rows.length) return res.status(404).json({ error: 'Not found' });
+        return res.status(200).json(rows[0]);
+      }
+      if (req.method === 'DELETE') {
+        const { pmId } = req.body || {};
+        if (!pmId) return res.status(400).json({ error: 'pmId required' });
+        await sql`DELETE FROM payment_methods WHERE id = ${pmId}`;
+        return res.status(200).json({ success: true });
+      }
+    }
+
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('staff error:', err.message);
     return res.status(500).json({ error: dbError(err) });
   }
 };
+
+// Payment methods handled via staff.js (admin only, resource=paymentmethods)
+// Appended at bottom - same handler checks query param
