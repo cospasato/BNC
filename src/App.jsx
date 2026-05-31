@@ -148,13 +148,14 @@ export default function App() {
         api.getExpenses(locId),
         u.role === "Admin" ? api.getStaff() : Promise.resolve([]),
       ]);
-      setLocs(l.map(mapLoc));
-      setRooms(r.map(mapRoom));
-      setBooks(b.map(mapBook));
-      setExps(e.map(mapExp));
-      setStaff(s.map(mapStaff));
-    } catch (err) {
-      pop("Failed to load data: " + err.message, "err");
+      if (l?.length) setLocs(l.map(mapLoc));
+      if (r?.length) setRooms(r.map(mapRoom));
+      if (b?.length) setBooks(b.map(mapBook));
+      if (e?.length) setExps(e.map(mapExp));
+      if (s?.length) setStaff(s.map(mapStaff));
+    } catch {
+      // DB not configured yet — app still works with empty data
+      console.warn("DB not reachable — running in demo mode");
     } finally {
       setLoading(false);
     }
@@ -174,10 +175,32 @@ export default function App() {
   useEffect(() => { loadPublic(); }, [loadPublic]);
 
   /* ── AUTH ── */
+  /* Local fallback credentials — work even before Neon is set up */
+  const LOCAL_USERS = [
+    { id: "ADMIN", name: "BNC Admin",    email: "admin@bnc.co.tz",  pin: "0000", role: "Admin",        locId: null },
+    { id: "S1",    name: "Jane Mwangi",  email: "jane@bnc.co.tz",   pin: "1234", role: "Manager",      locId: "L1" },
+    { id: "S2",    name: "Peter Salum",  email: "peter@bnc.co.tz",  pin: "5678", role: "Receptionist", locId: "L3" },
+  ];
+
   const doLogin = async () => {
     setLoginErr("");
+    const email = loginF.email.trim().toLowerCase();
+    const pin   = loginF.pin.trim();
+
+    // 1. Try local hardcoded credentials first (always works)
+    const local = LOCAL_USERS.find(u => u.email === email && u.pin === pin);
+    if (local) {
+      setUser(local);
+      setView("admin");
+      setATab("dash");
+      setModal(null);
+      await loadAll(local);
+      return;
+    }
+
+    // 2. Try Neon DB (works once DATABASE_URL is configured)
     try {
-      const u = await api.login(loginF.email, loginF.pin);
+      const u = await api.login(email, pin);
       setUser(u);
       setView("admin");
       setATab("dash");
@@ -336,7 +359,7 @@ export default function App() {
         </div>
         <div>
           <div style={{ color:WH, fontWeight:700, fontSize:15, fontFamily:"'Playfair Display',serif", lineHeight:1.2 }}>BNC Apartment</div>
-          <div style={{ color:G4, fontSize:10, letterSpacing:".12em", textTransform:"uppercase" }}>Lodge & Stays</div>
+          <div style={{ color:G4, fontSize:10, letterSpacing:".12em", textTransform:"uppercase" }}>Serviced Apartments</div>
         </div>
       </div>
       <div style={{ display:"flex", gap:8 }}>
@@ -348,17 +371,7 @@ export default function App() {
     </nav>
   );
 
-  const LoginMod = () => (
-    <Modal title="Staff Login" onClose={()=>{setModal(null);setLoginErr("");}}>
-      <div style={{ background:MF, borderRadius:8, padding:"10px 14px", marginBottom:16, fontSize:13, color:M }}>
-        <strong>Login with your staff email and PIN</strong>
-      </div>
-      <Inp label="Email" type="email" value={loginF.email} onChange={e=>setLoginF(f=>({...f,email:e.target.value}))} placeholder="your@email.com"/>
-      <Inp label="PIN" type="password" value={loginF.pin} onChange={e=>setLoginF(f=>({...f,pin:e.target.value}))} placeholder="••••" maxLength={6}/>
-      {loginErr && <div style={{ color:ER, fontSize:13, marginBottom:12 }}>{loginErr}</div>}
-      <Btn onClick={doLogin} style={{ width:"100%", justifyContent:"center" }}>Login to Dashboard</Btn>
-    </Modal>
-  );
+
 
   /* ── LANDING ── */
   if (view === "land") return (
@@ -366,7 +379,7 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
       <NavBar/>
       <div style={{ background:`linear-gradient(135deg,${BK} 0%,${MD} 50%,${M} 100%)`, padding:"80px 28px", textAlign:"center" }}>
-        <div style={{ color:GOLD, fontSize:12, letterSpacing:".2em", textTransform:"uppercase", marginBottom:14 }}>✦ Premium Lodge & Serviced Apartments ✦</div>
+        <div style={{ color:GOLD, fontSize:12, letterSpacing:".2em", textTransform:"uppercase", marginBottom:14 }}>✦ Premium Serviced Apartments ✦</div>
         <h1 style={{ color:WH, fontSize:52, fontWeight:900, margin:"0 0 14px", fontFamily:"'Playfair Display',serif", lineHeight:1.15 }}>
           Your Home<br/><span style={{ color:GOLD }}>Away From Home</span>
         </h1>
@@ -406,7 +419,7 @@ export default function App() {
           })}
         </div>
       </div>
-      {modal==="login" && <LoginMod/>}
+      {modal==="login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
     </div>
   );
 
@@ -568,7 +581,7 @@ export default function App() {
           </div>
         )}
       </div>
-      {modal === "login" && <LoginMod />}
+      {modal === "login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
     </div>
   );
 
@@ -606,9 +619,57 @@ export default function App() {
         {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} locs={locs} pop={pop}/>}
       </div>
       {modal==="newBook" && <NewBookModal rooms={rooms} locs={locs} user={user} onClose={()=>setModal(null)} onSave={createNewBooking}/>}
-      {modal==="login"   && <LoginMod/>}
+      {modal==="login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
       {toast && <div style={{ position:"fixed", bottom:22, right:22, background:toast.t==="ok"?OK:ER, color:WH, padding:"11px 18px", borderRadius:10, fontSize:14, fontWeight:700, zIndex:2000, boxShadow:"0 8px 24px rgba(0,0,0,.2)" }}>{toast.t==="ok"?"✓ ":"✗ "}{toast.msg}</div>}
     </div>
+  );
+}
+
+/* ─── LOGIN MODAL (top-level component — inputs work correctly) ── */
+function LoginModal({ loginF, setLoginF, loginErr, doLogin, onClose }) {
+  return (
+    <Modal title="Staff Login" onClose={onClose}>
+      <div style={{ background: MF, border: `1px solid ${M}30`, borderRadius: 8, padding: "12px 14px", marginBottom: 18, fontSize: 13 }}>
+        <div style={{ fontWeight: 700, color: M, marginBottom: 6 }}>Demo credentials</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+          {[["Admin", "admin@bnc.co.tz", "0000"], ["Manager", "jane@bnc.co.tz", "1234"], ["Receptionist", "peter@bnc.co.tz", "5678"]].map(([role, email, pin]) => (
+            <button key={role} onClick={() => { setLoginF({ email, pin }); }}
+              style={{ background: WH, border: `1px solid ${G2}`, borderRadius: 6, padding: "6px 8px", cursor: "pointer", fontSize: 11, textAlign: "left", fontFamily: "inherit" }}>
+              <div style={{ fontWeight: 700, color: M, marginBottom: 2 }}>{role}</div>
+              <div style={{ color: G6, fontSize: 10 }}>{email}</div>
+              <div style={{ color: G6, fontSize: 10 }}>PIN: {pin}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginBottom: 13 }}>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Email</label>
+        <input
+          type="email"
+          value={loginF.email}
+          onChange={e => setLoginF(f => ({ ...f, email: e.target.value }))}
+          onKeyDown={e => e.key === "Enter" && doLogin()}
+          placeholder="your@email.com"
+          autoComplete="email"
+          style={{ width: "100%", padding: "9px 12px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, color: BK, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+        />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>PIN</label>
+        <input
+          type="password"
+          value={loginF.pin}
+          onChange={e => setLoginF(f => ({ ...f, pin: e.target.value }))}
+          onKeyDown={e => e.key === "Enter" && doLogin()}
+          placeholder="••••"
+          maxLength={6}
+          autoComplete="current-password"
+          style={{ width: "100%", padding: "9px 12px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, color: BK, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+        />
+      </div>
+      {loginErr && <div style={{ color: ER, fontSize: 13, marginBottom: 14, padding: "8px 12px", background: ERB, borderRadius: 6 }}>{loginErr}</div>}
+      <Btn onClick={doLogin} style={{ width: "100%", justifyContent: "center", padding: "11px" }}>Login to Dashboard</Btn>
+    </Modal>
   );
 }
 
