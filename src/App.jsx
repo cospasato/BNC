@@ -532,7 +532,7 @@ export default function App() {
         </div>}
       </div>
       <div style={{ display:"flex", gap:8 }}>
-        {!isMobile && view !== "book" && view !== "customer" && <button onClick={()=>{setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
+        {!isMobile && view !== "book" && view !== "customer" && <button onClick={()=>{setView("book");setBStep(1);window.scrollTo({top:0,behavior:"smooth"});}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
         {customer && view !== "admin" ? (
           <>
             <button onClick={()=>setView("customer")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
@@ -592,7 +592,7 @@ export default function App() {
             const avail = rooms.filter(r=>r.locId===loc.id&&r.status==="available").length;
             return (
               <div key={loc.id}
-                onClick={()=>{setBD(d=>({...d,locId:loc.id}));setView("book");setBStep(2);}}
+                onClick={()=>{setBD(d=>({...d,locId:loc.id}));setView("book");setBStep(2);window.scrollTo({top:0,behavior:"smooth"});}}
                 onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-5px)";e.currentTarget.style.boxShadow=`0 14px 36px rgba(107,27,42,.16)`;}}
                 onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}
                 style={{ background:WH, border:`1px solid ${G2}`, borderRadius:16, overflow:"hidden", cursor:"pointer", transition:"transform .2s,box-shadow .2s" }}>
@@ -1026,8 +1026,9 @@ function DashTab({ books, rooms, exps, locs, allRooms, totRev, totExp, netPro, p
 
 /* ─── BOOKINGS TAB ───────────────────────────────────────── */
 function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBooking, onNew, pop, user, payMethods }) {
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState("active");  // default: hide checkedOut
   const [search, setSearch] = useState("");
+  const [locFilter, setLocFilter] = useState("");   // filter by location
   const [sel, setSel] = useState(null);
   const [payAmt, setPayAmt] = useState("");
   const [payMethod, setPayMethod] = useState("");
@@ -1038,9 +1039,16 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBo
 
   const todayDate = td();
 
+  // "active" = all except checkedOut and cancelled
   const filtered = books
-    .filter(b => (filter === "all" || b.status === filter) &&
-      (!search || b.gName.toLowerCase().includes(search.toLowerCase()) || b.id.toLowerCase().includes(search.toLowerCase())))
+    .filter(b => {
+      const statusOk = filter === "all" ? true
+        : filter === "active" ? !["checkedOut","cancelled"].includes(b.status)
+        : b.status === filter;
+      const locOk = !locFilter || b.locId === locFilter;
+      const searchOk = !search || b.gName.toLowerCase().includes(search.toLowerCase()) || b.id.toLowerCase().includes(search.toLowerCase());
+      return statusOk && locOk && searchOk;
+    })
     .sort((a, b) => b.id.localeCompare(a.id));
 
   const selB = books.find(b => b.id === sel);
@@ -1103,14 +1111,25 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBo
 
       {/* ── FILTERS ── */}
       <div style={{ display: "flex", gap: 7, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        {["all", "pending", "confirmed", "checkedIn", "checkedOut", "cancelled"].map(s => (
-          <button key={s} onClick={() => setFilter(s)} style={{ padding: "5px 13px", borderRadius: 99, fontSize: 12, fontWeight: 700, border: `1px solid ${filter === s ? M : G2}`, background: filter === s ? M : WH, color: filter === s ? WH : G6, cursor: "pointer", fontFamily: "inherit" }}>
-            {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+        {[["active","Active"],["all","All"],["pending","Pending"],["confirmed","Confirmed"],["checkedIn","Checked In"],["checkedOut","Checked Out"],["cancelled","Cancelled"]].map(([s, label]) => (
+          <button key={s} onClick={() => setFilter(s)}
+            style={{ padding: "5px 13px", borderRadius: 99, fontSize: 12, fontWeight: 700, border: `1px solid ${filter === s ? M : G2}`, background: filter === s ? M : WH, color: filter === s ? WH : G6, cursor: "pointer", fontFamily: "inherit" }}>
+            {label}
             {s === "checkedIn" && dueToday.length > 0 && <span style={{ marginLeft: 5, background: "#F9A825", color: WH, borderRadius: 99, padding: "0 5px", fontSize: 10 }}>{dueToday.length}</span>}
           </button>
         ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center" }}>
+        {/* Location filter */}
+        <select value={locFilter} onChange={e => setLocFilter(e.target.value)}
+          style={{ padding: "6px 11px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 13, outline: "none", fontFamily: "inherit", background: WH, color: locFilter ? M : G6, fontWeight: locFilter ? 700 : 400 }}>
+          <option value="">All Locations</option>
+          {locs.map(l => <option key={l.id} value={l.id}>{l.icon} {l.name}</option>)}
+        </select>
+        {locFilter && <button onClick={() => setLocFilter("")} style={{ background: "none", border: `1px solid ${G2}`, borderRadius: 7, padding: "5px 9px", fontSize: 12, color: G6, cursor: "pointer", fontFamily: "inherit" }}>✕ Clear</button>}
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search guest or ID…"
           style={{ marginLeft: "auto", padding: "6px 11px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 13, outline: "none", minWidth: 190, fontFamily: "inherit" }} />
+        <span style={{ fontSize: 12, color: G4, whiteSpace: "nowrap" }}>{filtered.length} booking{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
       {/* ── TABLE ── */}
@@ -1258,11 +1277,23 @@ function BooksTab({ books, rooms, locs, updBook, recPay, deleteBooking, extendBo
           )}
           {(selB.total - selB.paid) > 0 && selB.status !== "cancelled" && (
             <div style={{ marginTop: 18, padding: 14, background: G1, borderRadius: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Record Payment</div>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-                <Inp label={`Amount (max ${fmt(selB.total - selB.paid)})`} type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} style={{ marginBottom: 0 }} />
-                <Btn v="ok" onClick={() => { recPay(selB.id, payAmt); setPayAmt(""); setSel(null); }}>Record</Btn>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Record Payment</div>
+              <Inp label={`Amount (max ${fmt(selB.total - selB.paid)})`} type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} placeholder="Enter amount" />
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 7, textTransform: "uppercase", letterSpacing: ".05em" }}>Payment Method</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {(payMethods?.length ? payMethods : ["Cash"]).map(pm => (
+                    <button key={pm} onClick={() => setPayMethod(pm)}
+                      style={{ padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                        border: `2px solid ${payMethod === pm ? M : G2}`,
+                        background: payMethod === pm ? MF : WH,
+                        color: payMethod === pm ? M : G6, transition: "all .15s" }}>
+                      {pm}
+                    </button>
+                  ))}
+                </div>
               </div>
+              <Btn v="ok" onClick={() => { recPay(selB.id, payAmt, payMethod); setPayAmt(""); setSel(null); }} disabled={!payAmt}>Record Payment</Btn>
             </div>
           )}
           {selB.status === "cancelled" && (
@@ -2300,6 +2331,7 @@ function ProfileTab({ user, updateProfile }) {
 /* ─── NEW BOOKING MODAL ──────────────────────────────────── */
 function NewBookModal({ rooms, locs, user, onClose, onSave, payMethods }) {
   const [form, setForm] = useState({ locId: locs[0]?.id || "", roomId: "", name: "", phone: "", email: "", nat: "", ci: td(), co: "", nights: 1, disc: 0, discT: "pct", method: payMethods?.[0]||"Cash", notes: "", paid: 0 });
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
   const lr = rooms.filter(r => r.locId === form.locId && r.status === "available");
   const sr = rooms.find(r => r.id === form.roomId);
   const base = sr ? sr.price * form.nights : 0;
