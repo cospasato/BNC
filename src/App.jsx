@@ -12,6 +12,7 @@ const fmt = n => "TZS " + Number(n || 0).toLocaleString();
 const uid = () => Math.random().toString(36).slice(2, 7).toUpperCase();
 const td  = () => new Date().toISOString().split("T")[0];
 const dd  = (a, b) => Math.max(1, Math.round((new Date(b) - new Date(a)) / 86400000));
+const fmtDate = (d) => { if (!d) return "—"; const s = String(d).split("T")[0]; return s; };
 const sC = s => ({ available: OK, occupied: M, maintenance: WA, confirmed: IN, checkedIn: M, checkedOut: G6, pending: WA, cancelled: ER }[s] || G6);
 const sB = s => ({ available: OKB, occupied: MF, maintenance: WAB, confirmed: INB, checkedIn: MF, checkedOut: G1, pending: WAB, cancelled: ERB }[s] || G1);
 
@@ -224,7 +225,8 @@ export default function App() {
   const [bookedDates, setBookedDates] = useState({});
   const [availLoading, setAvailLoading] = useState(false);
   const [pendingBookLoc, setPendingBookLoc] = useState(null);
-  const [videoModal, setVideoModal] = useState(null); // roomId to show video for // locId to book after login
+  const [videoModal, setVideoModal] = useState(null); // roomId to show video for
+  const [roomDetail, setRoomDetail] = useState(null); // roomId for full detail modal // locId to book after login
   const [loginF, setLoginF] = useState({ email:"", pin:"" });
   const [loginErr, setLoginErr] = useState("");
 
@@ -715,9 +717,15 @@ export default function App() {
                   onClick={() => !unavail && setBD(d => ({ ...d, roomId: rm.id }))}
                   style={{ background: WH, borderRadius: 12, border: `2px solid ${bD.roomId === rm.id ? M : G2}`, cursor: unavail ? "not-allowed" : "pointer", opacity: unavail ? .55 : 1, overflow: "hidden", transition: "border-color .15s" }}>
                   {rm.photos && rm.photos.length > 0 && (
-                    <div style={{ position: "relative", height: 160 }}>
+                    <div style={{ position: "relative", height: 160, cursor: "pointer" }}
+                      onClick={e => { e.stopPropagation(); setRoomDetail(rm.id); }}>
                       <img src={rm.photos[0]} alt={rm.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                      {rm.photos.length > 1 && <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.55)", color: WH, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99 }}>{rm.photos.length} photos{rm.video?" · 🎬":""}</div>}
+                      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background .2s" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.12)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "rgba(0,0,0,0)"}/>
+                      <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.6)", color: WH, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, display:"flex", alignItems:"center", gap:5 }}>
+                        🔍 View {rm.photos.length > 1 ? `${rm.photos.length} photos` : "photo"}{rm.video ? " · 🎬" : ""}
+                      </div>
                     </div>
                   )}
                   <div style={{ padding: 16, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
@@ -730,12 +738,18 @@ export default function App() {
                       </div>
                       <div style={{ fontSize: 12, color: G6, marginBottom: 7 }}>{rm.type} · {rm.beds} bed · up to {rm.guests} guests</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{rm.amen.map((a, i) => <span key={i} style={{ background: G1, fontSize: 11, padding: "2px 8px", borderRadius: 99, color: G6 }}>{a}</span>)}</div>
-                      {rm.video && (
-                        <button onClick={e=>{e.stopPropagation();setVideoModal(rm.id);}}
-                          style={{ marginTop:7, display:"flex", alignItems:"center", gap:6, background:BK, color:WH, border:"none", borderRadius:7, padding:"6px 12px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-                          🎬 Watch Room Video
+                      <div style={{ display:"flex", gap:7, marginTop:7, flexWrap:"wrap" }}>
+                        <button onClick={e=>{e.stopPropagation();setRoomDetail(rm.id);}}
+                          style={{ display:"flex", alignItems:"center", gap:5, background:G1, color:G8, border:`1px solid ${G2}`, borderRadius:7, padding:"6px 12px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                          🔍 View Details
                         </button>
-                      )}
+                        {rm.video && (
+                          <button onClick={e=>{e.stopPropagation();setVideoModal(rm.id);}}
+                            style={{ display:"flex", alignItems:"center", gap:5, background:BK, color:WH, border:"none", borderRadius:7, padding:"6px 12px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                            🎬 Watch Video
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontSize: 17, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif" }}>{fmt(rm.price)}</div>
@@ -890,6 +904,36 @@ export default function App() {
       </div>
       {modal === "login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
       {custModal && <CustomerAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={() => { setCustModal(null); setPendingBookLoc(null); }} pop={pop} bookingIntent={pendingBookLoc !== null}/>}
+      {roomDetail && (() => {
+        const dr = rooms.find(r => r.id === roomDetail);
+        if (!dr) return null;
+        const [photoIdx, setPhotoIdx] = [0, ()=>{}]; // simple — handled in local state below
+        const isYT = dr.video?.includes("youtube.com") || dr.video?.includes("youtu.be");
+        const ytId = dr.video ? (dr.video.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1] || "") : "";
+        const loc  = locs.find(l => l.id === dr.locId);
+        const avail = !["occupied","maintenance"].includes(dr.status);
+        const dateTakenForThisRoom = !isAvailableForDates(dr.id);
+        return (
+          <Modal title="" onClose={() => setRoomDetail(null)} wide>
+            <RoomDetailContent dr={dr} loc={loc} isYT={isYT} ytId={ytId} avail={avail} dateTakenForThisRoom={dateTakenForThisRoom}
+              bD={bD} selRoom={selRoom}
+              onSelect={() => {
+                if (!avail || dateTakenForThisRoom) return;
+                setBD(d => ({ ...d, roomId: dr.id }));
+                setRoomDetail(null);
+                setBStep(3); // go to dates
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onChangeDates={() => {
+                setBD(d => ({ ...d, roomId: dr.id }));
+                setRoomDetail(null);
+                setBStep(3);
+              }}
+            />
+          </Modal>
+        );
+      })()}
+
       {videoModal && (() => {
         const vRoom = rooms.find(r => r.id === videoModal);
         const isYT = vRoom?.video?.includes("youtube.com") || vRoom?.video?.includes("youtu.be");
@@ -2501,6 +2545,137 @@ function NewBookModal({ rooms, locs, user, onClose, onSave, payMethods }) {
   );
 }
 
+/* ─── ROOM DETAIL CONTENT (used inside modal in booking portal) ─ */
+function RoomDetailContent({ dr, loc, isYT, ytId, avail, dateTakenForThisRoom, bD, onSelect, onChangeDates }) {
+  const [photoIdx, setPhotoIdx] = useState(0);
+  const [showVideo, setShowVideo] = useState(false);
+  const photos = dr.photos || [];
+
+  return (
+    <div>
+      {/* Photo gallery */}
+      {photos.length > 0 && (
+        <div style={{ borderRadius: 10, overflow: "hidden", marginBottom: 16, position: "relative", background: BK }}>
+          <img src={photos[photoIdx]} alt={`${dr.name} photo ${photoIdx + 1}`}
+            style={{ width: "100%", height: 260, objectFit: "cover", display: "block" }} />
+          {photos.length > 1 && (
+            <>
+              <button onClick={() => setPhotoIdx(i => (i - 1 + photos.length) % photos.length)}
+                style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.5)", border: "none", color: WH, fontSize: 20, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>‹</button>
+              <button onClick={() => setPhotoIdx(i => (i + 1) % photos.length)}
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.5)", border: "none", color: WH, fontSize: 20, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>›</button>
+              <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 5 }}>
+                {photos.map((_, i) => (
+                  <div key={i} onClick={() => setPhotoIdx(i)}
+                    style={{ width: 7, height: 7, borderRadius: "50%", background: i === photoIdx ? WH : "rgba(255,255,255,.4)", cursor: "pointer" }} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {/* Thumbnail strip */}
+      {photos.length > 1 && (
+        <div style={{ display: "flex", gap: 7, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
+          {photos.map((src, i) => (
+            <img key={i} src={src} alt="" onClick={() => setPhotoIdx(i)}
+              style={{ width: 68, height: 52, objectFit: "cover", borderRadius: 7, cursor: "pointer", flexShrink: 0,
+                border: `2px solid ${i === photoIdx ? M : "transparent"}`, transition: "border-color .15s" }} />
+          ))}
+        </div>
+      )}
+
+      {/* Room header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 10 }}>
+        <div>
+          <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: "0 0 4px", color: BK }}>{dr.name}</h2>
+          <div style={{ fontSize: 13, color: G6 }}>{loc?.icon} {loc?.name}{loc?.city ? ` · ${loc.city}` : ""}</div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif" }}>{fmt(dr.price)}</div>
+          <div style={{ fontSize: 12, color: G4 }}>per night</div>
+        </div>
+      </div>
+
+      {/* Room specs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10, marginBottom: 16 }}>
+        {[["🛏️", `${dr.beds} bed${dr.beds > 1 ? "s" : ""}`], ["👥", `Up to ${dr.guests} guests`], ["🏠", dr.type]].map(([icon, val]) => (
+          <div key={val} style={{ background: G1, borderRadius: 9, padding: "10px 12px", textAlign: "center" }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: BK }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Amenities */}
+      {dr.amen?.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: G6, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Amenities</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {dr.amen.map((a, i) => (
+              <span key={i} style={{ background: MF, color: M, border: `1px solid ${M}20`, padding: "5px 11px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{a}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Video */}
+      {dr.video && (
+        <div style={{ marginBottom: 16 }}>
+          {!showVideo ? (
+            <button onClick={() => setShowVideo(true)}
+              style={{ width: "100%", padding: "12px", border: `2px solid ${BK}`, borderRadius: 9, background: BK, color: WH, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              🎬 Watch Room Video
+            </button>
+          ) : isYT ? (
+            <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 9, overflow: "hidden" }}>
+              <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+                allowFullScreen allow="autoplay" title="Room video"/>
+            </div>
+          ) : (
+            <video src={dr.video} controls autoPlay style={{ width: "100%", borderRadius: 9, maxHeight: 280 }}/>
+          )}
+        </div>
+      )}
+
+      {/* Availability status */}
+      {dateTakenForThisRoom && bD.ci && bD.co && (
+        <div style={{ background: WAB, border: `1px solid ${WA}`, borderRadius: 9, padding: "11px 14px", marginBottom: 14, fontSize: 13, color: WA, fontWeight: 700 }}>
+          📅 Not available for {bD.ci} → {bD.co}
+        </div>
+      )}
+      {!avail && (
+        <div style={{ background: ERB, border: `1px solid ${ER}30`, borderRadius: 9, padding: "11px 14px", marginBottom: 14, fontSize: 13, color: ER, fontWeight: 700 }}>
+          🚫 This room is currently {dr.status}
+        </div>
+      )}
+
+      {/* CTA buttons */}
+      <div style={{ display: "flex", gap: 10 }}>
+        {avail && !dateTakenForThisRoom && (
+          <button onClick={onSelect}
+            style={{ flex: 1, padding: "13px", border: "none", borderRadius: 10, background: M, color: WH, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Playfair Display',serif" }}>
+            Select This Room →
+          </button>
+        )}
+        {avail && dateTakenForThisRoom && bD.ci && bD.co && (
+          <button onClick={onChangeDates}
+            style={{ flex: 1, padding: "13px", border: `2px solid ${WA}`, borderRadius: 10, background: WH, color: WA, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            📅 Change Dates
+          </button>
+        )}
+        {!avail && !dateTakenForThisRoom && (
+          <div style={{ flex: 1, padding: "13px", borderRadius: 10, background: G1, color: G4, fontSize: 14, fontWeight: 700, textAlign: "center" }}>
+            Not Available
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 /* ─── CUSTOMER AUTH MODAL ────────────────────────────────── */
 function CustomerAuthModal({ mode, setMode, onLogin, onRegister, onClose, pop, bookingIntent }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "", nationality: "", password: "", confirm: "" });
@@ -2653,9 +2828,9 @@ function CustomerBookingsTab({ customer, custBooks, custLoading, onCancel, onRef
           <div style={{ display:"flex", flexWrap:"wrap", gap:"4px 14px", marginBottom:10 }}>
             <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:13, color:G6 }}>
               <span>📅</span>
-              <span style={{ fontWeight:600, color:BK }}>{b.check_in}</span>
+              <span style={{ fontWeight:600, color:BK }}>{fmtDate(b.check_in)}</span>
               <span style={{ color:G4 }}>→</span>
-              <span style={{ fontWeight:600, color:BK }}>{b.check_out}</span>
+              <span style={{ fontWeight:600, color:BK }}>{fmtDate(b.check_out)}</span>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:13, color:G6 }}>
               <span>🌙</span>
@@ -2795,8 +2970,8 @@ function CustomerBookingsTab({ customer, custBooks, custLoading, onCancel, onRef
           <div style={{ borderRadius:10, border:`1px solid ${G2}`, overflow:"hidden", marginBottom:14 }}>
             {[
               ["📋 Booking ID", selB.id],
-              ["📅 Check-in",   selB.check_in],
-              ["📅 Check-out",  selB.check_out],
+              ["📅 Check-in",   fmtDate(selB.check_in)],
+              ["📅 Check-out",  fmtDate(selB.check_out)],
               ["🌙 Nights",     `${selB.nights} night${selB.nights>1?"s":""}`],
               ["💳 Payment",    selB.payment_method],
               ["💰 Total",      fmt(selB.total_amount)],
