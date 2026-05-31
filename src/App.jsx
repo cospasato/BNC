@@ -148,7 +148,10 @@ export default function App() {
     const u = await api.customerLogin({ email, password });
     setCustomer(u);
     setCustModal(null);
-    if (pendingBookLoc) {
+    if (pendingBookLoc === "__confirm__") {
+      // stay on booking step 4 — now logged in, can confirm
+      setPendingBookLoc(null);
+    } else if (pendingBookLoc) {
       setBD(d=>({...d, locId: pendingBookLoc}));
       setView("book"); setBStep(2);
       setPendingBookLoc(null);
@@ -166,7 +169,10 @@ export default function App() {
     setCustomer(u);
     setCustModal(null);
     pop("Welcome, " + u.name + "! Account created.");
-    if (pendingBookLoc) {
+    if (pendingBookLoc === "__confirm__") {
+      // stay on booking step 4 — now registered, can confirm
+      setPendingBookLoc(null);
+    } else if (pendingBookLoc) {
       setBD(d=>({...d, locId: pendingBookLoc}));
       setView("book"); setBStep(2);
       setPendingBookLoc(null);
@@ -526,7 +532,7 @@ export default function App() {
         </div>}
       </div>
       <div style={{ display:"flex", gap:8 }}>
-        {!isMobile && view !== "book" && view !== "customer" && <button onClick={()=>{ if(!customer){setPendingBookLoc("");setCustModal("login"); return;} setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
+        {!isMobile && view !== "book" && view !== "customer" && <button onClick={()=>{setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
         {customer && view !== "admin" ? (
           <>
             <button onClick={()=>setView("customer")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
@@ -803,7 +809,19 @@ export default function App() {
             </Card>
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
               <Btn v="ghost" onClick={() => setBStep(3)}>← Back</Btn>
-              <Btn onClick={confirmBook} disabled={!bD.name || !bD.phone}>Confirm Booking →</Btn>
+              {customer
+                ? <Btn onClick={confirmBook} disabled={!bD.name || !bD.phone}>Confirm Booking →</Btn>
+                : <div style={{ flex: 1 }}>
+                    <div style={{ background: MF, border: `1px solid ${M}30`, borderRadius: 10, padding: "12px 16px", marginBottom: 10 }}>
+                      <div style={{ fontWeight: 700, color: M, fontSize: 14, marginBottom: 4 }}>Almost there! Sign in to confirm</div>
+                      <div style={{ fontSize: 13, color: G6, lineHeight: 1.6 }}>Create a free account or sign in to confirm your booking and track it from your dashboard.</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <Btn onClick={() => { setPendingBookLoc("__confirm__"); setCustModal("login"); }} style={{ flex: 1, justifyContent: "center" }}>Sign In</Btn>
+                      <Btn v="out" onClick={() => { setPendingBookLoc("__confirm__"); setCustModal("register"); }} style={{ flex: 1, justifyContent: "center" }}>Create Account</Btn>
+                    </div>
+                  </div>
+              }
             </div>
           </div>
         )}
