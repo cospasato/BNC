@@ -121,9 +121,18 @@ export default function App() {
   const [exps, setExps]   = useState([]);
   const [staff, setStaff] = useState([]);
   const [payMethods, setPayMethods] = useState(["Cash","M-Pesa","Tigo Pesa","Airtel Money","Halopesa","Bank Transfer","Card"]);
-  const [user, setUser]       = useState(null);
-  const [customer, setCustomer] = useState(null); // logged-in customer
-  const [view, setView]   = useState("land");
+  // Restore session from localStorage on first load
+  const [user, setUser]       = useState(() => { try { const s = localStorage.getItem("bnc_staff"); return s ? JSON.parse(s) : null; } catch { return null; } });
+  const [customer, setCustomer] = useState(() => { try { const s = localStorage.getItem("bnc_customer"); return s ? JSON.parse(s) : null; } catch { return null; } });
+  const [view, setView]   = useState(() => {
+    try {
+      const staff   = localStorage.getItem("bnc_staff");
+      const cust    = localStorage.getItem("bnc_customer");
+      if (staff)   return "admin";
+      if (cust)    return "customer";
+      return "land";
+    } catch { return "land"; }
+  });
   const [aTab, setATab]   = useState("dash");
   const [modal, setModal] = useState(null);
   const [custModal, setCustModal] = useState(null); // "login" | "register"
@@ -147,6 +156,7 @@ export default function App() {
   const custLogin = async (email, password) => {
     const u = await api.customerLogin({ email, password });
     setCustomer(u);
+    try { localStorage.setItem("bnc_customer", JSON.stringify(u)); } catch {}
     setCustModal(null);
     if (pendingBookLoc === "__confirm__") {
       // stay on booking step 4 — now logged in, can confirm
@@ -167,6 +177,7 @@ export default function App() {
   const custRegister = async (form) => {
     const u = await api.customerRegister(form);
     setCustomer(u);
+    try { localStorage.setItem("bnc_customer", JSON.stringify(u)); } catch {}
     setCustModal(null);
     pop("Welcome, " + u.name + "! Account created.");
     if (pendingBookLoc === "__confirm__") {
@@ -197,7 +208,11 @@ export default function App() {
   const custUpdateProfile = async (form) => {
     try {
       const updated = await api.customerUpdate(customer.id, form);
-      setCustomer(u => ({ ...u, ...updated }));
+      setCustomer(u => {
+        const next = { ...u, ...updated };
+        try { localStorage.setItem("bnc_customer", JSON.stringify(next)); } catch {}
+        return next;
+      });
       pop("Profile updated");
       return true;
     } catch (err) { pop(err.message, "err"); return false; }
@@ -257,6 +272,13 @@ export default function App() {
 
   useEffect(() => { loadPublic(); }, [loadPublic]);
 
+  // If staff session was restored from localStorage, reload all admin data
+  useEffect(() => {
+    if (user) { loadAll(user); }
+    if (customer) { loadCustBooks(customer.id); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
+
   /* ── AUTH ── */
   /* Local fallback credentials — work even before Neon is set up */
   const LOCAL_USERS = [
@@ -274,6 +296,7 @@ export default function App() {
     const local = LOCAL_USERS.find(u => u.email === email && u.pin === pin);
     if (local) {
       setUser(local);
+      try { localStorage.setItem("bnc_staff", JSON.stringify(local)); } catch {}
       setView("admin");
       setATab("dash");
       setModal(null);
@@ -285,6 +308,7 @@ export default function App() {
     try {
       const u = await api.login(email, pin);
       setUser(u);
+      try { localStorage.setItem("bnc_staff", JSON.stringify(u)); } catch {}
       setView("admin");
       setATab("dash");
       setModal(null);
@@ -495,7 +519,11 @@ export default function App() {
   const updateProfile = async (form) => {
     try {
       const updated = await api.updateProfile(form);
-      setUser(u => ({ ...u, name: updated.name, email: updated.email }));
+      setUser(u => {
+        const next = { ...u, name: updated.name, email: updated.email };
+        try { localStorage.setItem("bnc_staff", JSON.stringify(next)); } catch {}
+        return next;
+      });
       pop('Profile updated');
       return true;
     } catch (err) {
@@ -551,7 +579,7 @@ export default function App() {
               </div>
               <span>{customer.name}</span>
             </button>
-            <button onClick={()=>{setCustomer(null);setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
+            <button onClick={()=>{setCustomer(null);try{localStorage.removeItem("bnc_customer");}catch{} setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
           </>
         ) : !customer && view !== "admin" ? (
           <>
@@ -566,7 +594,7 @@ export default function App() {
               </div>
               <span>{user?.name}</span> <span style={{ color:GOLD }}>· {user?.role}</span>
             </button>
-            <button onClick={()=>{setUser(null);setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
+            <button onClick={()=>{setUser(null);try{localStorage.removeItem("bnc_staff");}catch{} setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
           </>
         ) : <button onClick={()=>setModal("login")} style={{ background:M, color:WH, border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>Staff Login</button>}
       </div>
