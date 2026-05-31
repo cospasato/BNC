@@ -431,15 +431,16 @@ export default function App() {
 
   const saveStaff = async (form, isEdit) => {
     try {
-      const payload = { name: form.name, email: form.email, phone: form.phone, role: form.role, location_id: form.locId || null, pin: form.pin };
+      const payload = { name: form.name, email: form.email, phone: form.phone, role: form.role, location_id: form.locId || null };
+      if (form.pin) payload.pin = form.pin; // only send pin if provided (edits can leave blank)
       if (isEdit) {
         const updated = await api.updateStaff(form.id, payload);
         setStaff(p => p.map(s => s.id === form.id ? mapStaff(updated) : s));
-        pop("Staff updated");
+        pop("Staff account updated");
       } else {
-        const created = await api.createStaff(payload);
+        const created = await api.createStaff({ ...payload, pin: form.pin });
         setStaff(p => [...p, mapStaff(created)]);
-        pop("Account created");
+        pop(`Account created for ${form.name}`);
       }
     } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
@@ -450,6 +451,15 @@ export default function App() {
       setStaff(p => p.map(st => st.id === s.id ? mapStaff(updated) : st));
       pop(!s.active ? "Activated" : "Deactivated");
     } catch (err) { pop(err.message || 'Operation failed', "err"); }
+  };
+
+  const deleteStaff = async (s) => {
+    if (!window.confirm(`Permanently delete "${s.name}"'s account? This cannot be undone.`)) return;
+    try {
+      await api.deleteStaff(s.id);
+      setStaff(p => p.filter(x => x.id !== s.id));
+      pop(`${s.name} deleted`);
+    } catch (err) { pop(err.message || "Delete failed", "err"); }
   };
 
   const deleteLoc = async (id, name) => {
@@ -928,7 +938,7 @@ export default function App() {
         {!loading && aTab==="exps"    && <ExpsTab exps={exps} locs={locs} user={user} saveExp={saveExp} pop={pop}/>}
         {!loading && aTab==="reports" && <ReportsTab books={books} exps={exps} rooms={rooms} locs={locs} allRooms={rooms} user={user}/>}
         {!loading && aTab==="locs"    && user?.role==="Admin" && <LocsTab locs={locs} saveLoc={saveLoc} deleteLoc={deleteLoc} rooms={rooms} books={books} pop={pop}/>}
-        {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} locs={locs} pop={pop}/>}
+        {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} deleteStaff={deleteStaff} locs={locs} pop={pop} currentUser={user}/>}
         {!loading && aTab==="profile" && <ProfileTab user={user} updateProfile={updateProfile}/>}
       </div>
       {modal==="newBook" && <NewBookModal rooms={rooms} locs={locs} user={user} onClose={()=>setModal(null)} onSave={createNewBooking} payMethods={payMethods}/>}
@@ -2161,59 +2171,143 @@ function LocsTab({ locs, saveLoc, deleteLoc, rooms, books, pop }) {
 }
 
 /* ─── STAFF TAB ──────────────────────────────────────────── */
-function StaffTab({ staff, saveStaff, toggleStaff, locs, pop }) {
+function StaffTab({ staff, saveStaff, toggleStaff, deleteStaff, locs, pop, currentUser }) {
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ id: null, name: "", email: "", phone: "", role: "Receptionist", locId: "", pin: "", active: true });
-  const save = () => { if(!form.name||!form.email||!form.pin)return; saveStaff(form,!!form.id); setModal(false); };
+  const [form, setForm]   = useState({ id: null, name: "", email: "", phone: "", role: "Receptionist", locId: "", pin: "", active: true });
+
+  const ROLES = ["Admin", "Manager", "Receptionist", "Housekeeping", "Accountant", "Security"];
+
+  const roleColor = { Admin: M, Manager: IN, Receptionist: OK, Housekeeping: "#7B5EA7", Accountant: WA, Security: G6 };
+
+  const openCreate = () => setForm({ id: null, name: "", email: "", phone: "", role: "Receptionist", locId: locs[0]?.id || "", pin: "", active: true });
+  const openEdit   = s  => setForm({ ...s, pin: "" }); // don't pre-fill pin for security
+
+  const save = () => {
+    if (!form.name || !form.email) return;
+    if (!form.id && !form.pin) return pop("PIN is required for new accounts", "err");
+    saveStaff(form, !!form.id);
+    setModal(false);
+  };
+
+  const initials = name => (name||"?").split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2);
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: 0 }}>Staff Accounts</h2>
-        <Btn onClick={() => { setForm({ id: null, name: "", email: "", phone: "", role: "Receptionist", locId: locs[0]?.id || "", pin: "", active: true }); setModal(true); }}>+ Create Account</Btn>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+        <div>
+          <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:22, margin:"0 0 4px" }}>Staff Accounts</h2>
+          <div style={{ fontSize:13, color:G6 }}>{staff.filter(s=>s.active).length} active · {staff.filter(s=>!s.active).length} inactive</div>
+        </div>
+        <Btn onClick={()=>{ openCreate(); setModal(true); }}>+ Add Staff</Btn>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 13 }}>
-        {staff.map(s => (
-          <Card key={s.id}>
-            <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 13 }}>
-              <div style={{ width: 42, height: 42, background: `linear-gradient(135deg,${M},${ML})`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: WH, fontWeight: 700, fontSize: 15, fontFamily: "'Playfair Display',serif", flexShrink: 0 }}>
-                {s.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)}
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))", gap:14 }}>
+        {staff.map(s => {
+          const isSelf = s.id === currentUser?.id;
+          const roleCol = roleColor[s.role] || G6;
+          return (
+            <Card key={s.id} style={{ opacity: s.active ? 1 : 0.7, borderTop: `3px solid ${roleCol}` }}>
+              {/* Header */}
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                <div style={{ width:44, height:44, background:`linear-gradient(135deg,${roleCol}CC,${roleCol})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", color:WH, fontWeight:700, fontSize:15, fontFamily:"'Playfair Display',serif", flexShrink:0 }}>
+                  {initials(s.name)}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:14, fontFamily:"'Playfair Display',serif", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {s.name} {isSelf && <span style={{ fontSize:10, color:G4, fontWeight:400 }}>(you)</span>}
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:2 }}>
+                    <span style={{ background:`${roleCol}18`, color:roleCol, padding:"2px 8px", borderRadius:99, fontSize:11, fontWeight:700 }}>{s.role}</span>
+                    <span style={{ background:s.active?OKB:G1, color:s.active?OK:G4, padding:"2px 7px", borderRadius:99, fontSize:10, fontWeight:700 }}>{s.active?"Active":"Inactive"}</span>
+                  </div>
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Playfair Display',serif" }}>{s.name}</div>
-                <div style={{ fontSize: 12, color: M, fontWeight: 700 }}>{s.role}</div>
+
+              {/* Details */}
+              <div style={{ marginBottom:12 }}>
+                {[["📧", s.email], ["📞", s.phone||"—"], ["📍", locs.find(l=>l.id===s.locId)?.name||"All Locations"]].map(([icon,val]) => (
+                  <div key={icon} style={{ display:"flex", alignItems:"center", gap:7, padding:"4px 0", fontSize:12, color:G6, borderBottom:`1px solid ${G1}` }}>
+                    <span style={{ width:16, textAlign:"center", flexShrink:0 }}>{icon}</span>
+                    <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{val}</span>
+                  </div>
+                ))}
               </div>
-              <span style={{ background: s.active ? OKB : G1, color: s.active ? OK : G6, padding: "3px 8px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{s.active ? "Active" : "Inactive"}</span>
-            </div>
-            {[["Email", s.email], ["Phone", s.phone], ["Location", locs.find(l => l.id === s.locId)?.name || "All Locations"], ["Joined", s.created]].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${G1}`, fontSize: 12 }}>
-                <span style={{ color: G6 }}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span>
+
+              {/* Actions */}
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={()=>{ openEdit(s); setModal(true); }}
+                  style={{ flex:2, padding:"7px", fontSize:12, borderRadius:7, border:`1px solid ${G2}`, background:"none", cursor:"pointer", color:G6, fontWeight:700, fontFamily:"inherit" }}>
+                  ✏️ Edit
+                </button>
+                <button onClick={()=>toggleStaff(s)}
+                  style={{ flex:2, padding:"7px", fontSize:12, borderRadius:7, border:`1px solid ${s.active?WA:OK}`, background:"none", cursor:"pointer", color:s.active?WA:OK, fontWeight:700, fontFamily:"inherit" }}>
+                  {s.active ? "Deactivate" : "Activate"}
+                </button>
+                {!isSelf && (
+                  <button onClick={()=>deleteStaff(s)}
+                    style={{ flex:1, padding:"7px", fontSize:12, borderRadius:7, border:`1px solid ${ER}`, background:"none", cursor:"pointer", color:ER, fontWeight:700, fontFamily:"inherit" }}>
+                    🗑
+                  </button>
+                )}
               </div>
-            ))}
-            <div style={{ display: "flex", gap: 7, marginTop: 11 }}>
-              <button onClick={() => { setForm({ ...s }); setModal(true); }} style={{ flex: 1, padding: "7px", fontSize: 12, borderRadius: 7, border: `1px solid ${G2}`, background: "none", cursor: "pointer", color: G6, fontWeight: 700, fontFamily: "inherit" }}>Edit</button>
-              <button onClick={() => toggleStaff(s)} style={{ flex: 1, padding: "7px", fontSize: 12, borderRadius: 7, border: `1px solid ${s.active ? ER : OK}`, background: "none", cursor: "pointer", color: s.active ? ER : OK, fontWeight: 700, fontFamily: "inherit" }}>
-                {s.active ? "Deactivate" : "Activate"}
-              </button>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
+        {staff.length === 0 && (
+          <div style={{ color:G4, fontSize:14, padding:20 }}>No staff accounts yet. Add one to get started.</div>
+        )}
       </div>
+
+      {/* Create / Edit Modal */}
       {modal && (
-        <Modal title={form.id ? "Edit Staff" : "Create Staff Account"} onClose={() => setModal(false)}>
-          <Inp label="Full Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Mwangi" />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
-            <Inp label="Email" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@bnc.co.tz" />
-            <Inp label="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+255 7XX…" />
-            <Sel label="Role" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}><option>Manager</option><option>Receptionist</option><option>Housekeeping</option><option>Accountant</option></Sel>
-            <Sel label="Assigned Location" value={form.locId} onChange={e => setForm(f => ({ ...f, locId: e.target.value }))}><option value="">All Locations</option>{locs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</Sel>
+        <Modal title={form.id ? "Edit Staff Account" : "Create Staff Account"} onClose={()=>setModal(false)}>
+          <Inp label="Full Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. John Mwangi" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:11 }}>
+            <Inp label="Email" type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="john@bnc.co.tz" />
+            <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="+255 7XX…" />
           </div>
-          <Inp label="Login PIN (4–6 digits)" type="password" value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" maxLength={6} />
-          <div style={{ background: MF, borderRadius: 8, padding: "9px 13px", fontSize: 12, color: M, marginBottom: 13 }}>
-            Staff log in with their <strong>email</strong> and this <strong>PIN</strong>.
+
+          {/* Role selector — visual chips */}
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:G8, marginBottom:8, textTransform:"uppercase", letterSpacing:".05em" }}>Role</label>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+              {ROLES.map(r => {
+                const sel = form.role === r;
+                const rc  = roleColor[r] || G6;
+                return (
+                  <button key={r} onClick={()=>setForm(f=>({...f,role:r}))}
+                    style={{ padding:"7px 14px", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                      border:`2px solid ${sel?rc:G2}`, background:sel?`${rc}15`:WH, color:sel?rc:G6, transition:"all .15s" }}>
+                    {r}
+                  </button>
+                );
+              })}
+            </div>
+            {form.role === "Admin" && (
+              <div style={{ marginTop:8, background:ERB, borderRadius:7, padding:"7px 11px", fontSize:12, color:ER }}>
+                ⚠️ Admin role grants full access including staff management, reports, and all locations.
+              </div>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Btn v="ghost" onClick={() => setModal(false)} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn onClick={save} disabled={!form.name || !form.email || !form.pin} style={{ flex: 1, justifyContent: "center" }}>Save Account</Btn>
+
+          <Sel label="Assigned Location" value={form.locId} onChange={e=>setForm(f=>({...f,locId:e.target.value}))}>
+            <option value="">All Locations</option>
+            {locs.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+          </Sel>
+
+          <Inp label={form.id ? "New PIN (leave blank to keep current)" : "Login PIN (4–6 digits)"}
+            type="password" value={form.pin} onChange={e=>setForm(f=>({...f,pin:e.target.value}))}
+            placeholder={form.id ? "Leave blank to keep current PIN" : "4–6 digits"} maxLength={6} />
+
+          <div style={{ background:MF, borderRadius:8, padding:"9px 13px", fontSize:12, color:M, marginBottom:14 }}>
+            Staff log in at the admin panel with their <strong>email</strong> and <strong>PIN</strong>.
+          </div>
+
+          <div style={{ display:"flex", gap:10 }}>
+            <Btn v="ghost" onClick={()=>setModal(false)} style={{ flex:1, justifyContent:"center" }}>Cancel</Btn>
+            <Btn onClick={save} disabled={!form.name||!form.email||(!form.id&&!form.pin)} style={{ flex:1, justifyContent:"center" }}>
+              {form.id ? "Save Changes" : "Create Account"}
+            </Btn>
           </div>
         </Modal>
       )}

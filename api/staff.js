@@ -138,6 +138,19 @@ module.exports = async function handler(req, res) {
       return res.status(200).json(rows[0]);
     }
 
+    // DELETE /api/staff?id=X — permanently delete a staff account
+    if (req.method === 'DELETE') {
+      if (!id) return res.status(400).json({ error: 'id required' });
+      // Safety: check it's not the last admin
+      const admins = await sql`SELECT COUNT(*)::int AS n FROM staff WHERE role = 'Admin' AND active = true`;
+      const target  = await sql`SELECT role FROM staff WHERE id = ${id}`;
+      if (!target.length) return res.status(404).json({ error: 'Staff not found' });
+      if (target[0].role === 'Admin' && admins[0].n <= 1)
+        return res.status(400).json({ error: 'Cannot delete the only Admin account.' });
+      await sql`DELETE FROM staff WHERE id = ${id}`;
+      return res.status(200).json({ success: true });
+    }
+
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('staff error:', err.message);

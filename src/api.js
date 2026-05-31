@@ -62,6 +62,7 @@ export const api = {
   getStaff:        ()           => get('/staff'),
   createStaff:     d            => post('/staff', d),
   updateStaff:     (id, d)      => put(`/staff?id=${id}`, d),
+  deleteStaff:     id            => del(`/staff?id=${id}`),
   updateProfile:   d            => put('/staff?me=1', d),
 
   // Reports
