@@ -891,15 +891,15 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: G1, fontFamily: "'DM Sans',sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
       <NavBar/>
-      <div style={{ background: WH, borderBottom: `1px solid ${G2}`, display: "flex" }}>
+      <div style={{ background: WH, borderBottom: `1px solid ${G2}`, display: "flex", overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
         {[["bookings","My Bookings","📋"],["newbooking","Book a Room","🛏️"],["profile","My Profile","👤"]].map(([id,label,icon]) => (
-          <button key={id} onClick={() => { if(id==="newbooking"){setView("book");setBStep(1);}else setCustTab(id); }}
-            style={{ padding: "12px 18px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: custTab === id ? M : G6, borderBottom: `3px solid ${custTab === id ? M : "transparent"}`, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+          <button key={id} onClick={() => { if(id==="newbooking"){setView("book");setBStep(1);window.scrollTo({top:0,behavior:"smooth"});}else setCustTab(id); }}
+            style={{ padding: "12px 16px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: custTab === id ? M : G6, borderBottom: `3px solid ${custTab === id ? M : "transparent"}`, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", flexShrink: 0 }}>
             {icon} {label}
           </button>
         ))}
       </div>
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "16px 12px" }}>
         {custTab === "bookings" && <CustomerBookingsTab customer={customer} custBooks={custBooks} custLoading={custLoading} onCancel={custCancelBooking} onRefresh={() => loadCustBooks(customer.id)} locs={locs} rooms={rooms}/>}
         {custTab === "profile" && <CustomerProfileTab customer={customer} onUpdate={custUpdateProfile}/>}
       </div>
@@ -2555,110 +2555,251 @@ function CustomerBookingsTab({ customer, custBooks, custLoading, onCancel, onRef
   const [sel, setSel] = useState(null);
   const selB = custBooks.find(b => b.id === sel);
 
-  const statusLabel = { pending: "Awaiting Confirmation", confirmed: "Confirmed", checkedIn: "Checked In", checkedOut: "Completed", cancelled: "Cancelled" };
+  const statusLabel  = { pending:"Awaiting Confirmation", confirmed:"Confirmed", checkedIn:"Checked In", checkedOut:"Completed", cancelled:"Cancelled" };
+  const statusIcon   = { pending:"⏳", confirmed:"✅", checkedIn:"🏨", checkedOut:"🎉", cancelled:"✗" };
   const upcoming = custBooks.filter(b => ["pending","confirmed"].includes(b.status));
   const active   = custBooks.filter(b => b.status === "checkedIn");
   const past     = custBooks.filter(b => ["checkedOut","cancelled"].includes(b.status));
 
-  if (custLoading) return <div style={{ textAlign: "center", padding: 60, color: G4 }}>Loading your bookings…</div>;
-
-  if (!custBooks.length) return (
-    <div style={{ textAlign: "center", padding: "60px 20px" }}>
-      <div style={{ fontSize: 52, marginBottom: 16 }}>🛏️</div>
-      <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: BK, marginBottom: 10 }}>No bookings yet</h3>
-      <p style={{ color: G6, fontSize: 15, marginBottom: 24 }}>Browse our properties and make your first booking.</p>
+  if (custLoading) return (
+    <div style={{ textAlign:"center", padding:"60px 20px", color:G4 }}>
+      <div style={{ fontSize:32, marginBottom:12 }}>⏳</div>
+      Loading your bookings…
     </div>
   );
 
+  if (!custBooks.length) return (
+    <div style={{ textAlign:"center", padding:"60px 16px" }}>
+      <div style={{ fontSize:52, marginBottom:16 }}>🛏️</div>
+      <h3 style={{ fontFamily:"'Playfair Display',serif", fontSize:22, color:BK, marginBottom:10 }}>No bookings yet</h3>
+      <p style={{ color:G6, fontSize:15, marginBottom:24, lineHeight:1.6 }}>Browse our properties and make your first booking.</p>
+    </div>
+  );
+
+  /* ── Single booking card — fully mobile-first ── */
   const BookingCard = ({ b }) => {
-    const bal = Number(b.total_amount) - Number(b.paid_amount);
+    const bal    = Number(b.total_amount) - Number(b.paid_amount);
     const photos = b.room_photos || [];
+    const canCancel = ["pending","confirmed"].includes(b.status);
+
     return (
-      <Card style={{ marginBottom: 14, overflow: "hidden", padding: 0 }}>
-        <div style={{ display: "flex" }}>
-          {photos.length > 0 ? (
-            <div style={{ width: 110, flexShrink: 0, background: G2 }}>
-              <img src={photos[0]} alt={b.room_name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      <div style={{ background:WH, border:`1px solid ${G2}`, borderRadius:14, marginBottom:14, overflow:"hidden",
+        boxShadow:"0 1px 4px rgba(0,0,0,.06)" }}>
+
+        {/* Cover photo — full width on mobile */}
+        {photos.length > 0 && (
+          <div style={{ position:"relative", height:160, background:G2 }}>
+            <img src={photos[0]} alt={b.room_name}
+              style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+            <div style={{ position:"absolute", top:10, right:10 }}>
+              <span style={{ background:sB(b.status), color:sC(b.status), padding:"4px 11px", borderRadius:99,
+                fontSize:11, fontWeight:700, backdropFilter:"blur(4px)" }}>
+                {statusIcon[b.status]} {statusLabel[b.status]||b.status}
+              </span>
             </div>
-          ) : (
-            <div style={{ width: 110, flexShrink: 0, background: `linear-gradient(135deg,${MD},${M})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>🛏️</div>
-          )}
-          <div style={{ flex: 1, padding: "14px 16px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          </div>
+        )}
+
+        <div style={{ padding:"14px 16px" }}>
+          {/* Top row: name + status badge (when no photo) */}
+          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10, marginBottom:8 }}>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontWeight:700, fontSize:16, fontFamily:"'Playfair Display',serif", color:BK,
+                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {b.room_name || "Room"}
+              </div>
+              <div style={{ fontSize:12, color:G6, marginTop:2 }}>
+                {b.location_icon} {b.location_name}
+                {b.location_city ? ` · ${b.location_city}` : ""}
+              </div>
+            </div>
+            {photos.length === 0 && (
+              <span style={{ background:sB(b.status), color:sC(b.status), padding:"4px 11px", borderRadius:99,
+                fontSize:11, fontWeight:700, flexShrink:0 }}>
+                {statusIcon[b.status]} {statusLabel[b.status]||b.status}
+              </span>
+            )}
+          </div>
+
+          {/* Date row — stacks on very small screens */}
+          <div style={{ display:"flex", flexWrap:"wrap", gap:"4px 14px", marginBottom:10 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:13, color:G6 }}>
+              <span>📅</span>
+              <span style={{ fontWeight:600, color:BK }}>{b.check_in}</span>
+              <span style={{ color:G4 }}>→</span>
+              <span style={{ fontWeight:600, color:BK }}>{b.check_out}</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:13, color:G6 }}>
+              <span>🌙</span>
+              <span>{b.nights} night{b.nights > 1 ? "s" : ""}</span>
+            </div>
+          </div>
+
+          {/* Amount row */}
+          <div style={{ background:G1, borderRadius:9, padding:"10px 13px", marginBottom:12,
+            display:"flex", flexWrap:"wrap", gap:"6px 16px", alignItems:"center" }}>
+            <div>
+              <div style={{ fontSize:11, color:G6, marginBottom:2 }}>Total</div>
+              <div style={{ fontSize:17, fontWeight:700, color:M, fontFamily:"'Playfair Display',serif" }}>
+                {fmt(b.total_amount)}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:G6, marginBottom:2 }}>Paid</div>
+              <div style={{ fontSize:15, fontWeight:700, color:OK }}>
+                {fmt(b.paid_amount)}
+              </div>
+            </div>
+            {b.status !== "cancelled" && (
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Playfair Display',serif", color: BK }}>{b.room_name || "Room"}</div>
-                <div style={{ fontSize: 12, color: G6 }}>{b.location_icon} {b.location_name} · {b.location_city}</div>
+                <div style={{ fontSize:11, color:G6, marginBottom:2 }}>Balance</div>
+                <div style={{ fontSize:15, fontWeight:700, color:bal>0?ER:OK }}>
+                  {bal > 0 ? fmt(bal) : "✓ Paid"}
+                </div>
               </div>
-              <Badge s={b.status} label={statusLabel[b.status] || b.status} />
+            )}
+            <div style={{ marginLeft:"auto", fontSize:12, color:G6 }}>
+              via {b.payment_method}
             </div>
-            <div style={{ display: "flex", gap: 16, fontSize: 13, color: G6, marginBottom: 10 }}>
-              <span>📅 {b.check_in} → {b.check_out}</span>
-              <span>🌙 {b.nights} night{b.nights > 1 ? "s" : ""}</span>
-            </div>
-            <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <span style={{ fontSize: 16, fontWeight: 700, color: M, fontFamily: "'Playfair Display',serif" }}>{fmt(b.total_amount)}</span>
-                {bal > 0 && b.status !== "cancelled" && <span style={{ fontSize: 12, color: ER, marginLeft: 8 }}>Balance: {fmt(bal)}</span>}
-                {bal === 0 && b.status !== "cancelled" && <span style={{ fontSize: 12, color: OK, marginLeft: 8 }}>✓ Paid in full</span>}
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => setSel(b.id)} style={{ padding: "5px 12px", fontSize: 12, borderRadius: 6, border: `1px solid ${G2}`, background: "none", cursor: "pointer", color: G6, fontFamily: "inherit", fontWeight: 600 }}>Details</button>
-                {["pending","confirmed"].includes(b.status) && (
-                  <button onClick={() => onCancel(b.id)} style={{ padding: "5px 12px", fontSize: 12, borderRadius: 6, border: `1px solid ${ER}`, background: "none", cursor: "pointer", color: ER, fontFamily: "inherit", fontWeight: 600 }}>Cancel</button>
-                )}
-              </div>
+          </div>
+
+          {/* Booking ID + action buttons */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+            <span style={{ fontSize:11, color:G4, fontFamily:"monospace" }}>{b.id}</span>
+            <div style={{ display:"flex", gap:7, flexShrink:0 }}>
+              <button onClick={() => setSel(b.id)}
+                style={{ padding:"8px 16px", fontSize:13, borderRadius:8, border:`1px solid ${G2}`,
+                  background:WH, cursor:"pointer", color:G6, fontFamily:"inherit", fontWeight:600 }}>
+                Details
+              </button>
+              {canCancel && (
+                <button onClick={() => onCancel(b.id)}
+                  style={{ padding:"8px 16px", fontSize:13, borderRadius:8, border:`1px solid ${ER}`,
+                    background:"none", cursor:"pointer", color:ER, fontFamily:"inherit", fontWeight:600 }}>
+                  Cancel
+                </button>
+              )}
             </div>
           </div>
         </div>
-      </Card>
+      </div>
     );
   };
 
+  /* ── Section header ── */
+  const SectionHead = ({ label, color, count }) => (
+    <div style={{ display:"flex", alignItems:"center", gap:8, margin:"20px 0 10px" }}>
+      <div style={{ height:2, flex:1, background:color, opacity:.2, borderRadius:99 }}/>
+      <span style={{ fontSize:11, fontWeight:700, color, textTransform:"uppercase", letterSpacing:".1em", whiteSpace:"nowrap" }}>
+        {label} ({count})
+      </span>
+      <div style={{ height:2, flex:1, background:color, opacity:.2, borderRadius:99 }}/>
+    </div>
+  );
+
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: 0 }}>My Bookings</h2>
-        <button onClick={onRefresh} style={{ background: "none", border: `1px solid ${G2}`, borderRadius: 7, padding: "6px 12px", fontSize: 12, cursor: "pointer", color: G6, fontFamily: "inherit" }}>↻ Refresh</button>
+    <div style={{ paddingBottom:24 }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
+        <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:22, margin:0 }}>My Bookings</h2>
+        <button onClick={onRefresh}
+          style={{ background:"none", border:`1px solid ${G2}`, borderRadius:8, padding:"7px 13px",
+            fontSize:13, cursor:"pointer", color:G6, fontFamily:"inherit", display:"flex", alignItems:"center", gap:5 }}>
+          ↻ Refresh
+        </button>
       </div>
 
-      {/* Summary strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 22 }}>
-        {[["Total", custBooks.length, BK],["Active", active.length, M],["Upcoming", upcoming.length, IN],["Completed", custBooks.filter(b=>b.status==="checkedOut").length, OK]].map(([l,v,c]) => (
-          <div key={l} style={{ background: WH, border: `1px solid ${G2}`, borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ fontSize: 11, color: G6, textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700, marginBottom: 4 }}>{l}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: c, fontFamily: "'Playfair Display',serif" }}>{v}</div>
+      {/* Summary strip — 2×2 on mobile */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:22 }}>
+        {[["Total Bookings", custBooks.length, BK, "📋"],
+          ["Currently In", active.length, M, "🏨"],
+          ["Upcoming", upcoming.length, IN, "⏳"],
+          ["Completed", custBooks.filter(b=>b.status==="checkedOut").length, OK, "🎉"]
+        ].map(([label,val,col,icon]) => (
+          <div key={label} style={{ background:WH, border:`1px solid ${G2}`, borderRadius:12, padding:"14px 16px" }}>
+            <div style={{ fontSize:11, color:G6, fontWeight:700, marginBottom:5, display:"flex", alignItems:"center", gap:5 }}>
+              {icon} <span style={{ textTransform:"uppercase", letterSpacing:".05em" }}>{label}</span>
+            </div>
+            <div style={{ fontSize:26, fontWeight:700, color:col, fontFamily:"'Playfair Display',serif" }}>{val}</div>
           </div>
         ))}
       </div>
 
-      {active.length > 0 && <><div style={{ fontSize: 12, fontWeight: 700, color: M, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>Currently Staying</div>{active.map(b => <BookingCard key={b.id} b={b}/>)}</>}
-      {upcoming.length > 0 && <><div style={{ fontSize: 12, fontWeight: 700, color: IN, textTransform: "uppercase", letterSpacing: ".08em", margin: "16px 0 10px" }}>Upcoming</div>{upcoming.map(b => <BookingCard key={b.id} b={b}/>)}</>}
-      {past.length > 0 && <><div style={{ fontSize: 12, fontWeight: 700, color: G6, textTransform: "uppercase", letterSpacing: ".08em", margin: "16px 0 10px" }}>Past & Cancelled</div>{past.map(b => <BookingCard key={b.id} b={b}/>)}</>}
+      {/* Booking groups */}
+      {active.length > 0 && <>
+        <SectionHead label="Currently Staying" color={M} count={active.length}/>
+        {active.map(b => <BookingCard key={b.id} b={b}/>)}
+      </>}
+      {upcoming.length > 0 && <>
+        <SectionHead label="Upcoming" color={IN} count={upcoming.length}/>
+        {upcoming.map(b => <BookingCard key={b.id} b={b}/>)}
+      </>}
+      {past.length > 0 && <>
+        <SectionHead label="Past & Cancelled" color={G6} count={past.length}/>
+        {past.map(b => <BookingCard key={b.id} b={b}/>)}
+      </>}
 
-      {/* Detail modal */}
+      {/* Detail modal — fully mobile optimised */}
       {sel && selB && (
-        <Modal title={`Booking ${selB.id}`} onClose={() => setSel(null)}>
+        <Modal title="" onClose={() => setSel(null)}>
           {selB.room_photos?.length > 0 && (
-            <img src={selB.room_photos[0]} alt={selB.room_name} style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8, marginBottom: 16 }} />
+            <img src={selB.room_photos[0]} alt={selB.room_name}
+              style={{ width:"100%", height:200, objectFit:"cover", borderRadius:10, marginBottom:16 }}/>
           )}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+
+          {/* Room + status */}
+          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10, marginBottom:16 }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 17, fontFamily: "'Playfair Display',serif" }}>{selB.room_name}</div>
-              <div style={{ fontSize: 13, color: G6 }}>{selB.location_icon} {selB.location_name}, {selB.location_city}</div>
+              <div style={{ fontWeight:700, fontSize:18, fontFamily:"'Playfair Display',serif", color:BK }}>
+                {selB.room_name}
+              </div>
+              <div style={{ fontSize:13, color:G6, marginTop:2 }}>
+                {selB.location_icon} {selB.location_name}{selB.location_city ? `, ${selB.location_city}` : ""}
+              </div>
             </div>
-            <Badge s={selB.status} label={statusLabel[selB.status]} />
+            <span style={{ background:sB(selB.status), color:sC(selB.status), padding:"5px 12px",
+              borderRadius:99, fontSize:12, fontWeight:700, flexShrink:0 }}>
+              {statusLabel[selB.status]}
+            </span>
           </div>
-          {[["Booking ID", selB.id],["Check-in", selB.check_in],["Check-out", selB.check_out],["Nights", selB.nights],["Guests", selB.guests || 1],["Payment Method", selB.payment_method],["Base Amount", fmt(selB.base_amount)],selB.discount > 0 && ["Discount", selB.discount_type === "pct" ? selB.discount + "%" : fmt(selB.discount)],["Total", fmt(selB.total_amount)],["Paid", fmt(selB.paid_amount)],selB.status !== "cancelled" && ["Balance", fmt(selB.total_amount - selB.paid_amount)]].filter(Boolean).map(([k,v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${G1}`, fontSize: 13 }}>
-              <span style={{ color: G6 }}>{k}</span>
-              <span style={{ fontWeight: 700 }}>{v}</span>
+
+          {/* Details grid */}
+          <div style={{ borderRadius:10, border:`1px solid ${G2}`, overflow:"hidden", marginBottom:14 }}>
+            {[
+              ["📋 Booking ID", selB.id],
+              ["📅 Check-in",   selB.check_in],
+              ["📅 Check-out",  selB.check_out],
+              ["🌙 Nights",     `${selB.nights} night${selB.nights>1?"s":""}`],
+              ["💳 Payment",    selB.payment_method],
+              ["💰 Total",      fmt(selB.total_amount)],
+              ["✅ Paid",       fmt(selB.paid_amount)],
+              selB.status !== "cancelled" && ["⚖️ Balance", selB.total_amount-selB.paid_amount > 0 ? fmt(selB.total_amount-selB.paid_amount) : "✓ Paid in full"],
+              selB.discount > 0 && ["🏷️ Discount", selB.discount_type==="pct" ? selB.discount+"%" : fmt(selB.discount)],
+            ].filter(Boolean).map(([k,v], i) => (
+              <div key={k} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                padding:"10px 14px", background: i%2===0 ? WH : G1, fontSize:13, gap:10 }}>
+                <span style={{ color:G6, flexShrink:0 }}>{k}</span>
+                <span style={{ fontWeight:700, textAlign:"right", wordBreak:"break-all" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+
+          {selB.notes && (
+            <div style={{ padding:"10px 13px", background:G1, borderRadius:9, fontSize:13, color:G6, marginBottom:14 }}>
+              📝 {selB.notes}
             </div>
-          ))}
-          {selB.notes && <div style={{ marginTop: 12, padding: "10px 12px", background: G1, borderRadius: 8, fontSize: 13, color: G6 }}>📝 {selB.notes}</div>}
+          )}
+
           {["pending","confirmed"].includes(selB.status) && (
-            <div style={{ marginTop: 16 }}>
-              <Btn v="danger" onClick={() => { onCancel(selB.id); setSel(null); }} style={{ width: "100%", justifyContent: "center" }}>Cancel This Booking</Btn>
-              <div style={{ fontSize: 12, color: G4, textAlign: "center", marginTop: 8 }}>Cancellation is immediate and cannot be undone.</div>
+            <div style={{ borderTop:`1px solid ${G2}`, paddingTop:14 }}>
+              <button onClick={() => { onCancel(selB.id); setSel(null); }}
+                style={{ width:"100%", padding:"12px", border:`2px solid ${ER}`, borderRadius:9,
+                  background:"none", color:ER, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                Cancel This Booking
+              </button>
+              <div style={{ fontSize:12, color:G4, textAlign:"center", marginTop:7 }}>
+                Cancellation is immediate and cannot be undone.
+              </div>
             </div>
           )}
         </Modal>
