@@ -37,6 +37,7 @@ export const api = {
   getLocations:   ()           => get('/locations'),
   createLocation: d            => post('/locations', d),
   updateLocation: (id, d)      => put(`/locations/${id}`, d),
+  deleteLocation: id             => req('DELETE', `/locations/${id}`),
   getRooms:       locId        => get('/rooms' + (locId ? `?location_id=${locId}` : '')),
   createRoom:     d            => post('/rooms', d),
   updateRoom:     (id, d)      => put(`/rooms/${id}`, d),
@@ -49,5 +50,6 @@ export const api = {
   getStaff:       ()           => get('/staff'),
   createStaff:    d            => post('/staff', d),
   updateStaff:    (id, d)      => put(`/staff/${id}`, d),
+  updateProfile:  d            => put('/staff/me', d),
   getReports:     locId        => get('/reports/summary' + (locId ? `?location_id=${locId}` : '')),
 }

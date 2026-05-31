@@ -314,6 +314,15 @@ export default function App() {
     } catch (err) { pop(err.message || 'Operation failed', "err"); }
   };
 
+  const deleteLoc = async (id, name) => {
+    if (!window.confirm(`Delete "${name}"? This hides it from the app. Rooms and bookings are kept.`)) return;
+    try {
+      await api.deleteLocation(id);
+      setLocs(p => p.filter(l => l.id !== id));
+      pop(`"${name}" deleted`);
+    } catch (err) { pop(err.message || 'Delete failed', 'err'); }
+  };
+
   const saveLoc = async (form, isEdit) => {
     try {
       if (isEdit) {
@@ -332,6 +341,18 @@ export default function App() {
       } else {
         pop(msg || "Failed to save location", "err");
       }
+    }
+  };
+
+  const updateProfile = async (form) => {
+    try {
+      const updated = await api.updateProfile(form);
+      setUser(u => ({ ...u, name: updated.name, email: updated.email }));
+      pop('Profile updated');
+      return true;
+    } catch (err) {
+      pop(err.message || 'Update failed', 'err');
+      return false;
     }
   };
 
@@ -356,6 +377,7 @@ export default function App() {
     { id:"rooms",label:"Rooms",icon:"🛏️" }, { id:"pays",label:"Payments",icon:"💳" },
     { id:"exps",label:"Expenses",icon:"📤" }, { id:"reports",label:"Reports",icon:"📈" },
     ...(user?.role === "Admin" ? [{ id:"locs",label:"Locations",icon:"📍" }, { id:"staff",label:"Staff",icon:"👥" }] : []),
+    { id:"profile",label:"My Profile",icon:"👤" },
   ];
 
   const NavBar = () => (
@@ -371,9 +393,17 @@ export default function App() {
       </div>
       <div style={{ display:"flex", gap:8 }}>
         {view !== "book" && <button onClick={()=>{setView("book");setBStep(1);}} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.25)", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Book a Room</button>}
-        {user
-          ? <button onClick={()=>{setUser(null);setView("land");}} style={{ background:M, color:WH, border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>Logout</button>
-          : <button onClick={()=>setModal("login")} style={{ background:M, color:WH, border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>Staff Login</button>}
+        {user ? (
+          <>
+            <button onClick={()=>setATab("profile")} style={{ background:"transparent", color:WH, border:"1px solid rgba(255,255,255,.2)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
+              <div style={{ width:22, height:22, background:M, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:WH, border:"1.5px solid rgba(255,255,255,.3)", flexShrink:0 }}>
+                {(user?.name||"?").split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2)}
+              </div>
+              <span>{user?.name}</span> <span style={{ color:GOLD }}>· {user?.role}</span>
+            </button>
+            <button onClick={()=>{setUser(null);setView("land");}} style={{ background:"transparent", color:G4, border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Logout</button>
+          </>
+        ) : <button onClick={()=>setModal("login")} style={{ background:M, color:WH, border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>Staff Login</button>}
       </div>
     </nav>
   );
@@ -622,8 +652,9 @@ export default function App() {
         {!loading && aTab==="pays"    && <PaysTab books={books} rooms={rooms} recPay={recPay}/>}
         {!loading && aTab==="exps"    && <ExpsTab exps={exps} locs={locs} user={user} saveExp={saveExp} pop={pop}/>}
         {!loading && aTab==="reports" && <ReportsTab books={books} exps={exps} rooms={rooms} locs={locs} allRooms={rooms} user={user}/>}
-        {!loading && aTab==="locs"    && user?.role==="Admin" && <LocsTab locs={locs} saveLoc={saveLoc} rooms={rooms} books={books} pop={pop}/>}
+        {!loading && aTab==="locs"    && user?.role==="Admin" && <LocsTab locs={locs} saveLoc={saveLoc} deleteLoc={deleteLoc} rooms={rooms} books={books} pop={pop}/>}
         {!loading && aTab==="staff"   && user?.role==="Admin" && <StaffTab staff={staff} saveStaff={saveStaff} toggleStaff={toggleStaff} locs={locs} pop={pop}/>}
+        {!loading && aTab==="profile" && <ProfileTab user={user} updateProfile={updateProfile}/>}
       </div>
       {modal==="newBook" && <NewBookModal rooms={rooms} locs={locs} user={user} onClose={()=>setModal(null)} onSave={createNewBooking}/>}
       {modal==="login" && <LoginModal loginF={loginF} setLoginF={setLoginF} loginErr={loginErr} doLogin={doLogin} onClose={()=>{setModal(null);setLoginErr("");}} />}
@@ -1145,7 +1176,7 @@ function ReportsTab({ books, exps, rooms, locs, allRooms }) {
 }
 
 /* ─── LOCATIONS TAB ──────────────────────────────────────── */
-function LocsTab({ locs, saveLoc, rooms, books, pop }) {
+function LocsTab({ locs, saveLoc, deleteLoc, rooms, books, pop }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ id: null, name: "", city: "", addr: "", icon: "🏙️", desc: "" });
   const save = () => { saveLoc(form, !!form.id); setModal(false); };
@@ -1167,7 +1198,10 @@ function LocsTab({ locs, saveLoc, rooms, books, pop }) {
                   <span style={{ fontSize: 26 }}>{loc.icon}</span>
                   <div><div style={{ fontWeight: 700, fontFamily: "'Playfair Display',serif" }}>{loc.name}</div><div style={{ fontSize: 12, color: G6 }}>{loc.city}</div></div>
                 </div>
+                <div style={{ display:"flex", gap:5 }}>
                 <button onClick={() => { setForm({ ...loc }); setModal(true); }} style={{ background: "none", border: `1px solid ${G2}`, borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: G6, fontFamily: "inherit" }}>Edit</button>
+                <button onClick={() => deleteLoc(loc.id, loc.name)} style={{ background: "none", border: `1px solid ${ER}`, borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: ER, fontFamily: "inherit" }}>Delete</button>
+              </div>
               </div>
               <div style={{ fontSize: 12, color: G6, marginBottom: 8 }}>{loc.addr}</div>
               <div style={{ fontSize: 12, color: G6, marginBottom: 12, fontStyle: "italic" }}>{loc.desc}</div>
@@ -1253,6 +1287,113 @@ function StaffTab({ staff, saveStaff, toggleStaff, locs, pop }) {
             <Btn onClick={save} disabled={!form.name || !form.email || !form.pin} style={{ flex: 1, justifyContent: "center" }}>Save Account</Btn>
           </div>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+
+/* ─── PROFILE TAB ────────────────────────────────────────── */
+function ProfileTab({ user, updateProfile }) {
+  const [form, setForm]     = useState({ name: user?.name || "", email: user?.email || "", phone: user?.phone || "" });
+  const [pinForm, setPinForm] = useState({ current_pin: "", new_pin: "", confirm_pin: "" });
+  const [saving, setSaving] = useState(false);
+  const [pinErr, setPinErr] = useState("");
+  const [section, setSection] = useState("details"); // details | pin
+
+  const saveDetails = async () => {
+    if (!form.name || !form.email) return;
+    setSaving(true);
+    await updateProfile({ id: user.id, name: form.name, email: form.email, phone: form.phone });
+    setSaving(false);
+  };
+
+  const savePin = async () => {
+    setPinErr("");
+    if (!pinForm.current_pin) return setPinErr("Enter your current PIN");
+    if (!pinForm.new_pin || pinForm.new_pin.length < 4) return setPinErr("New PIN must be at least 4 digits");
+    if (pinForm.new_pin !== pinForm.confirm_pin) return setPinErr("New PINs do not match");
+    setSaving(true);
+    const ok = await updateProfile({ id: user.id, current_pin: pinForm.current_pin, new_pin: pinForm.new_pin });
+    setSaving(false);
+    if (ok) setPinForm({ current_pin: "", new_pin: "", confirm_pin: "" });
+  };
+
+  const initials = (user?.name || "?").split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, margin: "0 0 22px" }}>My Profile</h2>
+
+      {/* Avatar + role card */}
+      <Card style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+        <div style={{ width: 56, height: 56, background: `linear-gradient(135deg,${M},${ML})`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: WH, fontWeight: 700, fontSize: 20, fontFamily: "'Playfair Display',serif", flexShrink: 0 }}>
+          {initials}
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 17, fontFamily: "'Playfair Display',serif" }}>{user?.name}</div>
+          <div style={{ fontSize: 13, color: M, fontWeight: 700, marginTop: 2 }}>{user?.role}</div>
+          <div style={{ fontSize: 12, color: G6, marginTop: 2 }}>{user?.email}</div>
+        </div>
+      </Card>
+
+      {/* Section tabs */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 20, border: `1px solid ${G2}`, borderRadius: 8, overflow: "hidden" }}>
+        {[["details", "Personal Details"], ["pin", "Change PIN"]].map(([id, label]) => (
+          <button key={id} onClick={() => { setSection(id); setPinErr(""); }}
+            style={{ flex: 1, padding: "10px", border: "none", background: section === id ? M : WH, color: section === id ? WH : G6, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "background 0.15s" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Personal details */}
+      {section === "details" && (
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, color: BK }}>Personal Details</div>
+          <Inp label="Full Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Your name" />
+          <Inp label="Email Address" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="your@email.com" />
+          <Inp label="Phone Number" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+255 7XX XXX XXX" />
+          <div style={{ background: G1, borderRadius: 8, padding: "10px 13px", fontSize: 12, color: G6, marginBottom: 16 }}>
+            Role and location assignment can only be changed by an Admin.
+          </div>
+          <Btn onClick={saveDetails} disabled={saving || !form.name || !form.email} style={{ width: "100%", justifyContent: "center" }}>
+            {saving ? "Saving…" : "Save Changes"}
+          </Btn>
+        </Card>
+      )}
+
+      {/* Change PIN */}
+      {section === "pin" && (
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, color: BK }}>Change PIN</div>
+          <div style={{ marginBottom: 13 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Current PIN</label>
+            <input type="password" value={pinForm.current_pin} onChange={e => setPinForm(f => ({ ...f, current_pin: e.target.value }))}
+              placeholder="Enter current PIN" maxLength={6}
+              style={{ width: "100%", padding: "9px 12px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+          </div>
+          <div style={{ height: 1, background: G2, margin: "16px 0" }} />
+          <div style={{ marginBottom: 13 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>New PIN</label>
+            <input type="password" value={pinForm.new_pin} onChange={e => setPinForm(f => ({ ...f, new_pin: e.target.value }))}
+              placeholder="4–6 digits" maxLength={6}
+              style={{ width: "100%", padding: "9px 12px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: G8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Confirm New PIN</label>
+            <input type="password" value={pinForm.confirm_pin} onChange={e => setPinForm(f => ({ ...f, confirm_pin: e.target.value }))}
+              placeholder="Re-enter new PIN" maxLength={6}
+              style={{ width: "100%", padding: "9px 12px", border: `1px solid ${G2}`, borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+          </div>
+          {pinErr && <div style={{ background: ERB, color: ER, borderRadius: 8, padding: "9px 13px", fontSize: 13, marginBottom: 14 }}>{pinErr}</div>}
+          <Btn onClick={savePin} disabled={saving} style={{ width: "100%", justifyContent: "center" }}>
+            {saving ? "Updating…" : "Update PIN"}
+          </Btn>
+          <div style={{ marginTop: 12, fontSize: 12, color: G6, textAlign: "center" }}>
+            After changing your PIN, use the new PIN at your next login.
+          </div>
+        </Card>
       )}
     </div>
   );
