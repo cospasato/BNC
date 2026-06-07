@@ -1,88 +1,78 @@
 // src/api.js
-const BASE = ''
-
 async function req(method, path, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } }
-  if (body) opts.body = JSON.stringify(body)
-
-  const res = await fetch(`${BASE}/api${path}`, opts)
-  const text = await res.text()
-
-  if (!text || text.trim() === '') {
-    if (!res.ok) throw new Error(`Request failed (${res.status}) — empty response`)
-    return {}
-  }
-
-  let data
-  try {
-    data = JSON.parse(text)
-  } catch {
-    console.error('Non-JSON response:', text.slice(0, 200))
-    throw new Error(`Server error (${res.status}). Check Vercel function logs.`)
-  }
-
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
-  return data
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res  = await fetch(`/api/spa?${path}`, opts);
+  const text = await res.text();
+  if (!text?.trim()) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return {}; }
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error(`Server error (${res.status})`); }
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
 }
-
-const get  = path       => req('GET',    path)
-const post = (path, b)  => req('POST',   path, b)
-const put  = (path, b)  => req('PUT',    path, b)
-const del  = path       => req('DELETE', path)
+const g  = path       => req('GET',    path);
+const p  = (path, b)  => req('POST',   path, b);
+const pt = (path, b)  => req('PUT',    path, b);
+const d  = path       => req('DELETE', path);
 
 export const api = {
-  // Staff auth
-  login:           (email, pin) => post('/auth', { email, pin }),
+  // Auth
+  staffLogin:    b      => p('resource=staff&action=login', b),
+  custRegister:  b      => p('resource=customers&action=register', b),
+  custLogin:     b      => p('resource=customers&action=login', b),
+  custAppts:     id     => g(`resource=customers&id=${id}`),
 
-  // Locations
-  getLocations:    ()           => get('/locations'),
-  createLocation:  d            => post('/locations', d),
-  updateLocation:  (id, d)      => put(`/locations?id=${id}`, d),
-  deleteLocation:  id           => del(`/locations?id=${id}`),
+  // Therapists
+  getTherapists:    ()      => g('resource=therapists'),
+  createTherapist:  b       => p('resource=therapists', b),
+  updateTherapist:  (id,b)  => pt(`resource=therapists&id=${id}`, b),
+  deleteTherapist:  id      => d(`resource=therapists&id=${id}`),
 
   // Rooms
-  getRooms:        locId        => get('/rooms' + (locId ? `?location_id=${locId}` : '')),
-  createRoom:      d            => post('/rooms', d),
-  updateRoom:      (id, d)      => put(`/rooms?id=${id}`, d),
-  deleteRoom:      id           => del(`/rooms?id=${id}`),
+  getRooms:    ()      => g('resource=rooms'),
+  createRoom:  b       => p('resource=rooms', b),
+  updateRoom:  (id,b)  => pt(`resource=rooms&id=${id}`, b),
+  deleteRoom:  id      => d(`resource=rooms&id=${id}`),
 
-  // Bookings
-  getBookings:     locId        => get('/bookings' + (locId ? `?location_id=${locId}` : '')),
-  createBooking:   d            => post('/bookings', d),
-  updateBooking:   (id, d)      => put(`/bookings?id=${id}`, d),
-  recordPayment:   (id, amount) => put(`/bookings?id=${id}`, { add_payment: amount }),
-  extendBooking:   (id, d)      => put(`/bookings?id=${id}&action=extend`, d),
-  deleteBooking:   id           => del(`/bookings?id=${id}`),
+  // Services + Pricing
+  getServices:   ()             => g('resource=services'),
+  createService: b              => p('resource=services', b),
+  updateService: (id,b)         => pt(`resource=services&id=${id}`, b),
+  upsertPrice:   b              => p('resource=pricing', b),
+  deletePrice:   id             => d(`resource=pricing&id=${id}`),
 
-  // Expenses
-  getExpenses:     locId        => get('/expenses' + (locId ? `?location_id=${locId}` : '')),
-  createExpense:   d            => post('/expenses', d),
+  // Offers
+  getOffers:    ()      => g('resource=offers'),
+  createOffer:  b       => p('resource=offers', b),
+  updateOffer:  (id,b)  => pt(`resource=offers&id=${id}`, b),
+  deleteOffer:  id      => d(`resource=offers&id=${id}`),
+
+  // Appointments
+  getAppointments: (params='') => g(`resource=appointments${params?'&'+params:''}`),
+  createAppt:      b           => p('resource=appointments', b),
+  updateAppt:      (id,b)      => pt(`resource=appointments&id=${id}`, b),
+  deleteAppt:      id          => d(`resource=appointments&id=${id}`),
+
+  // Reception log
+  getReception:    (date='') => g(`resource=reception${date?'&date='+date:''}`),
+  createReception: b         => p('resource=reception', b),
+  updateReception: (id,b)    => pt(`resource=reception&id=${id}`, b),
 
   // Staff
-  getStaff:        ()           => get('/staff'),
-  createStaff:     d            => post('/staff', d),
-  updateStaff:     (id, d)      => put(`/staff?id=${id}`, d),
-  deleteStaff:     id            => del(`/staff?id=${id}`),
-  updateProfile:   d            => put('/staff?me=1', d),
+  getStaff:      ()      => g('resource=staff'),
+  createStaff:   b       => p('resource=staff', b),
+  updateStaff:   (id,b)  => pt(`resource=staff&id=${id}`, b),
+  deleteStaff:   id      => d(`resource=staff&id=${id}`),
+
+  // Expenses
+  getExpenses:    () => g('resource=expenses'),
+  createExpense:  b  => p('resource=expenses', b),
+
+  // Payment methods
+  getPayMethods:    ()      => g('resource=payment_methods'),
+  createPayMethod:  name    => p('resource=payment_methods', { name }),
+  deletePayMethod:  id      => d(`resource=payment_methods&id=${id}`),
 
   // Reports
-  getReports:      locId        => get('/reports' + (locId ? `?location_id=${locId}` : '')),
-
-  // Customers
-  customerRegister: d           => post('/customers?action=register', d),
-  customerLogin:    d           => post('/customers?action=login', d),
-  customerBookings: id          => get(`/customers?customer_id=${id}`),
-  customerUpdate:   (id, d)     => put(`/customers?customer_id=${id}`, d),
-  customerCancel:   (id, cid)   => put(`/bookings?id=${id}&customer_cancel=1`, { customer_id: cid }),
-}
-
-// Payment methods + availability (appended)
-Object.assign(api, {
-  getPayMethods:     ()           => get('/staff?resource=payment_methods'),
-  createPayMethod:   name         => post('/staff?resource=payment_methods', { name }),
-  updatePayMethod:   (pmId, d)    => put('/staff?resource=payment_methods', { ...d, pmId }),
-  deletePayMethod:   pmId         => req('DELETE', '/staff?resource=payment_methods', { pmId }),
-  getBookedDates:    locId        => get(`/bookings?get_booked_dates=${locId}`),
-  checkAvailability: (roomId, ci, co) => get(`/bookings?check_room=${roomId}&ci=${ci}&co=${co}`),
-  getReports:        (locId, df, dt) => get('/reports' + [locId?`location_id=${locId}`:'', df?`date_from=${df}`:'', dt?`date_to=${dt}`:''].filter(Boolean).reduce((s,p,i)=>s+(i===0?'?':'&')+p, '')),
-})
+  getReports:  (df, dt) => g(`resource=reports${df?'&date_from='+df:''}${dt?'&date_to='+dt:''}`),
+};
