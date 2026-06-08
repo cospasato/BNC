@@ -1,58 +1,53 @@
-const { getDb, setCors, dbError } = require('./_db.js');
+const { getDb, setCors } = require('./_db.js');
 
 module.exports = async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
-
   let sql;
   try { sql = getDb(); } catch (e) { return res.status(500).json({ error: e.message }); }
 
   try {
-    // Check spa tables exist
-    const found = await sql`
-      SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public'
-      AND table_name IN ('staff','therapists','rooms','services','appointments','reception_log','customers','payment_methods')
-    `;
-    const names = found.map(r => r.table_name);
-    const missing = ['staff','therapists','rooms','services','appointments','reception_log','customers','payment_methods'].filter(t => !names.includes(t));
-
-    if (missing.length > 0) {
-      return res.status(200).json({ ok: false, message: 'Missing tables: ' + missing.join(', ') + '. Run schema.sql in Neon SQL Editor.', missing });
-    }
-
-    // Auto-run therapist column migrations (safe - IF NOT EXISTS)
+    // Auto-run all migrations safely (IF NOT EXISTS / try-catch each)
     const migrations = [
-      sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS pin_hash TEXT`,
-      sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}'`,
-      sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS availability TEXT NOT NULL DEFAULT 'available'`,
-      sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS email_unique TEXT`,
+      // Therapist new columns
+      `ALTER TABLE therapists ADD COLUMN IF NOT EXISTS pin_hash TEXT`,
+      `ALTER TABLE therapists ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}'`,
+      `ALTER TABLE therapists ADD COLUMN IF NOT EXISTS availability TEXT NOT NULL DEFAULT 'available'`,
+      `ALTER TABLE therapists ADD COLUMN IF NOT EXISTS email_unique TEXT`,
+      // Rooms new columns (added back with description + amenities)
+      `ALTER TABLE rooms ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE rooms ADD COLUMN IF NOT EXISTS amenities TEXT[] NOT NULL DEFAULT '{}'`,
+      // Drop location_id from rooms if it exists (leftover from old lodge schema)
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS location_id`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS room_type`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS capacity`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS status`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS beds`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS max_guests`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS price_per_night`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS photos`,
+      `ALTER TABLE rooms DROP COLUMN IF EXISTS video_url`,
     ];
-    const migResults = [];
+
+    const results = [];
     for (const m of migrations) {
-      try { await m; migResults.push('ok'); } catch(e) { migResults.push(e.message); }
+      try { await sql.unsafe(m); results.push({ ok: true, sql: m.slice(0, 60) }); }
+      catch(e) { results.push({ ok: false, sql: m.slice(0, 60), err: e.message }); }
     }
-    // Set email_unique from email for existing rows
+
+    // Sync email_unique for existing therapists
     await sql`UPDATE therapists SET email_unique = email WHERE email IS NOT NULL AND email_unique IS NULL`.catch(()=>{});
 
-    const [st,th,rm,sv,ap,rl,cu,pm] = await Promise.all([
-      sql`SELECT COUNT(*)::int AS n FROM staff`,
-      sql`SELECT COUNT(*)::int AS n FROM therapists`,
-      sql`SELECT COUNT(*)::int AS n FROM rooms`,
-      sql`SELECT COUNT(*)::int AS n FROM services`,
-      sql`SELECT COUNT(*)::int AS n FROM appointments`,
-      sql`SELECT COUNT(*)::int AS n FROM reception_log`,
-      sql`SELECT COUNT(*)::int AS n FROM customers`,
-      sql`SELECT COUNT(*)::int AS n FROM payment_methods`,
-    ]);
+    // Count rows in each table
+    const tables = ['staff','therapists','rooms','services','pricing','appointments','reception_log','customers','payment_methods'];
+    const counts = {};
+    for (const t of tables) {
+      try { const r = await sql.unsafe(`SELECT COUNT(*)::int AS n FROM ${t}`); counts[t] = r[0].n; }
+      catch(e) { counts[t] = `missing: ${e.message}`; }
+    }
 
-    return res.status(200).json({
-      ok: true,
-      message: 'MASSAGE TZ database ready ✓',
-      migrations: migResults,
-      counts: { staff: st[0].n, therapists: th[0].n, rooms: rm[0].n, services: sv[0].n, appointments: ap[0].n, reception_log: rl[0].n, customers: cu[0].n, payment_methods: pm[0].n }
-    });
+    return res.status(200).json({ ok: true, message: 'MASSAGE TZ — setup complete ✓', migrations: results, counts });
   } catch (err) {
-    return res.status(500).json({ error: dbError(err) });
+    return res.status(500).json({ error: err.message });
   }
 };
