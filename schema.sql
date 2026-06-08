@@ -181,3 +181,13 @@ CREATE INDEX IF NOT EXISTS idx_appt_status     ON appointments(status);
 CREATE INDEX IF NOT EXISTS idx_appt_therapist  ON appointments(therapist_id);
 CREATE INDEX IF NOT EXISTS idx_recep_in_time   ON reception_log(in_time);
 CREATE INDEX IF NOT EXISTS idx_pricing_service ON pricing(service_id);
+
+-- ── THERAPIST ACCOUNT MIGRATIONS ─────────────────────────────
+-- Run these if you already have the therapists table:
+ALTER TABLE therapists ADD COLUMN IF NOT EXISTS pin_hash TEXT;
+ALTER TABLE therapists ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE therapists ADD COLUMN IF NOT EXISTS availability TEXT NOT NULL DEFAULT 'available'
+  CHECK (availability IN ('available','unavailable','outcall_only'));
+ALTER TABLE therapists ADD COLUMN IF NOT EXISTS email_unique TEXT UNIQUE;
+-- Copy existing email to email_unique for login
+UPDATE therapists SET email_unique = email WHERE email IS NOT NULL AND email_unique IS NULL;

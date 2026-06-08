@@ -108,11 +108,13 @@ async function compressPhoto(file){
 export default function App(){
   // ── Session (persisted) ──
   const [user,setUser]         = useState(()=>{try{const s=localStorage.getItem("spa_staff");return s?JSON.parse(s):null;}catch{return null;}});
+  const [therapistUser,setTherapistUser] = useState(()=>{try{const s=localStorage.getItem("spa_therapist");return s?JSON.parse(s):null;}catch{return null;}});
   const [customer,setCustomer] = useState(()=>{try{const s=localStorage.getItem("spa_customer");return s?JSON.parse(s):null;}catch{return null;}});
   const [view,setView]         = useState(()=>{
     try{
-      if(localStorage.getItem("spa_staff"))   return "admin";
-      if(localStorage.getItem("spa_customer"))return "customer";
+      if(localStorage.getItem("spa_staff"))     return "admin";
+      if(localStorage.getItem("spa_therapist")) return "therapist";
+      if(localStorage.getItem("spa_customer"))  return "customer";
       return "land";
     }catch{return "land";}
   });
@@ -190,6 +192,7 @@ export default function App(){
   useEffect(()=>{
     if(user) loadAdmin();
     if(customer) loadCustAppts(customer.id);
+    if(therapistUser) loadPublic(); // therapist needs public data (services, rooms etc)
   // eslint-disable-next-line
   },[]);
 
@@ -222,9 +225,18 @@ export default function App(){
   const doLogin = async(email,pin)=>{
     try{
       const u=await api.staffLogin({email,pin});
-      setUser(u); try{localStorage.setItem("spa_staff",JSON.stringify(u));}catch{}
-      navTo("admin"); setATab("dash"); setModal(null);
-      await loadAdmin();
+      if(u.account_type==="therapist"){
+        // Therapist account — go to therapist portal
+        setTherapistUser(u);
+        try{localStorage.setItem("spa_therapist",JSON.stringify(u));}catch{}
+        setModal(null); navTo("therapist");
+        await loadPublic();
+      } else {
+        setUser(u);
+        try{localStorage.setItem("spa_staff",JSON.stringify(u));}catch{}
+        setModal(null); navTo("admin"); setATab("dash");
+        await loadAdmin();
+      }
     }catch(e){throw e;}
   };
   const custLogin = async(email,password)=>{
@@ -242,6 +254,7 @@ export default function App(){
     else{ navTo("customer"); loadCustAppts(u.id); }
   };
   const logout = ()=>{ setUser(null); try{localStorage.removeItem("spa_staff");}catch{} navTo("land"); };
+  const therapistLogout = ()=>{ setTherapistUser(null); try{localStorage.removeItem("spa_therapist");}catch{} navTo("land"); };
   const custLogout = ()=>{ setCustomer(null); try{localStorage.removeItem("spa_customer");}catch{} navTo("land"); };
 
   // ── BOOKING HELPERS ──
@@ -292,7 +305,16 @@ export default function App(){
       </div>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         {!isMobile&&!customer&&!user&&<button onClick={()=>navTo("book",1)} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.25)",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Book Now</button>}
-        {customer&&!user&&(
+        {therapistUser&&!user&&(
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>navTo("therapist")} style={{background:"transparent",color:WH,border:`1px solid ${PL}`,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>💆</span>
+              {!isMobile&&therapistUser.name}
+            </button>
+            <button onClick={therapistLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
+          </div>
+        )}
+        {customer&&!user&&!therapistUser&&(
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button onClick={()=>navTo("customer")} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
               <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{customer.name?.[0]?.toUpperCase()}</span>
@@ -757,10 +779,11 @@ export default function App(){
   // ── ROOT RENDER ──
   return(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",minHeight:"100vh",background:G1}}>
-      {view==="land"    &&<Landing/>}
-      {view==="book"    &&<BookingPortal/>}
-      {view==="customer"&&customer&&<CustomerPortal/>}
-      {view==="admin"   &&user&&<AdminPortal/>}
+      {view==="land"      &&<Landing/>}
+      {view==="book"      &&<BookingPortal/>}
+      {view==="customer"  &&customer&&<CustomerPortal/>}
+      {view==="admin"     &&user&&<AdminPortal/>}
+      {view==="therapist" &&therapistUser&&<TherapistPortal therapistUser={therapistUser} setTherapistUser={setTherapistUser} therapistLogout={therapistLogout} pricing={pricing} services={services} rooms={rooms} pop={pop}/>}
       {/* Modals */}
       {modal==="login"&&<StaffLoginModal onLogin={doLogin} onClose={()=>setModal(null)} pop={pop}/>}
       {custModal&&<CustAuthModal mode={custModal} setMode={setCustModal} onLogin={custLogin} onRegister={custRegister} onClose={()=>{setCustModal(null);setPendingBook(false);}} bookingIntent={pendingBook}/>}
@@ -1233,16 +1256,22 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
 
 function TherapistsTab({therapists,setTherapists,pop}){
   const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",phone:"",email:"",bio:"",photo:"",specialties:"",outcall:true,active:true});
+  const [form,setForm]=useState({id:null,name:"",phone:"",email:"",bio:"",photo:"",photos:[],specialties:"",outcall:true,active:true,pin:"",availability:"available"});
 
-  const open=(t)=>{if(t) setForm({...t,specialties:(t.specialties||[]).join(", ")});else setForm({id:null,name:"",phone:"",email:"",bio:"",photo:"",specialties:"",outcall:true,active:true}); setModal(true);};
+  const open=(t)=>{if(t) setForm({...t,specialties:(t.specialties||[]).join(", "),pin:"",photos:t.photos||[]});else setForm({id:null,name:"",phone:"",email:"",bio:"",photo:"",photos:[],specialties:"",outcall:true,active:true,pin:"",availability:"available"}); setModal(true);};
 
   const save=async()=>{
     if(!form.name) return;
     const specs = typeof form.specialties==="string"
       ? form.specialties.split(",").map(s=>s.trim()).filter(Boolean)
       : (form.specialties||[]);
-    const payload={name:form.name,phone:form.phone||"",email:form.email||"",bio:form.bio||"",photo:form.photo||null,specialties:specs,outcall:!!form.outcall,active:form.active!==false};
+    const payload={
+      name:form.name, phone:form.phone||"", email:form.email||"",
+      bio:form.bio||"", photo:form.photo||null, photos:form.photos||[],
+      specialties:specs, outcall:!!form.outcall, active:form.active!==false,
+      availability:form.availability||"available"
+    };
+    if(form.pin) payload.pin=form.pin;
     try{
       if(form.id){ const u=await api.updateTherapist(form.id,payload); setTherapists(p=>p.map(t=>t.id===form.id?u:t)); pop("Therapist updated"); }
       else{ const u=await api.createTherapist(payload); setTherapists(p=>[...p,u]); pop("Therapist added"); }
@@ -1299,27 +1328,38 @@ function TherapistsTab({therapists,setTherapists,pop}){
       </div>
       {modal&&(
         <Modal title={form.id?"Edit Therapist":"Add Therapist"} onClose={()=>setModal(false)} wide>
-          <Inp label="Full Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Aisha Mwangi"/>
+          <Inp label="Full Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Aisha Mwangi"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
             <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/>
-            <Inp label="Email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/>
+            <Inp label="Email (for login)" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="aisha@massagetz.com"/>
           </div>
           <Inp label="Specialties (comma separated)" value={form.specialties} onChange={e=>setForm(f=>({...f,specialties:e.target.value}))} placeholder="Swedish, Deep Tissue, Hot Stone"/>
           <Txa label="Bio" value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} rows={2} placeholder="Short therapist bio…"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <Inp label={form.id?"New Login PIN (blank = keep)":"Login PIN (4–6 digits)"} type="password" value={form.pin||""} onChange={e=>setForm(f=>({...f,pin:e.target.value}))} placeholder={form.id?"Leave blank to keep…":"Set a PIN"} maxLength={6}/>
+            <Sel label="Availability" value={form.availability||"available"} onChange={e=>setForm(f=>({...f,availability:e.target.value}))}>
+              <option value="available">🟢 Available (Incall + Outcall)</option>
+              <option value="outcall_only">🟡 Outcall Only</option>
+              <option value="unavailable">🔴 Unavailable</option>
+            </Sel>
+          </div>
           <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Profile Photo</label>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Profile Photo (main)</label>
             {form.photo&&<img src={form.photo} alt="" style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:8,display:"block"}}/>}
             <input type="file" accept="image/*" onChange={uploadPhoto} style={{fontSize:13}}/>
           </div>
           <div style={{display:"flex",gap:12,marginBottom:14}}>
             <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
               <input type="checkbox" checked={form.outcall} onChange={e=>setForm(f=>({...f,outcall:e.target.checked}))}/>
-              Available for Outcall (home/hotel visits)
+              Accepts Outcall Requests
             </label>
           </div>
+          {form.email&&<div style={{background:PLF,border:`1px solid ${PL}20`,borderRadius:8,padding:"8px 12px",fontSize:12,color:PL,marginBottom:14}}>
+            💡 Therapist logs in with email <strong>{form.email}</strong> and the PIN you set above.
+          </div>}
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Therapist"}</Btn>
+            <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save Changes":"Add Therapist"}</Btn>
           </div>
         </Modal>
       )}
@@ -2113,5 +2153,308 @@ function NewApptModal({therapists,rooms,services,pricing,payMethods,offers,user,
         <Btn onClick={save} disabled={!form.customerName||!form.customerPhone||form.selServices.length===0} style={{flex:1,justifyContent:"center"}}>Create Appointment</Btn>
       </div>
     </Modal>
+  );
+}
+
+// ── THERAPIST PORTAL ──────────────────────────────────────────────────────────
+function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pricing, services, rooms, pop }) {
+  const [tab, setTab] = useState("profile");
+  const [data, setData] = useState(therapistUser);
+  const [saving, setSaving] = useState(false);
+
+  const refresh = async () => {
+    try {
+      const all = await api.getTherapists();
+      const me = all.find(t => t.id === therapistUser.id);
+      if (me) { setData(me); setTherapistUser(d=>({...d,...me})); try{localStorage.setItem("spa_therapist",JSON.stringify({...therapistUser,...me}));}catch{} }
+    } catch {}
+  };
+
+  useEffect(()=>{ refresh(); },[]);
+
+  const isMobile = typeof window!=="undefined" && window.innerWidth < 640;
+  const avColors = { available:"#34C759", outcall_only:"#FF9500", unavailable:"#FF3B30" };
+  const avLabels = { available:"🟢 Available", outcall_only:"🟡 Outcall Only", unavailable:"🔴 Unavailable" };
+
+  return (
+    <div style={{minHeight:"100vh",background:G1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+      {/* Header */}
+      <div style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{color:WH,fontWeight:900,fontSize:9,fontFamily:"'Playfair Display',serif",letterSpacing:".02em"}}>MTZ</span>
+          </div>
+          {!isMobile&&<div style={{color:WH,fontWeight:700,fontSize:14,fontFamily:"'Playfair Display',serif"}}>MASSAGE TZ</div>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,color:WH,fontSize:13}}>
+            <span style={{fontSize:18}}>💆</span>
+            {!isMobile&&<span style={{fontWeight:700}}>{data.name}</span>}
+            <span style={{background:avColors[data.availability]+"30",color:avColors[data.availability],padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700}}>{avLabels[data.availability]||data.availability}</span>
+          </div>
+          <button onClick={therapistLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"6px 11px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
+        {[["profile","My Profile","👤"],["photos","My Photos","📷"],["status","Availability","🟢"],["pin","Change PIN","🔑"]].map(([id,label,icon])=>(
+          <button key={id} onClick={()=>setTab(id)}
+            style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:tab===id?PL:G6,borderBottom:`3px solid ${tab===id?PL:"transparent"}`,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{maxWidth:600,margin:"0 auto",padding:"20px 14px 60px"}}>
+
+        {/* ── PROFILE TAB ── */}
+        {tab==="profile"&&<TherapistProfileTab data={data} setData={setData} therapistUser={therapistUser} setTherapistUser={setTherapistUser} pop={pop} setSaving={setSaving}/>}
+
+        {/* ── PHOTOS TAB ── */}
+        {tab==="photos"&&<TherapistPhotosTab data={data} setData={setData} therapistUser={therapistUser} setTherapistUser={setTherapistUser} pop={pop}/>}
+
+        {/* ── AVAILABILITY TAB ── */}
+        {tab==="status"&&<TherapistStatusTab data={data} setData={setData} therapistUser={therapistUser} setTherapistUser={setTherapistUser} pop={pop}/>}
+
+        {/* ── PIN TAB ── */}
+        {tab==="pin"&&<TherapistPinTab data={data} therapistUser={therapistUser} pop={pop}/>}
+      </div>
+    </div>
+  );
+}
+
+function TherapistProfileTab({ data, setData, therapistUser, setTherapistUser, pop }) {
+  const [form, setForm] = useState({
+    name:        data.name||"",
+    phone:       data.phone||"",
+    email:       data.email||"",
+    bio:         data.bio||"",
+    specialties: (data.specialties||[]).join(", "),
+    outcall:     data.outcall!==false,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const specs = form.specialties.split(",").map(s=>s.trim()).filter(Boolean);
+      const payload = { name:form.name, phone:form.phone, email:form.email, bio:form.bio, specialties:specs, outcall:form.outcall };
+      const u = await api.updateTherapist(therapistUser.id, payload);
+      setData(d=>({...d,...u}));
+      const updated = {...therapistUser,...u};
+      setTherapistUser(updated);
+      try{localStorage.setItem("spa_therapist",JSON.stringify(updated));}catch{}
+      pop("Profile updated ✓");
+    } catch(e){ pop(e.message||"Failed","err"); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      {/* Profile card */}
+      <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:20,marginBottom:16,display:"flex",alignItems:"center",gap:14}}>
+        {data.photo||data.photos?.[0]?(
+          <img src={data.photo||data.photos[0]} alt={data.name}
+            style={{width:72,height:72,borderRadius:"50%",objectFit:"cover",border:`3px solid ${PL}`,flexShrink:0}}/>
+        ):(
+          <div style={{width:72,height:72,borderRadius:"50%",background:`linear-gradient(135deg,${PLD},${PL})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700,flexShrink:0}}>{data.name?.[0]}</div>
+        )}
+        <div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700,color:BK,marginBottom:4}}>{data.name}</div>
+          <div style={{fontSize:12,color:G6}}>{(data.specialties||[]).join(" · ")||"No specialties set"}</div>
+          <div style={{fontSize:11,color:data.outcall?PL:G4,marginTop:4,fontWeight:700}}>{data.outcall?"✓ Accepts outcall":"In-house only"}</div>
+        </div>
+      </div>
+
+      <Card>
+        <Inp label="Full Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Your name"/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="+255 7XX…"/>
+          <Inp label="Email" type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="your@email.com"/>
+        </div>
+        <Inp label="Specialties (comma separated)" value={form.specialties} onChange={e=>setForm(f=>({...f,specialties:e.target.value}))} placeholder="Swedish Massage, Deep Tissue, Hot Stone…"/>
+        <Txa label="Bio / About Me" value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} rows={3} placeholder="Tell clients a bit about your experience and approach…"/>
+        <div style={{marginBottom:16}}>
+          <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontSize:14}}>
+            <input type="checkbox" checked={form.outcall} onChange={e=>setForm(f=>({...f,outcall:e.target.checked}))}
+              style={{width:18,height:18,accentColor:PL}}/>
+            <span><strong>I accept outcall requests</strong> <span style={{color:G6,fontWeight:400}}>(home, hotel visits)</span></span>
+          </label>
+        </div>
+        <Btn onClick={save} disabled={saving||!form.name} style={{width:"100%",justifyContent:"center"}}>
+          {saving?"Saving…":"Save Profile"}
+        </Btn>
+      </Card>
+    </div>
+  );
+}
+
+function TherapistPhotosTab({ data, setData, therapistUser, setTherapistUser, pop }) {
+  const [photos, setPhotos] = useState(data.photos||[]);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const MAX_PHOTOS = 5;
+
+  const addPhoto = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    if (photos.length >= MAX_PHOTOS) return pop(`Max ${MAX_PHOTOS} photos allowed`,"err");
+    setUploading(true);
+    const b64 = await compressPhoto(file);
+    setPhotos(p=>[...p,b64]);
+    setUploading(false);
+    e.target.value="";
+  };
+
+  const removePhoto = (i) => setPhotos(p=>p.filter((_,idx)=>idx!==i));
+  const moveUp = (i) => { if(i===0) return; setPhotos(p=>{const n=[...p];[n[i-1],n[i]]=[n[i],n[i-1]];return n;}); };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const u = await api.updateTherapist(therapistUser.id, { photos, photo: photos[0]||data.photo||null });
+      setData(d=>({...d,...u}));
+      const updated = {...therapistUser,...u};
+      setTherapistUser(updated);
+      try{localStorage.setItem("spa_therapist",JSON.stringify(updated));}catch{}
+      pop("Photos saved ✓");
+    } catch(e){ pop(e.message||"Failed","err"); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <Card>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>📷 My Photos</div>
+        <div style={{fontSize:13,color:G6,marginBottom:16}}>Add up to {MAX_PHOTOS} photos. The first photo is your profile picture. Drag to reorder.</div>
+
+        {/* Photo grid */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
+          {photos.map((src,i)=>(
+            <div key={i} style={{position:"relative",borderRadius:10,overflow:"hidden",border:`2px solid ${i===0?PL:G2}`}}>
+              <div style={{paddingTop:"100%",position:"relative"}}>
+                <img src={src} alt={`Photo ${i+1}`} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+              </div>
+              {i===0&&<div style={{position:"absolute",top:6,left:6,background:PL,color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>Main Photo</div>}
+              <div style={{position:"absolute",top:6,right:6,display:"flex",flexDirection:"column",gap:4}}>
+                {i>0&&<button onClick={()=>moveUp(i)} style={{width:24,height:24,borderRadius:"50%",background:"rgba(0,0,0,.6)",color:WH,border:"none",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}} title="Move up">↑</button>}
+                <button onClick={()=>removePhoto(i)} style={{width:24,height:24,borderRadius:"50%",background:"rgba(200,0,0,.8)",color:WH,border:"none",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              </div>
+            </div>
+          ))}
+
+          {/* Add photo slot */}
+          {photos.length < MAX_PHOTOS && (
+            <label style={{paddingTop:"100%",position:"relative",borderRadius:10,border:`2px dashed ${G2}`,cursor:"pointer",display:"block"}}>
+              <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,color:G4}}>
+                {uploading?<div style={{fontSize:11,fontWeight:700}}>Uploading…</div>:<><span style={{fontSize:28}}>+</span><span style={{fontSize:11,fontWeight:700}}>Add Photo</span><span style={{fontSize:10}}>{photos.length}/{MAX_PHOTOS}</span></>}
+              </div>
+              <input type="file" accept="image/*" onChange={addPhoto} style={{display:"none"}} disabled={uploading}/>
+            </label>
+          )}
+        </div>
+
+        <Btn onClick={save} disabled={saving} style={{width:"100%",justifyContent:"center"}}>
+          {saving?"Saving…":"Save Photos"}
+        </Btn>
+        <div style={{fontSize:12,color:G4,textAlign:"center",marginTop:8}}>Photos appear on the booking page and your public profile</div>
+      </Card>
+    </div>
+  );
+}
+
+function TherapistStatusTab({ data, setData, therapistUser, setTherapistUser, pop }) {
+  const [availability, setAvailability] = useState(data.availability||"available");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const u = await api.updateTherapist(therapistUser.id, { availability });
+      setData(d=>({...d,...u}));
+      const updated = {...therapistUser,...u,availability};
+      setTherapistUser(updated);
+      try{localStorage.setItem("spa_therapist",JSON.stringify(updated));}catch{}
+      pop("Status updated ✓");
+    } catch(e){ pop(e.message||"Failed","err"); }
+    setSaving(false);
+  };
+
+  const OPTIONS = [
+    { value:"available",    icon:"🟢", label:"Available",      sub:"Accepting both in-house and outcall bookings", color:OK },
+    { value:"outcall_only", icon:"🟡", label:"Outcall Only",   sub:"Not at the office — available for home/hotel visits only", color:WA },
+    { value:"unavailable",  icon:"🔴", label:"Unavailable",    sub:"Off duty — not accepting any bookings right now", color:ER },
+  ];
+
+  return (
+    <div>
+      <Card>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>🟢 My Availability Status</div>
+        <div style={{fontSize:13,color:G6,marginBottom:20}}>Update your current status so clients and reception know your availability in real time.</div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+          {OPTIONS.map(opt=>(
+            <div key={opt.value} onClick={()=>setAvailability(opt.value)}
+              style={{border:`2px solid ${availability===opt.value?opt.color:G2}`,background:availability===opt.value?opt.color+"12":WH,borderRadius:12,padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:14,transition:"all .15s"}}>
+              <span style={{fontSize:28,flexShrink:0}}>{opt.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15,color:availability===opt.value?opt.color:BK}}>{opt.label}</div>
+                <div style={{fontSize:13,color:G6,marginTop:2}}>{opt.sub}</div>
+              </div>
+              <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${availability===opt.value?opt.color:G2}`,background:availability===opt.value?opt.color:"none",flexShrink:0}}/>
+            </div>
+          ))}
+        </div>
+
+        {/* Current status summary */}
+        <div style={{background:G1,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13}}>
+          <span style={{color:G6}}>Current status: </span>
+          <strong style={{color:OPTIONS.find(o=>o.value===data.availability)?.color||G6}}>{OPTIONS.find(o=>o.value===data.availability)?.label||data.availability}</strong>
+          {data.availability!==availability&&<span style={{color:WA}}> → Will change to: <strong>{OPTIONS.find(o=>o.value===availability)?.label}</strong></span>}
+        </div>
+
+        <Btn onClick={save} disabled={saving||availability===data.availability} style={{width:"100%",justifyContent:"center",background:OPTIONS.find(o=>o.value===availability)?.color||PL}}>
+          {saving?"Saving…":"Update Status"}
+        </Btn>
+      </Card>
+    </div>
+  );
+}
+
+function TherapistPinTab({ data, therapistUser, pop }) {
+  const [form, setForm] = useState({ current:"", newPin:"", confirm:"" });
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setErr("");
+    if (!form.current)            return setErr("Enter your current PIN");
+    if (form.newPin.length < 4)   return setErr("New PIN must be at least 4 digits");
+    if (!/^\d+$/.test(form.newPin)) return setErr("PIN must be digits only");
+    if (form.newPin !== form.confirm) return setErr("PINs do not match");
+    setSaving(true);
+    try {
+      // Verify current PIN via login
+      await api.staffLogin({ email: data.email_unique||data.email, pin: form.current });
+      // Update PIN
+      await api.updateTherapist(therapistUser.id, { pin: form.newPin });
+      setForm({ current:"", newPin:"", confirm:"" });
+      pop("PIN updated successfully ✓");
+    } catch(e){ setErr(e.message||"Incorrect current PIN"); }
+    setSaving(false);
+  };
+
+  return (
+    <Card>
+      <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>🔑 Change Login PIN</div>
+      <div style={{fontSize:13,color:G6,marginBottom:20}}>Your PIN is used to log into the therapist portal.</div>
+      <Inp label="Current PIN" type="password" value={form.current} onChange={e=>setForm(f=>({...f,current:e.target.value}))} placeholder="Enter current PIN" maxLength={6}/>
+      <Inp label="New PIN (4–6 digits)" type="password" value={form.newPin} onChange={e=>setForm(f=>({...f,newPin:e.target.value}))} placeholder="New PIN" maxLength={6}/>
+      <Inp label="Confirm New PIN" type="password" value={form.confirm} onChange={e=>setForm(f=>({...f,confirm:e.target.value}))} placeholder="Repeat new PIN" maxLength={6}/>
+      {err&&<div style={{background:ERB,color:ER,borderRadius:8,padding:"9px 12px",fontSize:13,marginBottom:12,fontWeight:700}}>{err}</div>}
+      <Btn onClick={save} disabled={saving||!form.current||!form.newPin} style={{width:"100%",justifyContent:"center"}}>
+        {saving?"Updating…":"Update PIN"}
+      </Btn>
+    </Card>
   );
 }

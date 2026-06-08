@@ -17,28 +17,48 @@ module.exports = async function handler(req, res) {
         return res.status(200).json(rows);
       }
       if (req.method === 'POST') {
-        const { name, phone, email, bio, photo, specialties, outcall } = req.body || {};
+        const { name, phone, email, bio, photo, photos, specialties, outcall, pin, availability } = req.body || {};
         if (!name) return res.status(400).json({ error: 'name required' });
         const rows = await sql`
-          INSERT INTO therapists (name, phone, email, bio, photo, specialties, outcall)
-          VALUES (${name}, ${phone||null}, ${email||null}, ${bio||''}, ${photo||null},
-                  ${specialties||[]}, ${outcall !== false})
+          INSERT INTO therapists (name, phone, email, email_unique, bio, photo, photos, specialties, outcall, pin_hash, availability)
+          VALUES (${name}, ${phone||null}, ${email||null}, ${email||null}, ${bio||''}, ${photo||null},
+                  ${photos||[]}, ${specialties||[]}, ${outcall !== false}, ${pin||null}, ${availability||'available'})
           RETURNING *`;
         return res.status(201).json(rows[0]);
       }
       if (req.method === 'PUT' && id) {
-        const { name, phone, email, bio, photo, specialties, outcall, active } = req.body || {};
-        const rows = await sql`
-          UPDATE therapists SET
-            name       = COALESCE(${name       ?? null}, name),
-            phone      = COALESCE(${phone      ?? null}, phone),
-            email      = COALESCE(${email      ?? null}, email),
-            bio        = COALESCE(${bio        ?? null}, bio),
-            photo      = COALESCE(${photo      ?? null}, photo),
-            specialties= COALESCE(${specialties?? null}, specialties),
-            outcall    = COALESCE(${outcall    ?? null}, outcall),
-            active     = COALESCE(${active     ?? null}, active)
-          WHERE id = ${id} RETURNING *`;
+        const { name, phone, email, bio, photo, photos, specialties, outcall, active, pin, availability } = req.body || {};
+        let rows;
+        if (pin) {
+          rows = await sql`UPDATE therapists SET
+            name         = COALESCE(${name         ?? null}, name),
+            phone        = COALESCE(${phone        ?? null}, phone),
+            email        = COALESCE(${email        ?? null}, email),
+            email_unique = COALESCE(${email        ?? null}, email_unique),
+            bio          = COALESCE(${bio          ?? null}, bio),
+            photo        = COALESCE(${photo        ?? null}, photo),
+            photos       = COALESCE(${photos       ?? null}, photos),
+            specialties  = COALESCE(${specialties  ?? null}, specialties),
+            outcall      = COALESCE(${outcall      ?? null}, outcall),
+            availability = COALESCE(${availability ?? null}, availability),
+            active       = COALESCE(${active       ?? null}, active),
+            pin_hash     = ${pin}
+            WHERE id = ${id} RETURNING *`;
+        } else {
+          rows = await sql`UPDATE therapists SET
+            name         = COALESCE(${name         ?? null}, name),
+            phone        = COALESCE(${phone        ?? null}, phone),
+            email        = COALESCE(${email        ?? null}, email),
+            email_unique = COALESCE(${email        ?? null}, email_unique),
+            bio          = COALESCE(${bio          ?? null}, bio),
+            photo        = COALESCE(${photo        ?? null}, photo),
+            photos       = COALESCE(${photos       ?? null}, photos),
+            specialties  = COALESCE(${specialties  ?? null}, specialties),
+            outcall      = COALESCE(${outcall      ?? null}, outcall),
+            availability = COALESCE(${availability ?? null}, availability),
+            active       = COALESCE(${active       ?? null}, active)
+            WHERE id = ${id} RETURNING *`;
+        }
         if (!rows.length) return res.status(404).json({ error: 'Not found' });
         return res.status(200).json(rows[0]);
       }
@@ -275,9 +295,13 @@ module.exports = async function handler(req, res) {
       }
       if (req.method === 'POST' && action === 'login') {
         const { email, pin } = req.body || {};
-        const rows = await sql`SELECT id,name,email,role,active FROM staff WHERE lower(email)=lower(${email}) AND pin_hash=${pin} AND active=true LIMIT 1`;
-        if (!rows.length) return res.status(401).json({ error: 'Invalid email or PIN' });
-        return res.status(200).json(rows[0]);
+        // Check staff first
+        const staffRows = await sql`SELECT id,name,email,role,active FROM staff WHERE lower(email)=lower(${email}) AND pin_hash=${pin} AND active=true LIMIT 1`;
+        if (staffRows.length) return res.status(200).json({...staffRows[0], account_type:'staff'});
+        // Check therapist accounts
+        const thRows = await sql`SELECT id,name,email_unique AS email,availability,active,'Therapist' AS role FROM therapists WHERE lower(email_unique)=lower(${email}) AND pin_hash=${pin} AND active=true LIMIT 1`;
+        if (thRows.length) return res.status(200).json({...thRows[0], account_type:'therapist'});
+        return res.status(401).json({ error: 'Invalid email or PIN' });
       }
       if (req.method === 'POST') {
         const { name, email, phone, role, pin } = req.body || {};

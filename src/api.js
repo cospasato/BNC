@@ -75,4 +75,8 @@ export const api = {
 
   // Reports
   getReports:  (df, dt) => g(`resource=reports${df?'&date_from='+df:''}${dt?'&date_to='+dt:''}`),
+
+  // Therapist self-service (same endpoints, just for clarity)
+  therapistLogin:      b      => p('resource=staff&action=login', b),
+  therapistUpdate:     (id,b) => pt(`resource=therapists&id=${id}`, b),
 };
