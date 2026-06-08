@@ -185,24 +185,37 @@ module.exports = async function handler(req, res) {
         const { service_id, room_id, service_type, price } = req.body || {};
         if (!service_id || !price) return res.status(400).json({ error: 'service_id and price required' });
         const rid = room_id || null;
+        // Check if a matching price already exists and update, otherwise insert
+        const existing = await sql`
+          SELECT id FROM pricing
+          WHERE service_id = ${service_id}
+            AND service_type = ${service_type||'inhouse'}
+            AND (
+              (room_id IS NOT NULL AND room_id = ${rid})
+              OR (room_id IS NULL AND ${rid}::text IS NULL)
+            )
+          LIMIT 1`;
         let rows;
-        try {
+        if (existing.length) {
           rows = await sql`
-            INSERT INTO pricing (service_id, room_id, service_type, price)
-            VALUES (${service_id}, ${rid}, ${service_type||'inhouse'}, ${price})
-            ON CONFLICT (service_id, room_id, service_type)
-            DO UPDATE SET price = ${price}
+            UPDATE pricing SET price = ${price}
+            WHERE id = ${existing[0].id}
             RETURNING *`;
-        } catch(e) {
-          if (e.message && e.message.includes('does not exist')) {
-            // Fallback: old schema uses room_type TEXT column
+        } else {
+          try {
             rows = await sql`
-              INSERT INTO pricing (service_id, room_type, service_type, price)
-              VALUES (${service_id}, ${rid||'Standard'}, ${service_type||'inhouse'}, ${price})
-              ON CONFLICT (service_id, room_type, service_type)
-              DO UPDATE SET price = ${price}
+              INSERT INTO pricing (service_id, room_id, service_type, price)
+              VALUES (${service_id}, ${rid}, ${service_type||'inhouse'}, ${price})
               RETURNING *`;
-          } else throw e;
+          } catch(e) {
+            if (e.message && e.message.includes('does not exist')) {
+              // Fallback: old schema without room_id column
+              rows = await sql`
+                INSERT INTO pricing (service_id, room_type, service_type, price)
+                VALUES (${service_id}, ${rid||'Standard'}, ${service_type||'inhouse'}, ${price})
+                RETURNING *`;
+            } else throw e;
+          }
         }
         return res.status(200).json(rows[0]);
       }
