@@ -546,9 +546,8 @@ export default function App(){
                     style={{background:WH,borderRadius:12,border:`2px solid ${bD.roomId===rm.id?PL:G2}`,cursor:"pointer",overflow:"hidden",transition:"border-color .15s"}}>
                     <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
                       <div style={{flex:1}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <div style={{marginBottom:4}}>
                           <span style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK}}>{rm.name}</span>
-                          <span style={{background:PLF,color:PL,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>{rm.room_type}</span>
                         </div>
                         <div style={{fontSize:12,color:G6,marginBottom:6}}>Up to {rm.capacity} {rm.capacity>1?"people":"person"}</div>
                         {rm.amenities?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{rm.amenities.slice(0,4).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
@@ -631,7 +630,7 @@ export default function App(){
                   ["📅 Date & Time", `${bD.date} at ${bD.time}`],
                   ["🔧 Type",        bD.serviceType==="outcall"?"Outcall – "+bD.outcallAddr:"In-House"],
                   ["💆 Therapist",   selTh?.name||"Any Available"],
-                  ...(bD.serviceType==="inhouse"?[["🚪 Room", selRm?.name+" ("+selRm?.room_type+")"]]:[]),
+                  ...(bD.serviceType==="inhouse"&&selRm?[["🚪 Room", selRm.name]]:[]),
                 ].map(([k,v])=>(
                   <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
                     <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:BK,textAlign:"right",maxWidth:"60%"}}>{v}</span>
@@ -1158,7 +1157,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
             </Sel>
             <Sel label="Room" value={form.roomId} onChange={e=>setForm(f=>({...f,roomId:e.target.value}))}>
               <option value="">No Room / Outcall</option>
-              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name} ({r.room_type})</option>)}
+              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
             </Sel>
           </div>
           <div style={{marginBottom:12}}>
@@ -1381,17 +1380,15 @@ function TherapistsTab({therapists,setTherapists,pop}){
 
 function RoomsTab({rooms,setRooms,pop}){
   const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",room_type:"Standard",capacity:1,description:"",amenities:""});
-  const TYPES=["Standard","VIP","Couples","Suite"];
-  const typeColor={Standard:IN,VIP:GOLD,Couples:PL,Suite:ER};
+  const [form,setForm]=useState({id:null,name:"",capacity:1,description:"",amenities:""});
 
-  const open=(r)=>{if(r) setForm({...r,amenities:(r.amenities||[]).join(", ")});else setForm({id:null,name:"",room_type:"Standard",capacity:1,description:"",amenities:""}); setModal(true);};
+  const open=(r)=>{if(r) setForm({...r,amenities:(r.amenities||[]).join(", ")});else setForm({id:null,name:"",capacity:1,description:"",amenities:""}); setModal(true);};
   const save=async()=>{
     if(!form.name) return;
     const amen = typeof form.amenities==="string"
       ? form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
       : (form.amenities||[]);
-    const payload={name:form.name,room_type:form.room_type||"Standard",capacity:Number(form.capacity)||1,description:form.description||"",amenities:amen};
+    const payload={name:form.name,capacity:Number(form.capacity)||1,description:form.description||"",amenities:amen};
     try{
       if(form.id){ const u=await api.updateRoom(form.id,payload); setRooms(p=>p.map(r=>r.id===form.id?u:r)); pop("Room updated"); }
       else{ const u=await api.createRoom(payload); setRooms(p=>[...p,u]); pop("Room added"); }
@@ -1414,12 +1411,9 @@ function RoomsTab({rooms,setRooms,pop}){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
         {rooms.map(r=>(
-          <Card key={r.id} style={{opacity:r.active?1:.65,borderTop:`3px solid ${typeColor[r.room_type]||IN}`}}>
+          <Card key={r.id} style={{opacity:r.active?1:.65,borderTop:`3px solid ${PL}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK}}>{r.name}</div>
-                <span style={{background:`${typeColor[r.room_type]||IN}18`,color:typeColor[r.room_type]||IN,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>{r.room_type}</span>
-              </div>
+              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK}}>{r.name}</div>
               <span style={{background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
             </div>
             <div style={{fontSize:12,color:G6,marginBottom:8}}>👥 Up to {r.capacity} {r.capacity>1?"people":"person"}</div>
@@ -1435,13 +1429,7 @@ function RoomsTab({rooms,setRooms,pop}){
       </div>
       {modal&&(
         <Modal title={form.id?"Edit Room":"Add Room"} onClose={()=>setModal(false)}>
-          <Inp label="Room Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. VIP Suite 1"/>
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Room Type</label>
-            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-              {TYPES.map(t=><button key={t} onClick={()=>setForm(f=>({...f,room_type:t}))} style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${form.room_type===t?typeColor[t]:G2}`,background:form.room_type===t?`${typeColor[t]}15`:WH,color:form.room_type===t?typeColor[t]:G6}}>{t}</button>)}
-            </div>
-          </div>
+          <Inp label="Room Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Room 1, Zanzibar Suite, Blue Room…"/>
           <Inp label="Capacity (persons)" type="number" value={form.capacity} onChange={e=>setForm(f=>({...f,capacity:Number(e.target.value)}))} min="1"/>
           <Txa label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={2}/>
           <Inp label="Amenities (comma separated)" value={form.amenities} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Private shower, Music system, Aromatherapy"/>
@@ -2144,7 +2132,7 @@ function NewApptModal({therapists,rooms,services,pricing,payMethods,offers,user,
           {["inhouse","outcall"].map(v=><button key={v} onClick={()=>setForm(f=>({...f,serviceType:v,roomId:v==="outcall"?"":f.roomId}))} style={{padding:"7px 14px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${form.serviceType===v?PL:G2}`,background:form.serviceType===v?PLF:WH,color:form.serviceType===v?PL:G6}}>{v==="inhouse"?"🏢 In-House":"🏠 Outcall"}</button>)}
         </div>
       </div>
-      {form.serviceType==="inhouse"&&<Sel label="Room" value={form.roomId} onChange={e=>setForm(f=>({...f,roomId:e.target.value}))}><option value="">Select room…</option>{rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name} ({r.room_type})</option>)}</Sel>}
+      {form.serviceType==="inhouse"&&<Sel label="Room" value={form.roomId} onChange={e=>setForm(f=>({...f,roomId:e.target.value}))}><option value="">Select room…</option>{rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</Sel>}
       {form.serviceType==="outcall"&&<Inp label="Outcall Address" value={form.outcallAddr} onChange={e=>setForm(f=>({...f,outcallAddr:e.target.value}))} placeholder="Hotel/address"/>}
       {/* Services */}
       <div style={{marginBottom:12}}>
