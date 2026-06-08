@@ -16,14 +16,12 @@ function setCors(res) {
 
 function dbError(err) {
   const msg = err.message || String(err);
-  if (msg.includes('does not exist')) {
-    return 'Table not found — please run schema.sql in your Neon SQL Editor first. Then visit /api/setup to verify.';
-  }
   if (msg.includes('DATABASE_URL')) {
     return 'DATABASE_URL not configured. Add it in Vercel → Project → Settings → Environment Variables.';
   }
   if (msg.includes('duplicate key')) return 'A record with that ID already exists.';
   if (msg.includes('foreign key'))   return 'Referenced record does not exist.';
+  // Return the actual DB error so we know exactly what's missing
   return msg;
 }
 
