@@ -1517,7 +1517,10 @@ function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
   };
 
   // Get all prices for a service
-  const getPrices=(sId)=>pricing.filter(p=>p.service_id===sId);
+  const getPrices=(sId)=>pricing.filter(p=>p.service_id===sId).map(p=>({
+    ...p,
+    room_name: p.room_name || rooms.find(r=>r.id===p.room_id)?.name || p.room_type || null
+  }));
 
   return(
     <div>

@@ -152,7 +152,7 @@ module.exports = async function handler(req, res) {
     if (resource === 'services') {
       if (req.method === 'GET') {
         const services = await sql`SELECT * FROM services WHERE active = true ORDER BY category, sort_order, name ASC`;
-        const pricing  = await sql`SELECT p.*, r.name AS room_name FROM pricing p LEFT JOIN rooms r ON r.id=p.room_id ORDER BY p.service_id, p.service_type`;
+        const pricing  = await sql`SELECT * FROM pricing ORDER BY service_id, service_type`;
         return res.status(200).json({ services, pricing });
       }
       if (req.method === 'POST') {
@@ -184,14 +184,26 @@ module.exports = async function handler(req, res) {
       if (req.method === 'POST') {
         const { service_id, room_id, service_type, price } = req.body || {};
         if (!service_id || !price) return res.status(400).json({ error: 'service_id and price required' });
-        // room_id is null for outcall (no room needed)
         const rid = room_id || null;
-        const rows = await sql`
-          INSERT INTO pricing (service_id, room_id, service_type, price)
-          VALUES (${service_id}, ${rid}, ${service_type||'inhouse'}, ${price})
-          ON CONFLICT (service_id, room_id, service_type)
-          DO UPDATE SET price = ${price}
-          RETURNING *, (SELECT name FROM rooms WHERE id=${rid}) AS room_name`;
+        let rows;
+        try {
+          rows = await sql`
+            INSERT INTO pricing (service_id, room_id, service_type, price)
+            VALUES (${service_id}, ${rid}, ${service_type||'inhouse'}, ${price})
+            ON CONFLICT (service_id, room_id, service_type)
+            DO UPDATE SET price = ${price}
+            RETURNING *`;
+        } catch(e) {
+          if (e.message && e.message.includes('does not exist')) {
+            // Fallback: old schema uses room_type TEXT column
+            rows = await sql`
+              INSERT INTO pricing (service_id, room_type, service_type, price)
+              VALUES (${service_id}, ${rid||'Standard'}, ${service_type||'inhouse'}, ${price})
+              ON CONFLICT (service_id, room_type, service_type)
+              DO UPDATE SET price = ${price}
+              RETURNING *`;
+          } else throw e;
+        }
         return res.status(200).json(rows[0]);
       }
       if (req.method === 'DELETE' && id) {
