@@ -186,7 +186,7 @@ export default function App(){
     setCustLoading(false);
   },[]);
 
-  useEffect(()=>{ loadPublic(); },[loadPublic]);
+  useEffect(()=>{ if(!user) loadPublic(); },[loadPublic,user]);
   useEffect(()=>{
     if(user) loadAdmin();
     if(customer) loadCustAppts(customer.id);
@@ -283,11 +283,11 @@ export default function App(){
     <nav style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>navTo("land")}>
         <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <span style={{color:WH,fontWeight:900,fontSize:11,fontFamily:"'Playfair Display',serif",textAlign:"center",lineHeight:1.1}}>SPA</span>
+          <span style={{color:WH,fontWeight:900,fontSize:9,fontFamily:"'Playfair Display',serif",textAlign:"center",lineHeight:1.1,letterSpacing:".02em"}}>MTZ</span>
         </div>
         {!isMobile&&<div>
-          <div style={{color:WH,fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",lineHeight:1.2}}>Serenity Spa</div>
-          <div style={{color:G4,fontSize:10,letterSpacing:".12em",textTransform:"uppercase"}}>Wellness & Massage</div>
+          <div style={{color:WH,fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",lineHeight:1.2}}>MASSAGE TZ</div>
+          <div style={{color:G4,fontSize:10,letterSpacing:".12em",textTransform:"uppercase"}}>Massage & Outcall</div>
         </div>}
       </div>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -316,7 +316,7 @@ export default function App(){
       {/* Hero */}
       <div style={{background:`linear-gradient(135deg,${PLD} 0%,${BK} 100%)`,padding:"70px 20px 60px",textAlign:"center"}}>
         <div style={{fontSize:13,color:GOLD,letterSpacing:".2em",textTransform:"uppercase",marginBottom:14}}>Luxury Wellness Experience</div>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:Math.min(44,window.innerWidth*.09)+"px",color:WH,margin:"0 0 16px",lineHeight:1.2}}>Serenity Spa &amp; Massage Studio</h1>
+        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:Math.min(44,window.innerWidth*.09)+"px",color:WH,margin:"0 0 16px",lineHeight:1.2}}>MASSAGE TZ</h1>
         <p style={{color:"rgba(255,255,255,.7)",fontSize:16,maxWidth:480,margin:"0 auto 32px",lineHeight:1.7}}>Professional massage & wellness services — at our studio or at your location</p>
         <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
           <button onClick={()=>navTo("book",1)} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"13px 34px",fontSize:16,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book Appointment</button>
@@ -375,41 +375,22 @@ export default function App(){
         </div>
       )}
 
-      {/* Therapists */}
+      {/* Therapists - ALL listed with clear availability */}
       {therapists.length>0&&(
-        <div style={{padding:"48px 20px",maxWidth:900,margin:"0 auto"}}>
-          <div style={{textAlign:"center",marginBottom:32}}>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:BK,margin:"0 0 8px"}}>Our Therapists</h2>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:16}}>
-            {therapists.map(th=>(
-              <div key={th.id} style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden",textAlign:"center",padding:"0 0 16px"}}>
-                {th.photo?(
-                  <div style={{paddingTop:"90%",position:"relative",background:G1}}>
-                    <img src={th.photo} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-                  </div>
-                ):(
-                  <div style={{paddingTop:"90%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
-                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:WH,fontFamily:"'Playfair Display',serif"}}>{th.name?.[0]}</div>
-                  </div>
-                )}
-                <div style={{padding:"12px 12px 4px"}}>
-                  <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK}}>{th.name}</div>
-                  {th.specialties?.length>0&&<div style={{fontSize:12,color:G6,marginTop:4}}>{th.specialties.slice(0,2).join(" · ")}</div>}
-                  {th.outcall&&<div style={{fontSize:11,color:PL,fontWeight:700,marginTop:6}}>✓ Outcall Available</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{textAlign:"center",marginTop:28}}>
-            <button onClick={()=>navTo("book",1)} style={{background:PL,color:WH,border:"none",borderRadius:10,padding:"12px 32px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book a Session</button>
+        <div style={{background:G1,padding:"52px 20px"}}>
+          <div style={{maxWidth:960,margin:"0 auto"}}>
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:30,color:BK,margin:"0 0 8px"}}>Our Therapists</h2>
+              <p style={{color:G6,fontSize:14,marginBottom:28}}>Available for in-house sessions at our locations and outcall visits to your home or hotel</p>
+            </div>
+            <TherapistGrid therapists={therapists} onBook={()=>navTo("book",1)}/>
           </div>
         </div>
       )}
 
       {/* Footer */}
       <div style={{background:BK,padding:"28px 20px",textAlign:"center"}}>
-        <div style={{color:G4,fontSize:13}}>© 2025 Serenity Spa & Massage Studio · All rights reserved</div>
+        <div style={{color:G4,fontSize:13}}>© 2025 MASSAGE TZ · All rights reserved</div>
         <button onClick={()=>setModal("login")} style={{marginTop:10,background:"none",border:"none",color:G6,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Staff Login</button>
       </div>
     </div>
@@ -692,35 +673,86 @@ export default function App(){
   );
 
   // ── ADMIN PORTAL ──
-  const AdminPortal = ()=>(
-    <div style={{minHeight:"100vh",background:G1}}>
-      <NavBar/>
-      <div style={{background:BK}}>
-        <div style={{display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",padding:"0 16px"}}>
-          {[["dash","Dashboard","📊"],["appts","Appointments","📋"],["reception","Reception","🚪"],["therapists","Therapists","💆"],["rooms","Rooms","🚪"],["services","Services","📋"],["offers","Offers","🏷️"],["expenses","Expenses","💸"],["reports","Reports","📈"],["payments","Payments","💳"],["staff","Staff","👥"]].map(([id,label,icon])=>(
-            <button key={id} onClick={()=>setATab(id)}
-              style={{padding:"12px 14px",border:"none",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:700,color:aTab===id?GOLD:G4,borderBottom:`2px solid ${aTab===id?GOLD:"transparent"}`,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
-              {icon} {!isMobile&&label}
-            </button>
-          ))}
+  const ADMIN_TABS = [
+    ["dash","Dashboard","📊"],["appts","Appointments","📋"],["reception","Reception Log","🚪"],
+    ["therapists","Therapists","💆"],["rooms","Rooms","🛁"],["services","Services & Pricing","📋"],
+    ["offers","Offers","🏷️"],["expenses","Expenses","💸"],["reports","Reports","📈"],
+    ["payments","Payments","💳"],["staff","Staff","👥"]
+  ];
+
+  const AdminPortal = ()=>{
+    const [menuOpen,setMenuOpen]=useState(false);
+    const isDesktop = typeof window!=="undefined" && window.innerWidth >= 900;
+    const SIDEBAR_W = 210;
+    return(
+      <div style={{minHeight:"100vh",background:G1,display:"flex",flexDirection:"column"}}>
+        <NavBar/>
+        <div style={{display:"flex",flex:1,position:"relative"}}>
+          {/* Desktop sidebar */}
+          {isDesktop&&(
+            <div style={{width:SIDEBAR_W,flexShrink:0,background:BK,minHeight:"100%",position:"sticky",top:0,height:"100vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:2,padding:"12px 0"}}>
+              {ADMIN_TABS.map(([id,label,icon])=>(
+                <button key={id} onClick={()=>setATab(id)}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"11px 20px",border:"none",background:aTab===id?"rgba(123,63,110,.3)":"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:aTab===id?PL:G4,fontFamily:"inherit",textAlign:"left",borderLeft:`3px solid ${aTab===id?PL:"transparent"}`,transition:"all .15s"}}>
+                  <span style={{fontSize:16}}>{icon}</span>{label}
+                </button>
+              ))}
+              <div style={{flex:1}}/>
+              <button onClick={logout} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 20px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:ER,fontFamily:"inherit",textAlign:"left"}}>
+                <span>🚪</span>Logout
+              </button>
+            </div>
+          )}
+
+          {/* Mobile: hamburger + overlay drawer */}
+          {!isDesktop&&(
+            <>
+              <div style={{position:"fixed",top:62,left:0,right:0,background:BK,zIndex:50,display:"flex",alignItems:"center",padding:"0 14px",height:46,gap:12}}>
+                <button onClick={()=>setMenuOpen(v=>!v)}
+                  style={{background:"none",border:`1px solid rgba(255,255,255,.2)`,color:WH,borderRadius:7,padding:"5px 11px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700}}>
+                  ☰ Menu
+                </button>
+                <span style={{color:GOLD,fontSize:13,fontWeight:700}}>{ADMIN_TABS.find(t=>t[0]===aTab)?.[1]||"Dashboard"}</span>
+              </div>
+              {menuOpen&&(
+                <>
+                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:100}} onClick={()=>setMenuOpen(false)}/>
+                  <div style={{position:"fixed",top:108,left:0,bottom:0,width:240,background:BK,zIndex:101,overflowY:"auto",padding:"8px 0",display:"flex",flexDirection:"column"}}>
+                    {ADMIN_TABS.map(([id,label,icon])=>(
+                      <button key={id} onClick={()=>{setATab(id);setMenuOpen(false);}}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",border:"none",background:aTab===id?"rgba(123,63,110,.3)":"transparent",cursor:"pointer",fontSize:14,fontWeight:700,color:aTab===id?PL:G4,fontFamily:"inherit",textAlign:"left",borderLeft:`3px solid ${aTab===id?PL:"transparent"}`}}>
+                        <span style={{fontSize:18}}>{icon}</span>{label}
+                      </button>
+                    ))}
+                    <div style={{flex:1}}/>
+                    <button onClick={logout} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",border:"none",background:"transparent",cursor:"pointer",fontSize:14,fontWeight:700,color:ER,fontFamily:"inherit",textAlign:"left"}}>
+                      <span>🚪</span>Logout
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Main content */}
+          <div style={{flex:1,padding:isDesktop?"28px 28px 60px":`${46+16}px 14px 60px`,paddingTop:isDesktop?"24px":"70px",maxWidth:isDesktop?900:"100%",overflowX:"hidden"}}>
+            {loading&&<div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
+            {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop}/>}
+            {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user} offers={offers}/>}
+            {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user}/>}
+            {!loading&&aTab==="therapists"&&<TherapistsTab therapists={therapists} setTherapists={setTherapists} pop={pop}/>}
+            {!loading&&aTab==="rooms"&&<RoomsTab rooms={rooms} setRooms={setRooms} pop={pop}/>}
+            {!loading&&aTab==="services"&&<ServicesTab services={services} setServices={setServices} pricing={pricing} setPricing={setPricing} rooms={rooms} pop={pop}/>}
+            {!loading&&aTab==="offers"&&<OffersTab offers={offers} setOffers={setOffers} pop={pop}/>}
+            {!loading&&aTab==="expenses"&&<ExpensesTab expenses={expenses} setExpenses={setExpenses} pop={pop} user={user}/>}
+            {!loading&&aTab==="reports"&&<ReportsTab appts={appts} reception={reception} expenses={expenses} therapists={therapists} services={services} payMethods={payMethods}/>}
+            {!loading&&aTab==="payments"&&<PaymentsTab payMethods={payMethods} setPayMethods={setPayMethods} pop={pop}/>}
+            {!loading&&aTab==="staff"&&user?.role==="Admin"&&<StaffTab staff={staff} setStaff={setStaff} pop={pop} currentUser={user}/>}
+          </div>
         </div>
       </div>
-      <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px 60px"}}>
-        {loading&&<div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
-        {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop}/>}
-        {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user} offers={offers}/>}
-        {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user}/>}
-        {!loading&&aTab==="therapists"&&<TherapistsTab therapists={therapists} setTherapists={setTherapists} pop={pop}/>}
-        {!loading&&aTab==="rooms"&&<RoomsTab rooms={rooms} setRooms={setRooms} pop={pop}/>}
-        {!loading&&aTab==="services"&&<ServicesTab services={services} setServices={setServices} pricing={pricing} setPricing={setPricing} rooms={rooms} pop={pop}/>}
-        {!loading&&aTab==="offers"&&<OffersTab offers={offers} setOffers={setOffers} pop={pop}/>}
-        {!loading&&aTab==="expenses"&&<ExpensesTab expenses={expenses} setExpenses={setExpenses} pop={pop} user={user}/>}
-        {!loading&&aTab==="reports"&&<ReportsTab appts={appts} reception={reception} expenses={expenses} therapists={therapists} services={services} payMethods={payMethods}/>}
-        {!loading&&aTab==="payments"&&<PaymentsTab payMethods={payMethods} setPayMethods={setPayMethods} pop={pop}/>}
-        {!loading&&aTab==="staff"&&user?.role==="Admin"&&<StaffTab staff={staff} setStaff={setStaff} pop={pop} currentUser={user}/>}
-      </div>
-    </div>
-  );
+    );
+  };
 
   // ── ROOT RENDER ──
   return(
@@ -1376,9 +1408,10 @@ function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
   const openSvc=(s)=>{ if(s) setForm({...s});else setForm({id:null,name:"",category:"Massage",description:"",duration_min:60}); setModal(true); };
   const saveSvc=async()=>{
     if(!form.name) return;
+    const payload={name:form.name,category:form.category,description:form.description||"",duration_min:Number(form.duration_min)||60};
     try{
-      if(form.id){ const u=await api.updateService(form.id,form); setServices(p=>p.map(s=>s.id===form.id?u:s)); pop("Service updated"); }
-      else{ const u=await api.createService(form); setServices(p=>[...p,u]); pop("Service added"); }
+      if(form.id){ const u=await api.updateService(form.id,payload); setServices(p=>p.map(s=>s.id===form.id?u:s)); pop("Service updated"); }
+      else{ const u=await api.createService(payload); setServices(p=>[...p,u]); pop("Service added"); }
       setModal(false);
     }catch(e){pop(e.message,"err");}
   };
@@ -1903,6 +1936,71 @@ function StaffTab({staff,setStaff,pop,currentUser}){
   );
 }
 
+// ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
+function TherapistGrid({therapists,onBook}){
+  const [filter,setFilter]=useState("all");
+  const shown = filter==="incall"
+    ? therapists.filter(t=>!t.outcall||t.active) // all incall-capable (those at the studio)
+    : filter==="outcall"
+    ? therapists.filter(t=>t.outcall)
+    : therapists;
+
+  return(
+    <div>
+      {/* Filter chips */}
+      <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:28,flexWrap:"wrap"}}>
+        {[["all","All"],["incall","In-House (Incall)"],["outcall","Outcall"]].map(([f,l])=>(
+          <button key={f} onClick={()=>setFilter(f)}
+            style={{padding:"7px 16px",borderRadius:99,fontSize:13,fontWeight:700,border:`2px solid ${filter===f?PL:G2}`,background:filter===f?PL:WH,color:filter===f?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:16}}>
+        {shown.map(th=>(
+          <div key={th.id} style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden",transition:"box-shadow .2s",cursor:"pointer"}}
+            onClick={onBook}
+            onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px rgba(123,63,110,.18)"}
+            onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+            {th.photo?(
+              <div style={{paddingTop:"90%",position:"relative",background:G1}}>
+                <img src={th.photo} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+              </div>
+            ):(
+              <div style={{paddingTop:"90%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
+              </div>
+            )}
+            <div style={{padding:"12px 14px 14px"}}>
+              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:5}}>{th.name}</div>
+              {th.specialties?.length>0&&(
+                <div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{th.specialties.slice(0,3).join(" · ")}</div>
+              )}
+              {/* Availability badges */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                <span style={{background:OKB,color:OK,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3}}>
+                  🏢 Incall
+                </span>
+                {th.outcall&&(
+                  <span style={{background:PLF,color:PL,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3}}>
+                    🏠 Outcall
+                  </span>
+                )}
+              </div>
+              {th.bio&&<div style={{fontSize:11,color:G4,marginTop:7,lineHeight:1.5}}>{th.bio.slice(0,70)}{th.bio.length>70?"…":""}</div>}
+            </div>
+          </div>
+        ))}
+        {shown.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1",textAlign:"center"}}>No therapists in this category</div>}
+      </div>
+      <div style={{textAlign:"center",marginTop:32}}>
+        <button onClick={onBook} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book a Session →</button>
+      </div>
+    </div>
+  );
+}
+
+
 // ── MODALS ───────────────────────────────────────────────────────────────────
 
 function StaffLoginModal({onLogin,onClose,pop}){
@@ -1918,7 +2016,7 @@ function StaffLoginModal({onLogin,onClose,pop}){
       <Inp label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="staff@spa.com"/>
       <Inp label="PIN" type="password" value={pin} onChange={e=>setPin(e.target.value)} placeholder="Enter your PIN" maxLength={6} onKeyDown={e=>e.key==="Enter"&&go()}/>
       {err&&<div style={{background:ERB,color:ER,borderRadius:8,padding:"9px 12px",fontSize:13,marginBottom:12,fontWeight:700}}>{err}</div>}
-      <div style={{background:PLF,borderRadius:8,padding:"9px 12px",fontSize:12,color:PL,marginBottom:14}}>Default admin: <strong>admin@spa.com</strong> / PIN: <strong>0000</strong></div>
+      <div style={{background:PLF,borderRadius:8,padding:"9px 12px",fontSize:12,color:PL,marginBottom:14}}>Default: <strong>admin@massagetz.com</strong> / PIN: <strong>0000</strong></div>
       <Btn onClick={go} style={{width:"100%",justifyContent:"center"}}>Login</Btn>
     </Modal>
   );

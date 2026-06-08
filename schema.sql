@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS staff (
 
 -- Default admin (change immediately after setup)
 INSERT INTO staff (id, name, email, role, pin_hash) VALUES
-  ('ADMIN', 'Spa Owner', 'admin@spa.com', 'Admin', '0000')
+  ('ADMIN', 'Spa Owner', 'admin@massagetz.com', 'Admin', '0000')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── THERAPISTS ───────────────────────────────────────────────
