@@ -37,12 +37,10 @@ CREATE TABLE IF NOT EXISTS therapists (
 
 -- ── ROOMS ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS rooms (
-  id            TEXT PRIMARY KEY DEFAULT 'RM' || upper(substr(md5(random()::text), 1, 6)),
-  name          TEXT NOT NULL,
-  description   TEXT NOT NULL DEFAULT '',
-  amenities     TEXT[] NOT NULL DEFAULT '{}',
-  active        BOOLEAN NOT NULL DEFAULT true,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id         TEXT PRIMARY KEY DEFAULT 'RM' || upper(substr(md5(random()::text), 1, 6)),
+  name       TEXT NOT NULL,
+  active     BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ── SERVICES ─────────────────────────────────────────────────

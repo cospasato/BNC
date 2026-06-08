@@ -575,12 +575,7 @@ export default function App(){
                             <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:bD.roomId===rm.id?PL:BK,marginBottom:rm.amenities?.length>0?6:0}}>
                               {rm.name}
                             </div>
-                            {rm.amenities?.length>0&&(
-                              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                                {rm.amenities.slice(0,5).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}
-                              </div>
-                            )}
-                            {rm.description&&<div style={{fontSize:12,color:G6,marginTop:5}}>{rm.description}</div>}
+  
                           </div>
                           <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${bD.roomId===rm.id?PL:G2}`,background:bD.roomId===rm.id?PL:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
                             {bD.roomId===rm.id&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
@@ -1412,15 +1407,12 @@ function TherapistsTab({therapists,setTherapists,pop}){
 
 function RoomsTab({rooms,setRooms,pop}){
   const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",description:"",amenities:""});
+  const [form,setForm]=useState({id:null,name:""});
 
-  const open=(r)=>{if(r) setForm({...r,amenities:(r.amenities||[]).join(", ")});else setForm({id:null,name:"",description:"",amenities:""}); setModal(true);};
+  const open=(r)=>{if(r) setForm({id:r.id,name:r.name});else setForm({id:null,name:""}); setModal(true);};
   const save=async()=>{
     if(!form.name) return;
-    const amen = typeof form.amenities==="string"
-      ? form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
-      : (form.amenities||[]);
-    const payload={name:form.name,description:form.description||"",amenities:amen};
+    const payload={name:form.name};
     try{
       if(form.id){ const u=await api.updateRoom(form.id,payload); setRooms(p=>p.map(r=>r.id===form.id?u:r)); pop("Room updated"); }
       else{ const u=await api.createRoom(payload); setRooms(p=>[...p,u]); pop("Room added"); }
@@ -1449,7 +1441,6 @@ function RoomsTab({rooms,setRooms,pop}){
               <span style={{background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
             </div>
             {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
-            {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>open(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
               <button onClick={()=>toggle(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${r.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:r.active?WA:OK,fontWeight:700}}>{r.active?"Disable":"Enable"}</button>
@@ -1461,8 +1452,6 @@ function RoomsTab({rooms,setRooms,pop}){
       {modal&&(
         <Modal title={form.id?"Edit Room":"Add Room"} onClose={()=>setModal(false)}>
           <Inp label="Room Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Room 1, Zanzibar Suite, Blue Room…"/>
-          <Txa label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={2}/>
-          <Inp label="Amenities (comma separated)" value={form.amenities} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Private shower, Music system, Aromatherapy"/>
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
             <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Room"}</Btn>
