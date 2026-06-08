@@ -1472,15 +1472,15 @@ function RoomsTab({rooms,setRooms,pop}){
   );
 }
 
-function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
+function ServicesTab({services,setServices,pricing,setPricing,pop}){
   const [modal,setModal]=useState(false);
   const [form,setForm]=useState({id:null,name:"",category:"Massage",description:"",duration_min:60});
-  const [priceForm,setPriceForm]=useState({serviceId:"",roomType:"Standard",serviceType:"inhouse",price:""});
+  const [priceForm,setPriceForm]=useState({serviceId:"",serviceType:"inhouse",price:""});
   const CATS=["Massage","Facial","Body","Wellness","Other"];
-  const ROOM_TYPES=["Standard","VIP","Couples","Suite"];
   const catColor={Massage:PL,Facial:GOLD,Body:OK,Wellness:IN,Other:G6};
 
-  const openSvc=(s)=>{ if(s) setForm({...s});else setForm({id:null,name:"",category:"Massage",description:"",duration_min:60}); setModal(true); };
+  const openSvc=(s)=>{ if(s) setForm({...s}); else setForm({id:null,name:"",category:"Massage",description:"",duration_min:60}); setModal(true); };
+
   const saveSvc=async()=>{
     if(!form.name) return;
     const payload={name:form.name,category:form.category,description:form.description||"",duration_min:Number(form.duration_min)||60};
@@ -1488,22 +1488,30 @@ function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
       if(form.id){ const u=await api.updateService(form.id,payload); setServices(p=>p.map(s=>s.id===form.id?u:s)); pop("Service updated"); }
       else{ const u=await api.createService(payload); setServices(p=>[...p,u]); pop("Service added"); }
       setModal(false);
-    }catch(e){pop(e.message,"err");}
+    }catch(e){ pop(e.message,"err"); }
   };
 
   const savePrice=async()=>{
-    if(!priceForm.serviceId||!priceForm.price) return pop("Fill all price fields","err");
+    if(!priceForm.serviceId||!priceForm.price) return pop("Select a service and enter price","err");
     try{
-      const u=await api.upsertPrice({service_id:priceForm.serviceId,room_type:priceForm.roomType,service_type:priceForm.serviceType,price:Number(priceForm.price)});
-      setPricing(p=>{const ex=p.findIndex(x=>x.service_id===priceForm.serviceId&&x.room_type===priceForm.roomType&&x.service_type===priceForm.serviceType);if(ex>=0){const n=[...p];n[ex]=u;return n;}return[...p,u];});
-      setPriceForm(f=>({...f,price:""})); pop("Price saved");
-    }catch(e){pop(e.message,"err");}
-  };
-  const delPrice=async(id)=>{
-    try{ await api.deletePrice(id); setPricing(p=>p.filter(x=>x.id!==id)); pop("Price removed"); }catch(e){pop(e.message,"err");}
+      const u=await api.upsertPrice({service_id:priceForm.serviceId,service_type:priceForm.serviceType,price:Number(priceForm.price)});
+      setPricing(p=>{
+        const ex=p.findIndex(x=>x.service_id===priceForm.serviceId&&x.service_type===priceForm.serviceType&&x.room_type==="Standard");
+        if(ex>=0){const n=[...p];n[ex]=u;return n;}
+        return[...p,u];
+      });
+      setPriceForm(f=>({...f,price:""}));
+      pop("Price saved");
+    }catch(e){ pop(e.message,"err"); }
   };
 
-  const getP=(sId,rt,st)=>pricing.find(p=>p.service_id===sId&&p.room_type===rt&&p.service_type===st);
+  const delPrice=async(id)=>{
+    try{ await api.deletePrice(id); setPricing(p=>p.filter(x=>x.id!==id)); pop("Price removed"); }
+    catch(e){ pop(e.message,"err"); }
+  };
+
+  // Get price for a service+serviceType (ignore room_type — always use Standard)
+  const getP=(sId,st)=>pricing.find(p=>p.service_id===sId&&p.service_type===st);
 
   return(
     <div>
@@ -1512,27 +1520,24 @@ function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
         <Btn onClick={()=>openSvc(null)}>+ Add Service</Btn>
       </div>
 
-      {/* Pricing matrix tool */}
+      {/* Pricing tool — service + type only, no room type */}
       <Card style={{marginBottom:20}}>
         <ST c="Set / Update Price"/>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10,alignItems:"flex-end"}}>
           <Sel label="Service" value={priceForm.serviceId} onChange={e=>setPriceForm(f=>({...f,serviceId:e.target.value}))}>
             <option value="">Select service…</option>
             {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
           </Sel>
-          <Sel label="Room Type" value={priceForm.roomType} onChange={e=>setPriceForm(f=>({...f,roomType:e.target.value}))}>
-            {ROOM_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-          </Sel>
           <Sel label="Service Type" value={priceForm.serviceType} onChange={e=>setPriceForm(f=>({...f,serviceType:e.target.value}))}>
-            <option value="inhouse">In-House</option>
-            <option value="outcall">Outcall</option>
+            <option value="inhouse">🏢 In-House</option>
+            <option value="outcall">🏠 Outcall</option>
           </Sel>
-          <Inp label="Price (TZS)" type="number" value={priceForm.price} onChange={e=>setPriceForm(f=>({...f,price:e.target.value}))} style={{marginBottom:0}}/>
+          <Inp label="Price (TZS)" type="number" value={priceForm.price} onChange={e=>setPriceForm(f=>({...f,price:e.target.value}))} placeholder="50000" style={{marginBottom:0}}/>
+          <Btn onClick={savePrice} disabled={!priceForm.serviceId||!priceForm.price} style={{marginBottom:0,whiteSpace:"nowrap"}}>Save</Btn>
         </div>
-        <div style={{marginTop:10}}><Btn onClick={savePrice} disabled={!priceForm.serviceId||!priceForm.price}>Save Price</Btn></div>
       </Card>
 
-      {/* Services grouped by category */}
+      {/* Services list */}
       {CATS.map(cat=>{
         const svcs=services.filter(s=>s.category===cat);
         if(!svcs.length) return null;
@@ -1542,63 +1547,67 @@ function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
               <div style={{width:10,height:10,borderRadius:"50%",background:catColor[cat]||G6}}/>
               {cat}
             </div>
-            {svcs.map(sv=>(
-              <Card key={sv.id} style={{marginBottom:10}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:10}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:15,color:BK}}>{sv.name}</div>
-                    <div style={{fontSize:12,color:G6,marginTop:2}}>{sv.duration_min} min {sv.description&&"· "+sv.description}</div>
+            {svcs.map(sv=>{
+              const ph=getP(sv.id,"inhouse");
+              const po=getP(sv.id,"outcall");
+              return(
+                <Card key={sv.id} style={{marginBottom:10,padding:"14px 16px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:15,color:BK,marginBottom:3}}>{sv.name}</div>
+                      <div style={{fontSize:12,color:G6}}>{sv.duration_min} min{sv.description?" · "+sv.description:""}</div>
+                    </div>
+                    {/* Price chips */}
+                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+                      {ph?(
+                        <div style={{display:"flex",alignItems:"center",gap:5,background:G1,borderRadius:8,padding:"4px 10px",fontSize:13}}>
+                          <span style={{color:G6,fontSize:11}}>🏢</span>
+                          <span style={{fontWeight:700}}>{fmt(ph.price)}</span>
+                          <button onClick={()=>delPrice(ph.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,padding:0,lineHeight:1}}>×</button>
+                        </div>
+                      ):(
+                        <span style={{fontSize:11,color:G4}}>No in-house price</span>
+                      )}
+                      {po?(
+                        <div style={{display:"flex",alignItems:"center",gap:5,background:PLF,borderRadius:8,padding:"4px 10px",fontSize:13}}>
+                          <span style={{color:G6,fontSize:11}}>🏠</span>
+                          <span style={{fontWeight:700,color:PL}}>{fmt(po.price)}</span>
+                          <button onClick={()=>delPrice(po.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,padding:0,lineHeight:1}}>×</button>
+                        </div>
+                      ):(
+                        <span style={{fontSize:11,color:G4}}>No outcall price</span>
+                      )}
+                      <button onClick={()=>openSvc(sv)} style={{padding:"5px 10px",fontSize:11,borderRadius:6,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit"}}>Edit</button>
+                    </div>
                   </div>
-                  <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    <button onClick={()=>openSvc(sv)} style={{padding:"5px 10px",fontSize:11,borderRadius:6,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit"}}>Edit</button>
-                  </div>
-                </div>
-                {/* Pricing grid */}
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                    <thead>
-                      <tr>
-                        <th style={{textAlign:"left",padding:"5px 8px",color:G6,fontWeight:700,borderBottom:`1px solid ${G2}`}}>Room Type</th>
-                        <th style={{textAlign:"right",padding:"5px 8px",color:IN,fontWeight:700,borderBottom:`1px solid ${G2}`}}>In-House</th>
-                        <th style={{textAlign:"right",padding:"5px 8px",color:PL,fontWeight:700,borderBottom:`1px solid ${G2}`}}>Outcall</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ROOM_TYPES.map(rt=>{
-                        const ph=getP(sv.id,rt,"inhouse");
-                        const po=getP(sv.id,rt,"outcall");
-                        return(
-                          <tr key={rt} style={{borderBottom:`1px solid ${G1}`}}>
-                            <td style={{padding:"6px 8px",color:G8,fontWeight:600}}>{rt}</td>
-                            <td style={{padding:"6px 8px",textAlign:"right"}}>
-                              {ph?<span style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6}}><span style={{fontWeight:700,color:IN}}>{fmt(ph.price)}</span><button onClick={()=>delPrice(ph.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,padding:0}}>×</button></span>:<span style={{color:G4}}>—</span>}
-                            </td>
-                            <td style={{padding:"6px 8px",textAlign:"right"}}>
-                              {po?<span style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6}}><span style={{fontWeight:700,color:PL}}>{fmt(po.price)}</span><button onClick={()=>delPrice(po.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,padding:0}}>×</button></span>:<span style={{color:G4}}>—</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         );
       })}
+      {!services.length&&<div style={{color:G4,fontSize:14,padding:20}}>No services yet. Add your first service.</div>}
 
+      {/* Service form modal */}
       {modal&&(
         <Modal title={form.id?"Edit Service":"Add Service"} onClose={()=>setModal(false)}>
           <Inp label="Service Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Swedish Massage"/>
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Category</label>
             <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-              {CATS.map(c=><button key={c} onClick={()=>setForm(f=>({...f,category:c}))} style={{padding:"6px 13px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${form.category===c?(catColor[c]||G6):G2}`,background:form.category===c?`${catColor[c]||G6}15`:WH,color:form.category===c?(catColor[c]||G6):G6}}>{c}</button>)}
+              {CATS.map(ct=>(
+                <button key={ct} onClick={()=>setForm(f=>({...f,category:ct}))}
+                  style={{padding:"6px 13px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${form.category===ct?(catColor[ct]||G6):G2}`,
+                    background:form.category===ct?`${catColor[ct]||G6}15`:WH,
+                    color:form.category===ct?(catColor[ct]||G6):G6}}>
+                  {ct}
+                </button>
+              ))}
             </div>
           </div>
-          <Inp label="Duration (minutes)" type="number" value={form.duration_min} onChange={e=>setForm(f=>({...f,duration_min:Number(e.target.value)}))}/>
-          <Txa label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={2}/>
+          <Inp label="Duration (minutes)" type="number" value={form.duration_min} onChange={e=>setForm(f=>({...f,duration_min:e.target.value}))} placeholder="60"/>
+          <Inp label="Description (optional)" value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Full body relaxation massage…"/>
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
             <Btn onClick={saveSvc} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Service"}</Btn>
