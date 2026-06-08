@@ -27,6 +27,10 @@ module.exports = async function handler(req, res) {
       `ALTER TABLE rooms DROP COLUMN IF EXISTS price_per_night`,
       `ALTER TABLE rooms DROP COLUMN IF EXISTS photos`,
       `ALTER TABLE rooms DROP COLUMN IF EXISTS video_url`,
+      // Pricing: add room_id column if missing (replaces room_type)
+      `ALTER TABLE pricing ADD COLUMN IF NOT EXISTS room_id TEXT REFERENCES rooms(id) ON DELETE CASCADE`,
+      // Make room_type nullable for backward compat
+      `ALTER TABLE pricing ALTER COLUMN room_type DROP NOT NULL`,
     ];
 
     const results = [];

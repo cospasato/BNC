@@ -60,11 +60,11 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE TABLE IF NOT EXISTS pricing (
   id            TEXT PRIMARY KEY DEFAULT 'PR' || upper(substr(md5(random()::text), 1, 6)),
   service_id    TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
-  room_type     TEXT NOT NULL DEFAULT 'Standard',   -- matches rooms.room_type
+  room_id       TEXT REFERENCES rooms(id) ON DELETE CASCADE,  -- null = outcall (no room)
   service_type  TEXT NOT NULL DEFAULT 'inhouse',    -- inhouse | outcall
   price         BIGINT NOT NULL,                    -- TZS
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(service_id, room_type, service_type)
+  UNIQUE(service_id, room_id, service_type)
 );
 
 -- ── OFFERS / PROMOTIONS ──────────────────────────────────────

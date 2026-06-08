@@ -275,8 +275,8 @@ export default function App(){
     const p2=pricing.find(p=>p.service_id===serviceId&&p.service_type===serviceType);
     return p2?Number(p2.price):0;
   };
-  const bRoomType = rooms.find(r=>r.id===bD.roomId)?.room_type||"Standard";
-  const bBase = bD.services.reduce((s,sv)=>s+getPrice(sv.id,bRoomType,bD.serviceType),0);
+  const bRoomId = bD.roomId||null;
+  const bBase = bD.services.reduce((s,sv)=>s+getPrice(sv.id,bRoomId,bD.serviceType),0);
   const bDisc = bD.discT==="pct"?Math.round(bBase*bD.disc/100):Number(bD.disc);
   const bTotal= Math.max(0,bBase-bDisc);
 
@@ -299,7 +299,7 @@ export default function App(){
   };
 
   // ── PRICING HELPER: get price for selected booking ──
-  const selServicePrice = (id)=>getPrice(id, bRoomType, bD.serviceType);
+  const selServicePrice = (id)=>getPrice(id, bRoomId, bD.serviceType);
 
   // ── NAVBAR ──
   const isMobile = typeof window!=="undefined"&&window.innerWidth<640;
@@ -603,7 +603,7 @@ export default function App(){
                   <div style={{fontSize:12,fontWeight:700,color:PL,textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>{cat}</div>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {svs.map(sv=>{
-                      const price=getPrice(sv.id,bRoomType,bD.serviceType);
+                      const price=getPrice(sv.id,bRoomId,bD.serviceType);
                       const sel=bD.services.find(s=>s.id===sv.id);
                       return(
                         <div key={sv.id} onClick={()=>toggleService(sv)}
@@ -625,7 +625,7 @@ export default function App(){
               {bD.services.length>0&&(
                 <div style={{background:PLF,border:`1px solid ${PL}30`,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
                   <div style={{fontSize:13,fontWeight:700,color:PL,marginBottom:6}}>Selected ({bD.services.length})</div>
-                  {bD.services.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:G8,paddingBottom:4}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomType,bD.serviceType))}</span></div>)}
+                  {bD.services.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:G8,paddingBottom:4}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomId,bD.serviceType))}</span></div>)}
                   <div style={{borderTop:`1px solid ${PL}20`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:BK}}><span>Subtotal</span><span style={{color:PL}}>{fmt(bBase)}</span></div>
                 </div>
               )}
@@ -666,7 +666,7 @@ export default function App(){
                 <div style={{marginTop:12}}>
                   {bD.services.map(s=>(
                     <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}>
-                      <span style={{color:G6}}>💆 {s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomType,bD.serviceType))}</span>
+                      <span style={{color:G6}}>💆 {s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomId,bD.serviceType))}</span>
                     </div>
                   ))}
                   <div style={{borderTop:`1px solid ${G2}`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700}}>
@@ -1127,8 +1127,8 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
     const p=pricing.find(p=>p.service_id===svcId&&p.room_type===roomType&&p.service_type===svcType)||pricing.find(p=>p.service_id===svcId&&p.service_type===svcType);
     return p?Number(p.price):0;
   };
-  const rmType=rooms.find(r=>r.id===form.roomId)?.room_type||"Standard";
-  const base=form.selServices.reduce((s,sv)=>s+getPrice(sv.id,rmType,form.serviceType),0);
+  const rmRoomId=form.roomId||null;
+  const base=form.selServices.reduce((s,sv)=>s+getPrice(sv.id,rmRoomId,form.serviceType),0);
   const disc=form.discT==="pct"?Math.round(base*form.disc/100):Number(form.disc);
   const total=Math.max(0,base-disc);
 
@@ -1136,7 +1136,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
     setForm(f=>{
       const ex=f.selServices.find(s=>s.id===sv.id);
       if(ex) return {...f,selServices:f.selServices.filter(s=>s.id!==sv.id)};
-      return {...f,selServices:[...f.selServices,{id:sv.id,name:sv.name,price:getPrice(sv.id,rmType,f.serviceType)}]};
+      return {...f,selServices:[...f.selServices,{id:sv.id,name:sv.name,price:getPrice(sv.id,rmRoomId,f.serviceType)}]};
     });
   };
 
@@ -1198,7 +1198,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
             <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Services *</label>
             <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:200,overflowY:"auto",padding:4}}>
               {services.filter(s=>s.active).map(sv=>{
-                const price=getPrice(sv.id,rmType,form.serviceType);
+                const price=getPrice(sv.id,rmRoomId,form.serviceType);
                 const sel=form.selServices.find(s=>s.id===sv.id);
                 return(
                   <button key={sv.id} onClick={()=>toggleSvc(sv)}
@@ -1212,7 +1212,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
           {/* Pricing summary */}
           {form.selServices.length>0&&(
             <div style={{background:PLF,borderRadius:9,padding:"10px 14px",marginBottom:12}}>
-              {form.selServices.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:G8,marginBottom:4}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,rmType,form.serviceType))}</span></div>)}
+              {form.selServices.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:G8,marginBottom:4}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,rmRoomId,form.serviceType))}</span></div>)}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
                 <Inp label="Discount" type="number" value={form.disc} onChange={e=>setForm(f=>({...f,disc:e.target.value}))} style={{marginBottom:0}}/>
                 <Sel label="Type" value={form.discT} onChange={e=>setForm(f=>({...f,discT:e.target.value}))} style={{marginBottom:0}}>
@@ -1472,10 +1472,10 @@ function RoomsTab({rooms,setRooms,pop}){
   );
 }
 
-function ServicesTab({services,setServices,pricing,setPricing,pop}){
+function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
   const [modal,setModal]=useState(false);
   const [form,setForm]=useState({id:null,name:"",category:"Massage",description:"",duration_min:60});
-  const [priceForm,setPriceForm]=useState({serviceId:"",serviceType:"inhouse",price:""});
+  const [priceForm,setPriceForm]=useState({serviceId:"",roomId:"",serviceType:"inhouse",price:""});
   const CATS=["Massage","Facial","Body","Wellness","Other"];
   const catColor={Massage:PL,Facial:GOLD,Body:OK,Wellness:IN,Other:G6};
 
@@ -1493,10 +1493,16 @@ function ServicesTab({services,setServices,pricing,setPricing,pop}){
 
   const savePrice=async()=>{
     if(!priceForm.serviceId||!priceForm.price) return pop("Select a service and enter price","err");
+    if(priceForm.serviceType==="inhouse"&&!priceForm.roomId) return pop("Select a room for in-house pricing","err");
     try{
-      const u=await api.upsertPrice({service_id:priceForm.serviceId,service_type:priceForm.serviceType,price:Number(priceForm.price)});
+      const u=await api.upsertPrice({
+        service_id:   priceForm.serviceId,
+        room_id:      priceForm.serviceType==="inhouse" ? priceForm.roomId : null,
+        service_type: priceForm.serviceType,
+        price:        Number(priceForm.price)
+      });
       setPricing(p=>{
-        const ex=p.findIndex(x=>x.service_id===priceForm.serviceId&&x.service_type===priceForm.serviceType&&x.room_type==="Standard");
+        const ex=p.findIndex(x=>x.service_id===u.service_id&&x.room_id===u.room_id&&x.service_type===u.service_type);
         if(ex>=0){const n=[...p];n[ex]=u;return n;}
         return[...p,u];
       });
@@ -1510,8 +1516,8 @@ function ServicesTab({services,setServices,pricing,setPricing,pop}){
     catch(e){ pop(e.message,"err"); }
   };
 
-  // Get price for a service+serviceType (ignore room_type — always use Standard)
-  const getP=(sId,st)=>pricing.find(p=>p.service_id===sId&&p.service_type===st);
+  // Get all prices for a service
+  const getPrices=(sId)=>pricing.filter(p=>p.service_id===sId);
 
   return(
     <div>
@@ -1520,20 +1526,35 @@ function ServicesTab({services,setServices,pricing,setPricing,pop}){
         <Btn onClick={()=>openSvc(null)}>+ Add Service</Btn>
       </div>
 
-      {/* Pricing tool — service + type only, no room type */}
+      {/* Pricing tool */}
       <Card style={{marginBottom:20}}>
         <ST c="Set / Update Price"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10,alignItems:"flex-end"}}>
-          <Sel label="Service" value={priceForm.serviceId} onChange={e=>setPriceForm(f=>({...f,serviceId:e.target.value}))}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+          <Sel label="Service *" value={priceForm.serviceId} onChange={e=>setPriceForm(f=>({...f,serviceId:e.target.value}))}>
             <option value="">Select service…</option>
             {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
           </Sel>
-          <Sel label="Service Type" value={priceForm.serviceType} onChange={e=>setPriceForm(f=>({...f,serviceType:e.target.value}))}>
+          <Sel label="Service Type *" value={priceForm.serviceType} onChange={e=>setPriceForm(f=>({...f,serviceType:e.target.value,roomId:e.target.value==="outcall"?"":f.roomId}))}>
             <option value="inhouse">🏢 In-House</option>
             <option value="outcall">🏠 Outcall</option>
           </Sel>
-          <Inp label="Price (TZS)" type="number" value={priceForm.price} onChange={e=>setPriceForm(f=>({...f,price:e.target.value}))} placeholder="50000" style={{marginBottom:0}}/>
-          <Btn onClick={savePrice} disabled={!priceForm.serviceId||!priceForm.price} style={{marginBottom:0,whiteSpace:"nowrap"}}>Save</Btn>
+          {priceForm.serviceType==="inhouse"&&(
+            <Sel label="Room *" value={priceForm.roomId} onChange={e=>setPriceForm(f=>({...f,roomId:e.target.value}))}>
+              <option value="">Select room…</option>
+              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+            </Sel>
+          )}
+          {priceForm.serviceType==="outcall"&&(
+            <div style={{display:"flex",alignItems:"flex-end",paddingBottom:14}}>
+              <div style={{fontSize:12,color:G6,padding:"9px 0"}}>No room needed for outcall</div>
+            </div>
+          )}
+          <Inp label="Price (TZS) *" type="number" value={priceForm.price} onChange={e=>setPriceForm(f=>({...f,price:e.target.value}))} placeholder="50000" style={{marginBottom:0}}/>
+        </div>
+        <div style={{marginTop:12}}>
+          <Btn onClick={savePrice} disabled={!priceForm.serviceId||!priceForm.price||(priceForm.serviceType==="inhouse"&&!priceForm.roomId)}>
+            Save Price
+          </Btn>
         </div>
       </Card>
 
@@ -1548,38 +1569,50 @@ function ServicesTab({services,setServices,pricing,setPricing,pop}){
               {cat}
             </div>
             {svcs.map(sv=>{
-              const ph=getP(sv.id,"inhouse");
-              const po=getP(sv.id,"outcall");
+              const svPrices=getPrices(sv.id);
+              const inhousePrices=svPrices.filter(p=>p.service_type==="inhouse");
+              const outcallPrice =svPrices.find(p=>p.service_type==="outcall");
               return(
                 <Card key={sv.id} style={{marginBottom:10,padding:"14px 16px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:15,color:BK,marginBottom:3}}>{sv.name}</div>
-                      <div style={{fontSize:12,color:G6}}>{sv.duration_min} min{sv.description?" · "+sv.description:""}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:10}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:15,color:BK}}>{sv.name}</div>
+                      <div style={{fontSize:12,color:G6,marginTop:2}}>{sv.duration_min} min{sv.description?" · "+sv.description:""}</div>
                     </div>
-                    {/* Price chips */}
-                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
-                      {ph?(
-                        <div style={{display:"flex",alignItems:"center",gap:5,background:G1,borderRadius:8,padding:"4px 10px",fontSize:13}}>
-                          <span style={{color:G6,fontSize:11}}>🏢</span>
-                          <span style={{fontWeight:700}}>{fmt(ph.price)}</span>
-                          <button onClick={()=>delPrice(ph.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,padding:0,lineHeight:1}}>×</button>
-                        </div>
-                      ):(
-                        <span style={{fontSize:11,color:G4}}>No in-house price</span>
-                      )}
-                      {po?(
-                        <div style={{display:"flex",alignItems:"center",gap:5,background:PLF,borderRadius:8,padding:"4px 10px",fontSize:13}}>
-                          <span style={{color:G6,fontSize:11}}>🏠</span>
-                          <span style={{fontWeight:700,color:PL}}>{fmt(po.price)}</span>
-                          <button onClick={()=>delPrice(po.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,padding:0,lineHeight:1}}>×</button>
-                        </div>
-                      ):(
-                        <span style={{fontSize:11,color:G4}}>No outcall price</span>
-                      )}
-                      <button onClick={()=>openSvc(sv)} style={{padding:"5px 10px",fontSize:11,borderRadius:6,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit"}}>Edit</button>
-                    </div>
+                    <button onClick={()=>openSvc(sv)} style={{padding:"5px 10px",fontSize:11,borderRadius:6,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit",flexShrink:0}}>Edit</button>
                   </div>
+
+                  {/* In-house prices per room */}
+                  {inhousePrices.length>0&&(
+                    <div style={{marginBottom:8}}>
+                      <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>🏢 In-House</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {inhousePrices.map(p=>(
+                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,background:G1,borderRadius:8,padding:"5px 11px",fontSize:13}}>
+                            <span style={{color:G8,fontWeight:600}}>{p.room_name||rooms.find(r=>r.id===p.room_id)?.name||"Room"}</span>
+                            <span style={{color:G4}}>·</span>
+                            <span style={{fontWeight:700}}>{fmt(p.price)}</span>
+                            <button onClick={()=>delPrice(p.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Outcall price */}
+                  {outcallPrice?(
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>🏠 Outcall</div>
+                      <div style={{display:"inline-flex",alignItems:"center",gap:6,background:PLF,borderRadius:8,padding:"5px 11px",fontSize:13}}>
+                        <span style={{fontWeight:700,color:PL}}>{fmt(outcallPrice.price)}</span>
+                        <button onClick={()=>delPrice(outcallPrice.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>×</button>
+                      </div>
+                    </div>
+                  ):null}
+
+                  {!svPrices.length&&(
+                    <div style={{fontSize:12,color:G4,fontStyle:"italic"}}>No prices set — use the form above to add prices</div>
+                  )}
                 </Card>
               );
             })}
@@ -2136,12 +2169,12 @@ function NewApptModal({therapists,rooms,services,pricing,payMethods,offers,user,
   const [form,setForm]=useState({customerName:"",customerPhone:"",customerEmail:"",therapistId:"",roomId:"",serviceType:"inhouse",outcallAddr:"",date:td(),time:"10:00",selServices:[],disc:0,discT:"pct",method:"Cash",notes:""});
 
   const getP=(sId,rt,st)=>{const p=pricing.find(p=>p.service_id===sId&&p.room_type===rt&&p.service_type===st)||pricing.find(p=>p.service_id===sId&&p.service_type===st);return p?Number(p.price):0;};
-  const rmType=rooms.find(r=>r.id===form.roomId)?.room_type||"Standard";
-  const base=form.selServices.reduce((s,sv)=>s+getP(sv.id,rmType,form.serviceType),0);
+  const rmRoomId=form.roomId||null;
+  const base=form.selServices.reduce((s,sv)=>s+getP(sv.id,rmRoomId,form.serviceType),0);
   const disc=form.discT==="pct"?Math.round(base*form.disc/100):Number(form.disc);
   const total=Math.max(0,base-disc);
 
-  const toggleSvc=(sv)=>setForm(f=>{const ex=f.selServices.find(s=>s.id===sv.id);if(ex) return {...f,selServices:f.selServices.filter(s=>s.id!==sv.id)};return {...f,selServices:[...f.selServices,{id:sv.id,name:sv.name,price:getP(sv.id,rmType,f.serviceType)}]};});
+  const toggleSvc=(sv)=>setForm(f=>{const ex=f.selServices.find(s=>s.id===sv.id);if(ex) return {...f,selServices:f.selServices.filter(s=>s.id!==sv.id)};return {...f,selServices:[...f.selServices,{id:sv.id,name:sv.name,price:getP(sv.id,rmRoomId,f.serviceType)}]};});
 
   const save=async()=>{
     if(!form.customerName||!form.customerPhone||form.selServices.length===0) return pop("Name, phone, and at least one service required","err");
@@ -2176,10 +2209,10 @@ function NewApptModal({therapists,rooms,services,pricing,payMethods,offers,user,
       <div style={{marginBottom:12}}>
         <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Services *</label>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:160,overflowY:"auto"}}>
-          {services.filter(s=>s.active).map(sv=>{const price=getP(sv.id,rmType,form.serviceType);const sel=form.selServices.find(s=>s.id===sv.id);return<button key={sv.id} onClick={()=>toggleSvc(sv)} style={{padding:"6px 11px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G6}}>{sv.name}{price?` · ${fmt(price)}`:""}</button>;})}
+          {services.filter(s=>s.active).map(sv=>{const price=getP(sv.id,rmRoomId,form.serviceType);const sel=form.selServices.find(s=>s.id===sv.id);return<button key={sv.id} onClick={()=>toggleSvc(sv)} style={{padding:"6px 11px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G6}}>{sv.name}{price?` · ${fmt(price)}`:""}</button>;})}
         </div>
       </div>
-      {form.selServices.length>0&&<div style={{background:PLF,borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:13}}>{form.selServices.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getP(s.id,rmType,form.serviceType))}</span></div>)}<div style={{borderTop:`1px solid ${PL}20`,paddingTop:6,marginTop:4,display:"flex",justifyContent:"space-between",fontWeight:700}}><span>Total</span><span style={{color:PL}}>{fmt(total)}</span></div></div>}
+      {form.selServices.length>0&&<div style={{background:PLF,borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:13}}>{form.selServices.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getP(s.id,rmRoomId,form.serviceType))}</span></div>)}<div style={{borderTop:`1px solid ${PL}20`,paddingTop:6,marginTop:4,display:"flex",justifyContent:"space-between",fontWeight:700}}><span>Total</span><span style={{color:PL}}>{fmt(total)}</span></div></div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
         <Inp label="Discount" type="number" value={form.disc} onChange={e=>setForm(f=>({...f,disc:e.target.value}))} style={{marginBottom:0}}/>
         <Sel label="Type" value={form.discT} onChange={e=>setForm(f=>({...f,discT:e.target.value}))} style={{marginBottom:0}}><option value="pct">%</option><option value="fix">TZS</option></Sel>
