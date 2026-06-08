@@ -2,31 +2,42 @@ const { getDb, setCors, dbError } = require('./_db.js');
 
 module.exports = async function handler(req, res) {
   setCors(res);
-  if (!process.env.DATABASE_URL) {
-    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set', fix: 'Add it in Vercel → Project → Settings → Environment Variables, then redeploy.' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  let sql;
+  try { sql = getDb(); } catch (e) { return res.status(500).json({ error: e.message }); }
+
   try {
-    const sql = getDb();
-    const tables = await sql`
+    // Check spa tables exist
+    const found = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-        AND table_name IN ('locations','rooms','bookings','expenses','staff')
-      ORDER BY table_name
+      AND table_name IN ('staff','therapists','rooms','services','appointments','reception_log','customers','payment_methods')
     `;
-    const found   = tables.map(t => t.table_name);
-    const missing = ['bookings','expenses','locations','rooms','staff'].filter(t => !found.includes(t));
-    if (missing.length) {
-      return res.status(500).json({ ok: false, error: `Missing tables: ${missing.join(', ')}`, fix: 'Run schema.sql in Neon Console → SQL Editor.', found, missing });
+    const names = found.map(r => r.table_name);
+    const missing = ['staff','therapists','rooms','services','appointments','reception_log','customers','payment_methods'].filter(t => !names.includes(t));
+
+    if (missing.length > 0) {
+      return res.status(200).json({ ok: false, message: 'Missing tables: ' + missing.join(', ') + '. Run schema.sql in Neon SQL Editor.', missing });
     }
-    const [l,r,b,e,s] = await Promise.all([
-      sql`SELECT COUNT(*)::int AS n FROM locations`,
-      sql`SELECT COUNT(*)::int AS n FROM rooms`,
-      sql`SELECT COUNT(*)::int AS n FROM bookings`,
-      sql`SELECT COUNT(*)::int AS n FROM expenses`,
+
+    const [st,th,rm,sv,ap,rl,cu,pm] = await Promise.all([
       sql`SELECT COUNT(*)::int AS n FROM staff`,
+      sql`SELECT COUNT(*)::int AS n FROM therapists`,
+      sql`SELECT COUNT(*)::int AS n FROM rooms`,
+      sql`SELECT COUNT(*)::int AS n FROM services`,
+      sql`SELECT COUNT(*)::int AS n FROM appointments`,
+      sql`SELECT COUNT(*)::int AS n FROM reception_log`,
+      sql`SELECT COUNT(*)::int AS n FROM customers`,
+      sql`SELECT COUNT(*)::int AS n FROM payment_methods`,
     ]);
-    return res.status(200).json({ ok: true, message: 'Database configured correctly ✓', counts: { locations: l[0].n, rooms: r[0].n, bookings: b[0].n, expenses: e[0].n, staff: s[0].n } });
+
+    return res.status(200).json({
+      ok: true,
+      message: 'MASSAGE TZ database ready ✓',
+      counts: { staff: st[0].n, therapists: th[0].n, rooms: rm[0].n, services: sv[0].n, appointments: ap[0].n, reception_log: rl[0].n, customers: cu[0].n, payment_methods: pm[0].n }
+    });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: dbError(err), raw: err.message, fix: 'Check DATABASE_URL is correct and run schema.sql.' });
+    return res.status(500).json({ error: dbError(err) });
   }
 };

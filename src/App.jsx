@@ -1239,7 +1239,10 @@ function TherapistsTab({therapists,setTherapists,pop}){
 
   const save=async()=>{
     if(!form.name) return;
-    const payload={...form,specialties:form.specialties.split(",").map(s=>s.trim()).filter(Boolean)};
+    const specs = typeof form.specialties==="string"
+      ? form.specialties.split(",").map(s=>s.trim()).filter(Boolean)
+      : (form.specialties||[]);
+    const payload={name:form.name,phone:form.phone||"",email:form.email||"",bio:form.bio||"",photo:form.photo||null,specialties:specs,outcall:!!form.outcall,active:form.active!==false};
     try{
       if(form.id){ const u=await api.updateTherapist(form.id,payload); setTherapists(p=>p.map(t=>t.id===form.id?u:t)); pop("Therapist updated"); }
       else{ const u=await api.createTherapist(payload); setTherapists(p=>[...p,u]); pop("Therapist added"); }
@@ -1333,7 +1336,10 @@ function RoomsTab({rooms,setRooms,pop}){
   const open=(r)=>{if(r) setForm({...r,amenities:(r.amenities||[]).join(", ")});else setForm({id:null,name:"",room_type:"Standard",capacity:1,description:"",amenities:""}); setModal(true);};
   const save=async()=>{
     if(!form.name) return;
-    const payload={...form,amenities:form.amenities.split(",").map(s=>s.trim()).filter(Boolean)};
+    const amen = typeof form.amenities==="string"
+      ? form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
+      : (form.amenities||[]);
+    const payload={name:form.name,room_type:form.room_type||"Standard",capacity:Number(form.capacity)||1,description:form.description||"",amenities:amen};
     try{
       if(form.id){ const u=await api.updateRoom(form.id,payload); setRooms(p=>p.map(r=>r.id===form.id?u:r)); pop("Room updated"); }
       else{ const u=await api.createRoom(payload); setRooms(p=>[...p,u]); pop("Room added"); }
