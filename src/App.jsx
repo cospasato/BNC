@@ -152,32 +152,41 @@ export default function App(){
 
   // ── Load data ──
   const loadPublic = useCallback(async()=>{
-    try{
-      const [th,rm,sv] = await Promise.all([api.getTherapists(),api.getRooms(),api.getServices()]);
-      setTherapists(th.filter(t=>t.active));
-      setRooms(rm.filter(r=>r.active));
-      if(sv.services) { setServices(sv.services.filter(s=>s.active)); setPricing(sv.pricing||[]); }
-    }catch(e){console.error(e);}
+    const safe = async (fn, fallback) => { try{ return await fn(); }catch{ return fallback; } };
+    const [th,rm,sv] = await Promise.all([
+      safe(api.getTherapists,[]),
+      safe(api.getRooms,[]),
+      safe(api.getServices,{services:[],pricing:[]}),
+    ]);
+    if(Array.isArray(th)) setTherapists(th.filter(t=>t.active));
+    if(Array.isArray(rm)) setRooms(rm.filter(r=>r.active));
+    if(sv?.services){ setServices(sv.services.filter(s=>s.active)); setPricing(sv.pricing||[]); }
   },[]);
 
   const loadAdmin = useCallback(async()=>{
     setLoading(true);
-    try{
-      const [th,rm,sv,of,ap,rc,st,ex,pm] = await Promise.all([
-        api.getTherapists(),api.getRooms(),api.getServices(),api.getOffers(),
-        api.getAppointments(),api.getReception(),api.getStaff(),api.getExpenses(),api.getPayMethods()
-      ]);
-      setTherapists(th);
-      setRooms(rm);
-      if(sv.services){setServices(sv.services);setPricing(sv.pricing||[]);}
-      setOffers(of);
-      setAppts(ap);
-      setReception(rc);
-      setStaff(st);
-      setExpenses(ex);
-      const names=pm.map(m=>m.name||m).filter(Boolean);
-      if(names.length) setPayMethods(names);
-    }catch(e){pop("Failed to load data","err");}
+    // Load each resource independently — one failure won't block others
+    const safe = async (fn, fallback=[]) => { try{ return await fn(); }catch(e){ console.warn("Load error:",e.message); return fallback; } };
+    const [th,rm,sv,of,ap,rc,st,ex,pm] = await Promise.all([
+      safe(api.getTherapists),
+      safe(api.getRooms),
+      safe(api.getServices, {services:[],pricing:[]}),
+      safe(api.getOffers),
+      safe(api.getAppointments),
+      safe(api.getReception),
+      safe(api.getStaff),
+      safe(api.getExpenses),
+      safe(api.getPayMethods),
+    ]);
+    if(Array.isArray(th)) setTherapists(th);
+    if(Array.isArray(rm)) setRooms(rm);
+    if(sv?.services){ setServices(sv.services); setPricing(sv.pricing||[]); }
+    if(Array.isArray(of)) setOffers(of);
+    if(Array.isArray(ap)) setAppts(ap);
+    if(Array.isArray(rc)) setReception(rc);
+    if(Array.isArray(st)) setStaff(st);
+    if(Array.isArray(ex)) setExpenses(ex);
+    if(Array.isArray(pm)&&pm.length){ const names=pm.map(m=>m.name||m).filter(Boolean); if(names.length) setPayMethods(names); }
     setLoading(false);
   },[]);
 

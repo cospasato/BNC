@@ -2,11 +2,13 @@
 async function req(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  const res  = await fetch(`/api/spa?${path}`, opts);
-  const text = await res.text();
+  let res;
+  try { res = await fetch(`/api/spa?${path}`, opts); }
+  catch(e) { throw new Error(`Network error: ${e.message}`); }
+  const text = await res.text().catch(()=>"");
   if (!text?.trim()) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return {}; }
   let data;
-  try { data = JSON.parse(text); } catch { throw new Error(`Server error (${res.status})`); }
+  try { data = JSON.parse(text); } catch { throw new Error(`Server error (${res.status}): ${text.slice(0,100)}`); }
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
