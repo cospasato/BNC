@@ -39,8 +39,6 @@ CREATE TABLE IF NOT EXISTS therapists (
 CREATE TABLE IF NOT EXISTS rooms (
   id            TEXT PRIMARY KEY DEFAULT 'RM' || upper(substr(md5(random()::text), 1, 6)),
   name          TEXT NOT NULL,
-  room_type     TEXT NOT NULL DEFAULT 'Standard',   -- Standard | VIP | Couples | Suite
-  capacity      INTEGER NOT NULL DEFAULT 1,
   description   TEXT NOT NULL DEFAULT '',
   amenities     TEXT[] NOT NULL DEFAULT '{}',
   active        BOOLEAN NOT NULL DEFAULT true,

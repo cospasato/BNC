@@ -102,25 +102,23 @@ module.exports = async function handler(req, res) {
     // ── ROOMS ───────────────────────────────────────────────
     if (resource === 'rooms') {
       if (req.method === 'GET') {
-        const rows = await sql`SELECT * FROM rooms WHERE active = true ORDER BY room_type, name ASC`;
+        const rows = await sql`SELECT * FROM rooms WHERE active = true ORDER BY name ASC`;
         return res.status(200).json(rows);
       }
       if (req.method === 'POST') {
-        const { name, room_type, capacity, description, amenities } = req.body || {};
+        const { name, description, amenities } = req.body || {};
         if (!name) return res.status(400).json({ error: 'name required' });
         const rows = await sql`
-          INSERT INTO rooms (name, room_type, capacity, description, amenities)
-          VALUES (${name}, ${room_type||'Standard'}, ${capacity||1}, ${description||''}, ${amenities||[]})
+          INSERT INTO rooms (name, description, amenities)
+          VALUES (${name}, ${description||''}, ${amenities||[]})
           RETURNING *`;
         return res.status(201).json(rows[0]);
       }
       if (req.method === 'PUT' && id) {
-        const { name, room_type, capacity, description, amenities, active } = req.body || {};
+        const { name, description, amenities, active } = req.body || {};
         const rows = await sql`
           UPDATE rooms SET
             name        = COALESCE(${name        ?? null}, name),
-            room_type   = COALESCE(${room_type   ?? null}, room_type),
-            capacity    = COALESCE(${capacity    ?? null}, capacity),
             description = COALESCE(${description ?? null}, description),
             amenities   = COALESCE(${amenities   ?? null}, amenities),
             active      = COALESCE(${active      ?? null}, active)
@@ -138,7 +136,7 @@ module.exports = async function handler(req, res) {
     if (resource === 'services') {
       if (req.method === 'GET') {
         const services = await sql`SELECT * FROM services WHERE active = true ORDER BY category, sort_order, name ASC`;
-        const pricing  = await sql`SELECT * FROM pricing ORDER BY service_id, service_type, room_type`;
+        const pricing  = await sql`SELECT * FROM pricing ORDER BY service_id, service_type`;
         return res.status(200).json({ services, pricing });
       }
       if (req.method === 'POST') {
@@ -168,11 +166,11 @@ module.exports = async function handler(req, res) {
     // ── PRICING ─────────────────────────────────────────────
     if (resource === 'pricing') {
       if (req.method === 'POST') {
-        const { service_id, room_type, service_type, price } = req.body || {};
+        const { service_id, service_type, price } = req.body || {};
         if (!service_id || !price) return res.status(400).json({ error: 'service_id and price required' });
         const rows = await sql`
           INSERT INTO pricing (service_id, room_type, service_type, price)
-          VALUES (${service_id}, ${room_type||'Standard'}, ${service_type||'inhouse'}, ${price})
+          VALUES (${service_id}, 'Standard', ${service_type||'inhouse'}, ${price})
           ON CONFLICT (service_id, room_type, service_type)
           DO UPDATE SET price = ${price}
           RETURNING *`;

@@ -538,31 +538,63 @@ export default function App(){
           {/* Step 3 — Room (inhouse only) */}
           {bStep===3&&(
             <div>
-              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Room</h2>
-              <p style={{color:G6,fontSize:14,marginBottom:20}}>Room type affects service pricing</p>
-              <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
-                {rooms.map(rm=>(
-                  <div key={rm.id} onClick={()=>setBD(d=>({...d,roomId:rm.id}))}
-                    style={{background:WH,borderRadius:12,border:`2px solid ${bD.roomId===rm.id?PL:G2}`,cursor:"pointer",overflow:"hidden",transition:"border-color .15s"}}>
-                    <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-                      <div style={{flex:1}}>
-                        <div style={{marginBottom:4}}>
-                          <span style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK}}>{rm.name}</span>
-                        </div>
-                        <div style={{fontSize:12,color:G6,marginBottom:6}}>Up to {rm.capacity} {rm.capacity>1?"people":"person"}</div>
-                        {rm.amenities?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{rm.amenities.slice(0,4).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
-                      </div>
-                      <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${bD.roomId===rm.id?PL:G2}`,background:bD.roomId===rm.id?PL:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        {bD.roomId===rm.id&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
-                      </div>
+              {bD.serviceType==="outcall" ? (
+                /* Outcall — no room needed, just show info and continue */
+                <div>
+                  <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:20,color:BK}}>Outcall Service</h2>
+                  <div style={{background:PLF,border:`1px solid ${PL}30`,borderRadius:14,padding:"28px 24px",textAlign:"center",marginBottom:20}}>
+                    <div style={{fontSize:48,marginBottom:14}}>🏠</div>
+                    <div style={{fontWeight:700,fontSize:18,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:8}}>We come to you</div>
+                    <div style={{fontSize:14,color:G6,lineHeight:1.7}}>
+                      Our therapist will visit you at:<br/>
+                      <strong style={{color:PL}}>{bD.outcallAddr}</strong>
                     </div>
+                    <div style={{marginTop:14,fontSize:12,color:G4}}>No room selection needed for outcall bookings</div>
                   </div>
-                ))}
-              </div>
-              <div style={{display:"flex",gap:10}}>
-                <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
-                <Btn onClick={()=>goStep(4)} disabled={!bD.roomId} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-              </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
+                    <Btn onClick={()=>goStep(4)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+                  </div>
+                </div>
+              ) : (
+                /* In-house — choose a room */
+                <div>
+                  <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Room</h2>
+                  <p style={{color:G6,fontSize:14,marginBottom:20}}>Select the room for your session</p>
+                  <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                    {rooms.length===0&&(
+                      <div style={{textAlign:"center",padding:"30px 20px",color:G4,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>
+                        No rooms available at the moment
+                      </div>
+                    )}
+                    {rooms.map(rm=>(
+                      <div key={rm.id} onClick={()=>setBD(d=>({...d,roomId:rm.id}))}
+                        style={{background:bD.roomId===rm.id?PLF:WH,borderRadius:12,border:`2px solid ${bD.roomId===rm.id?PL:G2}`,cursor:"pointer",transition:"all .15s"}}>
+                        <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:bD.roomId===rm.id?PL:BK,marginBottom:rm.amenities?.length>0?6:0}}>
+                              {rm.name}
+                            </div>
+                            {rm.amenities?.length>0&&(
+                              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                                {rm.amenities.slice(0,5).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}
+                              </div>
+                            )}
+                            {rm.description&&<div style={{fontSize:12,color:G6,marginTop:5}}>{rm.description}</div>}
+                          </div>
+                          <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${bD.roomId===rm.id?PL:G2}`,background:bD.roomId===rm.id?PL:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {bD.roomId===rm.id&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
+                    <Btn onClick={()=>goStep(4)} disabled={!bD.roomId} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1380,15 +1412,15 @@ function TherapistsTab({therapists,setTherapists,pop}){
 
 function RoomsTab({rooms,setRooms,pop}){
   const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",capacity:1,description:"",amenities:""});
+  const [form,setForm]=useState({id:null,name:"",description:"",amenities:""});
 
-  const open=(r)=>{if(r) setForm({...r,amenities:(r.amenities||[]).join(", ")});else setForm({id:null,name:"",capacity:1,description:"",amenities:""}); setModal(true);};
+  const open=(r)=>{if(r) setForm({...r,amenities:(r.amenities||[]).join(", ")});else setForm({id:null,name:"",description:"",amenities:""}); setModal(true);};
   const save=async()=>{
     if(!form.name) return;
     const amen = typeof form.amenities==="string"
       ? form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
       : (form.amenities||[]);
-    const payload={name:form.name,capacity:Number(form.capacity)||1,description:form.description||"",amenities:amen};
+    const payload={name:form.name,description:form.description||"",amenities:amen};
     try{
       if(form.id){ const u=await api.updateRoom(form.id,payload); setRooms(p=>p.map(r=>r.id===form.id?u:r)); pop("Room updated"); }
       else{ const u=await api.createRoom(payload); setRooms(p=>[...p,u]); pop("Room added"); }
@@ -1416,7 +1448,6 @@ function RoomsTab({rooms,setRooms,pop}){
               <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK}}>{r.name}</div>
               <span style={{background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
             </div>
-            <div style={{fontSize:12,color:G6,marginBottom:8}}>👥 Up to {r.capacity} {r.capacity>1?"people":"person"}</div>
             {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
             {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
             <div style={{display:"flex",gap:6}}>
@@ -1430,7 +1461,6 @@ function RoomsTab({rooms,setRooms,pop}){
       {modal&&(
         <Modal title={form.id?"Edit Room":"Add Room"} onClose={()=>setModal(false)}>
           <Inp label="Room Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Room 1, Zanzibar Suite, Blue Room…"/>
-          <Inp label="Capacity (persons)" type="number" value={form.capacity} onChange={e=>setForm(f=>({...f,capacity:Number(e.target.value)}))} min="1"/>
           <Txa label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={2}/>
           <Inp label="Amenities (comma separated)" value={form.amenities} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Private shower, Music system, Aromatherapy"/>
           <div style={{display:"flex",gap:10}}>
