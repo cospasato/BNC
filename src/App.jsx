@@ -165,27 +165,29 @@ export default function App(){
 
   const loadAdmin = useCallback(async()=>{
     setLoading(true);
-    // Load each resource independently — one failure won't block others
-    const safe = async (fn, fallback=[]) => { try{ return await fn(); }catch(e){ console.warn("Load error:",e.message); return fallback; } };
+    const safe = async (label, fn, fallback=[]) => {
+      try{ return await fn(); }
+      catch(e){ console.warn(`[loadAdmin] ${label} failed:`, e.message); return fallback; }
+    };
     const [th,rm,sv,of,ap,rc,st,ex,pm] = await Promise.all([
-      safe(api.getTherapists),
-      safe(api.getRooms),
-      safe(api.getServices, {services:[],pricing:[]}),
-      safe(api.getOffers),
-      safe(api.getAppointments),
-      safe(api.getReception),
-      safe(api.getStaff),
-      safe(api.getExpenses),
-      safe(api.getPayMethods),
+      safe("therapists",    api.getTherapists),
+      safe("rooms",         api.getRooms),
+      safe("services",      api.getServices, {services:[],pricing:[]}),
+      safe("offers",        api.getOffers),
+      safe("appointments",  api.getAppointments),
+      safe("reception",     api.getReception),
+      safe("staff",         api.getStaff),
+      safe("expenses",      api.getExpenses),
+      safe("payMethods",    api.getPayMethods),
     ]);
-    if(Array.isArray(th)) setTherapists(th);
-    if(Array.isArray(rm)) setRooms(rm);
-    if(sv?.services){ setServices(sv.services); setPricing(sv.pricing||[]); }
-    if(Array.isArray(of)) setOffers(of);
-    if(Array.isArray(ap)) setAppts(ap);
-    if(Array.isArray(rc)) setReception(rc);
-    if(Array.isArray(st)) setStaff(st);
-    if(Array.isArray(ex)) setExpenses(ex);
+    if(Array.isArray(th))           setTherapists(th);
+    if(Array.isArray(rm))           setRooms(rm);
+    if(sv?.services)               { setServices(sv.services); setPricing(sv.pricing||[]); }
+    if(Array.isArray(of))           setOffers(of);
+    if(Array.isArray(ap))           setAppts(ap);
+    if(Array.isArray(rc))           setReception(rc);
+    if(Array.isArray(st))           setStaff(st);
+    if(Array.isArray(ex))           setExpenses(ex);
     if(Array.isArray(pm)&&pm.length){ const names=pm.map(m=>m.name||m).filter(Boolean); if(names.length) setPayMethods(names); }
     setLoading(false);
   },[]);
@@ -989,7 +991,7 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
   };
   const recPay=async()=>{
     if(!payAmt||!selA) return;
-    try{ const u=await api.updateAppt(selA.id,{paid_amount:Number(selA.paid_amount)+Number(payAmt),payment_method:payMethod,action:"payment"}); setAppts(p=>p.map(a=>a.id===selA.id?{...a,...u}:a)); setPayAmt(""); pop("Payment recorded"); }catch(e){pop(e.message,"err");}
+    try{ const u=await api.updateAppt(selA.id,{add_payment:Number(payAmt),payment_method:payMethod}); setAppts(p=>p.map(a=>a.id===selA.id?{...a,...u}:a)); setPayAmt(""); pop("Payment recorded"); }catch(e){pop(e.message,"err");}
   };
 
   const STATUS_FLOW=["pending","confirmed","inProgress","completed","cancelled","noShow"];
@@ -1131,7 +1133,8 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
 
   const checkout=async(id,paid)=>{
     try{
-      const r=await api.updateReception(id,{action:"checkout",paid_amount:paid,payment_method:payMethod,status:"completed"});
+      const alreadyPaid=reception.find(x=>x.id===id)?.paid_amount||0;
+      const r=await api.updateReception(id,{out_time:new Date().toISOString(),status:"completed",add_payment:Number(paid)-Number(alreadyPaid),payment_method:payMethod});
       setReception(p=>p.map(x=>x.id===id?{...x,...r}:x));
       setCoModal(null); setPayAmt(""); pop("Checked out");
     }catch(e){pop(e.message,"err");}

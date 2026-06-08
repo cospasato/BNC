@@ -274,12 +274,18 @@ module.exports = async function handler(req, res) {
         const { out_time, status, paid_amount, add_payment, payment_method } = req.body || {};
         let rows;
         if (add_payment !== undefined) {
-          rows = await sql`UPDATE reception_log SET paid_amount = LEAST(total_amount, paid_amount + ${Number(add_payment)})${payment_method ? sql`, payment_method = ${payment_method}` : sql``} WHERE id = ${id} RETURNING *`;
+          rows = await sql`UPDATE reception_log SET
+            paid_amount    = LEAST(total_amount, paid_amount + ${Number(add_payment)}),
+            payment_method = COALESCE(${payment_method ?? null}, payment_method),
+            out_time       = COALESCE(${out_time       ?? null}, out_time),
+            status         = COALESCE(${status         ?? null}, status)
+            WHERE id = ${id} RETURNING *`;
         } else {
           rows = await sql`UPDATE reception_log SET
-            out_time   = COALESCE(${out_time   ?? null}, out_time),
-            status     = COALESCE(${status     ?? null}, status),
-            paid_amount= COALESCE(${paid_amount?? null}, paid_amount)
+            out_time       = COALESCE(${out_time    ?? null}, out_time),
+            status         = COALESCE(${status      ?? null}, status),
+            paid_amount    = COALESCE(${paid_amount ?? null}, paid_amount),
+            payment_method = COALESCE(${payment_method ?? null}, payment_method)
             WHERE id = ${id} RETURNING *`;
         }
         if (!rows?.length) return res.status(404).json({ error: 'Not found' });
