@@ -1448,9 +1448,7 @@ function RoomsTab({rooms,setRooms,pop}){
               <span style={{background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
             </div>
             {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
-            {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).slice(0,6).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>
-            </div>
-            {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
+            {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).slice(0,6).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>open(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
               <button onClick={()=>toggle(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${r.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:r.active?WA:OK,fontWeight:700}}>{r.active?"Disable":"Enable"}</button>
