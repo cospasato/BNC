@@ -1411,7 +1411,9 @@ function RoomsTab({rooms,setRooms,pop}){
 
   const open=(r)=>{
     if(r) setForm({id:r.id,name:r.name,description:r.description||"",amenities:(r.amenities||[]).join(", ")});
-    else  setForm({id:null,name:"",description:"",amenities:""});else setForm({id:null,name:""}); setModal(true);};
+    else  setForm({id:null,name:"",description:"",amenities:""});
+    setModal(true);
+  };
   const save=async()=>{
     if(!form.name) return;
     const amen = typeof form.amenities==="string"
