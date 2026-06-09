@@ -14,6 +14,7 @@ module.exports = async function handler(req, res) {
     // ── THERAPISTS ────────────────────────────────────────────
     if (resource === 'therapists') {
       if (req.method === 'GET') {
+        await sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`.catch(()=>{});
         const rows = await sql`SELECT * FROM therapists ORDER BY sort_order ASC, name ASC`;
         return res.status(200).json(rows);
       }
@@ -43,7 +44,7 @@ module.exports = async function handler(req, res) {
         return res.status(201).json(rows[0]);
       }
       if (req.method === 'PUT' && id) {
-        const { name, phone, email, bio, photo, photos, specialties, outcall, active, pin, availability } = req.body || {};
+        const { name, phone, email, bio, photo, photos, specialties, outcall, active, pin, availability, commission_pct } = req.body || {};
         let rows;
         try {
           if (pin) {
