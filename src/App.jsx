@@ -1117,173 +1117,342 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
 }
 
 function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,payMethods,pop,user}){
-  const [form,setForm]=useState({name:"",phone:"",therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",method:"Cash",notes:""});
-  const [coModal,setCoModal]=useState(null); // id for checkout
-  const [dateF,setDateF]=useState(td());
-  const [payAmt,setPayAmt]=useState("");
-  const [payMethod,setPayMethod]=useState(payMethods[0]||"Cash");
+  const [form,setForm] = useState({
+    name:"", phone:"", therapistId:"", roomId:"",
+    serviceType:"inhouse", selServices:[], disc:0, discT:"pct",
+    paid:0, method:"Cash", notes:""
+  });
+  const [step,    setStep]    = useState(1); // 1=client, 2=services, 3=payment
+  const [coModal, setCoModal] = useState(null);
+  const [dateF,   setDateF]   = useState(td());
+  const [payAmt,  setPayAmt]  = useState("");
+  const [payMethod,setPayMethod] = useState(payMethods[0]||"Cash");
 
-  const getPrice=(svcId,roomType,svcType)=>{
-    const p=pricing.find(p=>p.service_id===svcId&&p.room_type===roomType&&p.service_type===svcType)||pricing.find(p=>p.service_id===svcId&&p.service_type===svcType);
-    return p?Number(p.price):0;
+  // Price lookup using room_id
+  const getPrice=(svcId, roomId, svcType)=>{
+    const p = pricing.find(p=>p.service_id===svcId && (p.room_id===roomId||p.room_type===roomId) && p.service_type===svcType)
+           || pricing.find(p=>p.service_id===svcId && p.service_type===svcType);
+    return p ? Number(p.price) : 0;
   };
-  const rmRoomId=form.roomId||null;
-  const base=form.selServices.reduce((s,sv)=>s+getPrice(sv.id,rmRoomId,form.serviceType),0);
-  const disc=form.discT==="pct"?Math.round(base*form.disc/100):Number(form.disc);
-  const total=Math.max(0,base-disc);
+
+  const roomId = form.roomId||null;
+  const base   = form.selServices.reduce((s,sv)=>s+getPrice(sv.id,roomId,form.serviceType),0);
+  const disc   = form.discT==="pct" ? Math.round(base*Number(form.disc)/100) : Number(form.disc||0);
+  const total  = Math.max(0, base-disc);
 
   const toggleSvc=(sv)=>{
+    const price = getPrice(sv.id, roomId, form.serviceType);
     setForm(f=>{
-      const ex=f.selServices.find(s=>s.id===sv.id);
-      if(ex) return {...f,selServices:f.selServices.filter(s=>s.id!==sv.id)};
-      return {...f,selServices:[...f.selServices,{id:sv.id,name:sv.name,price:getPrice(sv.id,rmRoomId,f.serviceType)}]};
+      const ex = f.selServices.find(s=>s.id===sv.id);
+      if(ex) return {...f, selServices:f.selServices.filter(s=>s.id!==sv.id)};
+      return {...f, selServices:[...f.selServices, {id:sv.id, name:sv.name, price}]};
     });
   };
 
+  // Refresh prices when room or service type changes
+  const updatePrices=(newRoomId, newServiceType)=>{
+    setForm(f=>({
+      ...f,
+      roomId: newRoomId,
+      serviceType: newServiceType||f.serviceType,
+      selServices: f.selServices.map(s=>({...s, price:getPrice(s.id, newRoomId||null, newServiceType||f.serviceType)}))
+    }));
+  };
+
+  const resetForm=()=>{
+    setForm({name:"",phone:"",therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:payMethods[0]||"Cash",notes:""});
+    setStep(1);
+  };
+
   const startSession=async()=>{
-    if(!form.name||form.selServices.length===0) return pop("Name and at least one service required","err");
+    if(!form.name) return pop("Client name required","err");
+    if(form.selServices.length===0) return pop("Select at least one service","err");
     try{
-      const r=await api.createReception({
-        customer_name:form.name, customer_phone:form.phone,
-        therapist_id:form.therapistId||null, room_id:form.roomId||null,
-        service_type:form.serviceType, services:form.selServices,
-        base_amount:base, discount:form.disc, discount_type:form.discT,
-        total_amount:total, paid_amount:0, payment_method:form.method,
-        notes:form.notes, status:"inProgress"
+      const r = await api.createReception({
+        customer_name:  form.name,
+        customer_phone: form.phone,
+        therapist_id:   form.therapistId||null,
+        room_id:        form.roomId||null,
+        service_type:   form.serviceType,
+        services:       form.selServices.map(s=>({...s, price:getPrice(s.id,roomId,form.serviceType)})),
+        base_amount:    base,
+        discount:       Number(form.disc||0),
+        discount_type:  form.discT,
+        total_amount:   total,
+        paid_amount:    Number(form.paid||0),
+        payment_method: form.method,
+        notes:          form.notes,
+        status:         "inProgress",
+        staff_id:       user?.id||null,
       });
-      setReception(p=>[r,...p]);
-      setForm({name:"",phone:"",therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",method:"Cash",notes:""});
-      pop("Session started");
-    }catch(e){pop(e.message,"err");}
+      // Add therapist_name and room_name for display
+      const display = {
+        ...r,
+        therapist_name: therapists.find(t=>t.id===r.therapist_id)?.name||null,
+        room_name:      rooms.find(rm=>rm.id===r.room_id)?.name||null,
+      };
+      setReception(p=>[display,...p]);
+      resetForm();
+      pop("Session started ✓");
+    }catch(e){ pop(e.message||"Failed to start session","err"); }
   };
 
-  const checkout=async(id,paid)=>{
+  const checkout=async(id, amountToAdd)=>{
     try{
-      const alreadyPaid=reception.find(x=>x.id===id)?.paid_amount||0;
-      const r=await api.updateReception(id,{out_time:new Date().toISOString(),status:"completed",add_payment:Number(paid)-Number(alreadyPaid),payment_method:payMethod});
+      const r = await api.updateReception(id,{
+        out_time:      new Date().toISOString(),
+        status:        "completed",
+        add_payment:   Number(amountToAdd)||0,
+        payment_method: payMethod,
+      });
       setReception(p=>p.map(x=>x.id===id?{...x,...r}:x));
-      setCoModal(null); setPayAmt(""); pop("Checked out");
-    }catch(e){pop(e.message,"err");}
+      setCoModal(null); setPayAmt(""); pop("Checked out ✓");
+    }catch(e){ pop(e.message||"Checkout failed","err"); }
   };
 
-  const filtered=reception.filter(r=>!dateF||fmtDate(r.in_time||r.created_at).slice(0,10)===dateF);
+  const filtered = reception.filter(r=>!dateF || fmtDate(r.in_time||r.created_at).slice(0,10)===dateF);
+  const STEP_LABELS = ["Client & Room","Services","Payment & Confirm"];
 
   return(
     <div>
       <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20}}>Reception Log</h2>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-        {/* New walk-in form */}
-        <Card style={{gridColumn:"1/-1"}}>
-          <ST c="New Walk-In"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Inp label="Client Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Full name"/>
-            <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="+255…"/>
-            <Sel label="Therapist" value={form.therapistId} onChange={e=>setForm(f=>({...f,therapistId:e.target.value}))}>
-              <option value="">Any Available</option>
-              {therapists.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-            </Sel>
-            <Sel label="Room" value={form.roomId} onChange={e=>setForm(f=>({...f,roomId:e.target.value}))}>
-              <option value="">No Room / Outcall</option>
-              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-            </Sel>
-          </div>
-          <div style={{marginBottom:12}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
-            <div style={{display:"flex",gap:8}}>
-              {["inhouse","outcall"].map(v=><button key={v} onClick={()=>setForm(f=>({...f,serviceType:v}))} style={{padding:"7px 16px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${form.serviceType===v?PL:G2}`,background:form.serviceType===v?PLF:WH,color:form.serviceType===v?PL:G6}}>{v==="inhouse"?"🏢 In-House":"🏠 Outcall"}</button>)}
-            </div>
-          </div>
-          {/* Service selection */}
-          <div style={{marginBottom:12}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Services *</label>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:200,overflowY:"auto",padding:4}}>
-              {services.filter(s=>s.active).map(sv=>{
-                const price=getPrice(sv.id,rmRoomId,form.serviceType);
-                const sel=form.selServices.find(s=>s.id===sv.id);
-                return(
-                  <button key={sv.id} onClick={()=>toggleSvc(sv)}
-                    style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G6,display:"flex",alignItems:"center",gap:6}}>
-                    {sv.name} {price?<span style={{fontWeight:400,color:G6}}>· {fmt(price)}</span>:""}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* Pricing summary */}
-          {form.selServices.length>0&&(
-            <div style={{background:PLF,borderRadius:9,padding:"10px 14px",marginBottom:12}}>
-              {form.selServices.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:G8,marginBottom:4}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,rmRoomId,form.serviceType))}</span></div>)}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
-                <Inp label="Discount" type="number" value={form.disc} onChange={e=>setForm(f=>({...f,disc:e.target.value}))} style={{marginBottom:0}}/>
-                <Sel label="Type" value={form.discT} onChange={e=>setForm(f=>({...f,discT:e.target.value}))} style={{marginBottom:0}}>
-                  <option value="pct">% Percent</option>
-                  <option value="fix">Fixed Amount</option>
-                </Sel>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15,marginTop:6,paddingTop:8,borderTop:`1px solid ${PL}20`}}>
-                <span>Total</span><span style={{color:PL}}>{fmt(total)}</span>
-              </div>
-            </div>
-          )}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Sel label="Payment Method" value={form.method} onChange={e=>setForm(f=>({...f,method:e.target.value}))}>
-              {payMethods.map(m=><option key={m} value={m}>{m}</option>)}
-            </Sel>
-            <Txa label="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={1} style={{}}/>
-          </div>
-          <Btn onClick={startSession} disabled={!form.name||form.selServices.length===0} style={{width:"100%",justifyContent:"center"}}>🚪 Start Session</Btn>
-        </Card>
-      </div>
 
-      {/* Log */}
+      {/* ── WALK-IN FORM ── */}
+      <Card style={{marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+          <ST c="New Walk-In"/>
+          {step>1&&<button onClick={resetForm} style={{background:"none",border:`1px solid ${G2}`,borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer",color:G6,fontFamily:"inherit"}}>✕ Clear</button>}
+        </div>
+
+        {/* Step indicators */}
+        <div style={{display:"flex",gap:0,marginBottom:20}}>
+          {STEP_LABELS.map((label,i)=>{
+            const n=i+1; const done=step>n; const cur=step===n;
+            return(
+              <div key={n} style={{flex:1,textAlign:"center"}}>
+                <div style={{height:4,borderRadius:99,background:done?OK:cur?PL:G2,marginBottom:5,transition:"background .3s"}}/>
+                <div style={{fontSize:11,color:cur?PL:done?OK:G4,fontWeight:cur?700:400}}>{label}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* STEP 1 — Client & Room */}
+        {step===1&&(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <Inp label="Client Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Full name"/>
+              <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="+255 7XX…"/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <Sel label="Therapist" value={form.therapistId} onChange={e=>setForm(f=>({...f,therapistId:e.target.value}))}>
+                <option value="">Any Available</option>
+                {therapists.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+              </Sel>
+              <Sel label="Room" value={form.roomId} onChange={e=>updatePrices(e.target.value, form.serviceType)}>
+                <option value="">Outcall / No Room</option>
+                {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+              </Sel>
+            </div>
+            {/* Service type */}
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
+              <div style={{display:"flex",gap:8}}>
+                {[["inhouse","🏢 In-House"],["outcall","🏠 Outcall"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>updatePrices(form.roomId, v)}
+                    style={{padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      border:`2px solid ${form.serviceType===v?PL:G2}`,background:form.serviceType===v?PLF:WH,color:form.serviceType===v?PL:G6}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Btn onClick={()=>{if(!form.name)return pop("Client name required","err");setStep(2);}} style={{width:"100%",justifyContent:"center"}}>
+              Continue → Choose Services
+            </Btn>
+          </div>
+        )}
+
+        {/* STEP 2 — Services */}
+        {step===2&&(
+          <div>
+            <div style={{fontSize:13,color:G6,marginBottom:12}}>
+              <strong>{form.name}</strong> · {therapists.find(t=>t.id===form.therapistId)?.name||"Any therapist"} · {rooms.find(r=>r.id===form.roomId)?.name||"No room"} · {form.serviceType==="inhouse"?"In-House":"Outcall"}
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Select Services *</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                {services.filter(s=>s.active).map(sv=>{
+                  const price = getPrice(sv.id, roomId, form.serviceType);
+                  const sel   = form.selServices.find(s=>s.id===sv.id);
+                  return(
+                    <button key={sv.id} onClick={()=>toggleSvc(sv)}
+                      style={{padding:"8px 14px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G8,
+                        display:"flex",alignItems:"center",gap:7,transition:"all .15s"}}>
+                      <span style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${sel?PL:G2}`,background:sel?PL:"none",display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {sel&&<span style={{color:WH,fontSize:10,lineHeight:1}}>✓</span>}
+                      </span>
+                      {sv.name}
+                      {price>0&&<span style={{fontSize:12,color:sel?PL:G6,fontWeight:400}}>· {fmt(price)}</span>}
+                      {price===0&&<span style={{fontSize:11,color:G4,fontWeight:400}}>· no price set</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {form.selServices.length>0&&(
+              <div style={{background:PLF,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:700,color:PL,marginBottom:6}}>Selected ({form.selServices.length})</div>
+                {form.selServices.map(s=>(
+                  <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
+                    <span>{s.name}</span>
+                    <span style={{fontWeight:700}}>{fmt(getPrice(s.id,roomId,form.serviceType))}</span>
+                  </div>
+                ))}
+                <div style={{borderTop:`1px solid ${PL}20`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
+                  <span>Subtotal</span><span style={{color:PL}}>{fmt(base)}</span>
+                </div>
+              </div>
+            )}
+            <div style={{display:"flex",gap:10}}>
+              <Btn v="ghost" onClick={()=>setStep(1)} style={{flex:1,justifyContent:"center"}}>← Back</Btn>
+              <Btn onClick={()=>{if(!form.selServices.length)return pop("Select at least one service","err");setStep(3);}} disabled={!form.selServices.length} style={{flex:2,justifyContent:"center"}}>
+                Continue → Payment
+              </Btn>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3 — Payment & Confirm */}
+        {step===3&&(
+          <div>
+            <div style={{fontSize:13,color:G6,marginBottom:14}}>
+              <strong>{form.name}</strong> · {form.selServices.map(s=>s.name).join(", ")}
+            </div>
+            {/* Discount */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
+              <Inp label="Discount" type="number" value={form.disc} onChange={e=>setForm(f=>({...f,disc:e.target.value}))} placeholder="0" style={{marginBottom:0}}/>
+              <Sel label="Discount Type" value={form.discT} onChange={e=>setForm(f=>({...f,discT:e.target.value}))} style={{marginBottom:0}}>
+                <option value="pct">% Percentage</option>
+                <option value="fix">TZS Fixed</option>
+              </Sel>
+            </div>
+            {/* Totals */}
+            <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span style={{color:G6}}>Subtotal</span><span>{fmt(base)}</span></div>
+              {disc>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span style={{color:G6}}>Discount</span><span style={{color:OK}}>−{fmt(disc)}</span></div>}
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:700,borderTop:`1px solid ${G2}`,paddingTop:8,marginTop:4}}><span>Total</span><span style={{color:PL}}>{fmt(total)}</span></div>
+            </div>
+            {/* Payment */}
+            <Inp label="Amount Paid Now" type="number" value={form.paid} onChange={e=>setForm(f=>({...f,paid:e.target.value}))} placeholder={`0 — full amount: ${fmt(total)}`}/>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".05em"}}>Payment Method</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {payMethods.map(pm=>(
+                  <button key={pm} onClick={()=>setForm(f=>({...f,method:pm}))}
+                    style={{padding:"7px 13px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      border:`2px solid ${form.method===pm?PL:G2}`,background:form.method===pm?PLF:WH,color:form.method===pm?PL:G6}}>
+                    {pm}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Txa label="Notes (optional)" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={2} placeholder="Any notes about the session…"/>
+            <div style={{display:"flex",gap:10}}>
+              <Btn v="ghost" onClick={()=>setStep(2)} style={{flex:1,justifyContent:"center"}}>← Back</Btn>
+              <Btn onClick={startSession} disabled={!form.name||form.selServices.length===0} style={{flex:2,justifyContent:"center",background:OK}}>
+                🚪 Start Session
+              </Btn>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* ── SESSION LOG ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
-        <ST c="Session Log"/>
+        <div style={{fontWeight:700,fontSize:16,fontFamily:"'Playfair Display',serif"}}>Session Log</div>
         <Inp label="" type="date" value={dateF} onChange={e=>setDateF(e.target.value)} style={{marginBottom:0,width:"auto"}}/>
       </div>
-      {filtered.length===0&&<div style={{color:G4,fontSize:14,textAlign:"center",padding:20}}>No sessions for this date</div>}
+
+      {filtered.length===0&&<div style={{color:G4,fontSize:14,textAlign:"center",padding:20,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>No sessions for this date</div>}
+
       {filtered.map(r=>{
-        const th=therapists.find(t=>t.id===r.therapist_id);
-        const rm=rooms.find(rm=>rm.id===r.room_id);
-        const svcs=Array.isArray(r.services)?r.services:[];
-        const bal=Number(r.total_amount)-Number(r.paid_amount);
+        const th   = therapists.find(t=>t.id===r.therapist_id);
+        const rm   = rooms.find(rm=>rm.id===r.room_id);
+        const svcs = Array.isArray(r.services)?r.services:(typeof r.services==="string"?JSON.parse(r.services||"[]"):[]);
+        const bal  = Number(r.total_amount)-Number(r.paid_amount);
+        const inT  = r.in_time  ? new Date(r.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "—";
+        const outT = r.out_time ? new Date(r.out_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : null;
         return(
-          <div key={r.id} style={{background:WH,borderRadius:12,border:`1px solid ${G2}`,padding:"13px 16px",marginBottom:10}}>
+          <div key={r.id} style={{background:WH,borderRadius:12,border:`1px solid ${r.status==="inProgress"?PL:G2}`,padding:"14px 16px",marginBottom:10,borderLeft:`4px solid ${r.status==="inProgress"?PL:r.status==="completed"?OK:G2}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
               <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:14}}>{r.customer_name} <span style={{fontSize:11,color:G4,fontWeight:400}}>· {r.id}</span></div>
-                <div style={{fontSize:12,color:G6,marginTop:2}}>{th?.name||"—"} · {rm?.name||"No Room"} · {fmtDT(r.in_time)}</div>
-                <div style={{fontSize:12,color:G6,marginTop:2}}>{svcs.map(s=>s.name).join(", ")}</div>
-                <div style={{display:"flex",gap:10,marginTop:4,fontSize:13}}>
+                <div style={{fontWeight:700,fontSize:15,marginBottom:3}}>{r.customer_name}
+                  <span style={{fontSize:11,color:G4,fontWeight:400,marginLeft:8}}>{r.id}</span>
+                </div>
+                <div style={{fontSize:12,color:G6,marginBottom:3}}>
+                  {th?.name||"—"} · {rm?.name||r.room_name||"Outcall"} · <span style={{fontWeight:600}}>{inT}</span>
+                  {outT&&<span> → {outT}</span>}
+                </div>
+                <div style={{fontSize:12,color:G6,marginBottom:6}}>{svcs.map(s=>s.name).join(", ")||"—"}</div>
+                <div style={{display:"flex",gap:12,fontSize:13}}>
                   <span style={{fontWeight:700,color:PL}}>{fmt(r.total_amount)}</span>
+                  <span style={{color:OK}}>Paid: {fmt(r.paid_amount)}</span>
                   {bal>0&&<span style={{color:ER}}>Due: {fmt(bal)}</span>}
-                  {r.out_time&&<span style={{color:G6}}>Out: {fmtDT(r.out_time)}</span>}
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0,alignItems:"flex-end"}}>
                 <Badge s={r.status}/>
-                {r.status==="inProgress"&&<button onClick={()=>{setCoModal(r.id);setPayAmt(String(bal));}} style={{padding:"6px 12px",fontSize:12,borderRadius:7,border:`1px solid ${OK}`,background:OKB,color:OK,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>Check Out</button>}
+                {r.status==="inProgress"&&(
+                  <button onClick={()=>{setCoModal(r.id);setPayAmt(String(bal>0?bal:""));setPayMethod(r.payment_method||payMethods[0]||"Cash");}}
+                    style={{padding:"6px 13px",fontSize:12,borderRadius:7,border:`1px solid ${OK}`,background:OKB,color:OK,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+                    Check Out →
+                  </button>
+                )}
               </div>
             </div>
           </div>
         );
       })}
 
+      {/* Checkout modal */}
       {coModal&&(()=>{
-        const r=reception.find(x=>x.id===coModal);
-        const bal=Number(r?.total_amount)-Number(r?.paid_amount);
+        const r   = reception.find(x=>x.id===coModal);
+        const bal = Number(r?.total_amount||0)-Number(r?.paid_amount||0);
         return(
-          <Modal title="Check Out" onClose={()=>setCoModal(null)}>
-            <div style={{marginBottom:14,fontSize:13,color:G6}}>Client: <strong style={{color:BK}}>{r?.customer_name}</strong> · Total: <strong>{fmt(r?.total_amount)}</strong></div>
-            <Inp label={`Payment Amount (due: ${fmt(bal)})`} type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)}/>
+          <Modal title={`Check Out — ${r?.customer_name}`} onClose={()=>setCoModal(null)}>
+            <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:16}}>
+              {[["In Time", r?.in_time?new Date(r.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"—"],
+                ["Therapist", therapists.find(t=>t.id===r?.therapist_id)?.name||"—"],
+                ["Room",      rooms.find(rm=>rm.id===r?.room_id)?.name||"Outcall"],
+                ["Total",     fmt(r?.total_amount)],
+                ["Paid",      fmt(r?.paid_amount)],
+                ["Balance",   fmt(bal)],
+              ].map(([k,v])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:13,borderBottom:`1px solid ${G2}`}}>
+                  <span style={{color:G6}}>{k}</span><strong>{v}</strong>
+                </div>
+              ))}
+            </div>
+            <Inp label={`Amount to Collect Now${bal>0?" (balance: "+fmt(bal)+")":""}`} type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder={String(bal>0?bal:0)}/>
             <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".05em"}}>Method</label>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".05em"}}>Payment Method</label>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {payMethods.map(pm=><button key={pm} onClick={()=>setPayMethod(pm)} style={{padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>{pm}</button>)}
+                {payMethods.map(pm=>(
+                  <button key={pm} onClick={()=>setPayMethod(pm)}
+                    style={{padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>
+                    {pm}
+                  </button>
+                ))}
               </div>
             </div>
             <div style={{display:"flex",gap:10}}>
               <Btn v="ghost" onClick={()=>setCoModal(null)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-              <Btn v="ok" onClick={()=>checkout(coModal,Number(r?.paid_amount||0)+Number(payAmt))} disabled={!payAmt} style={{flex:1,justifyContent:"center"}}>Confirm Check Out</Btn>
+              <Btn v="ok" onClick={()=>checkout(coModal, Number(payAmt)||0)} style={{flex:1,justifyContent:"center"}}>
+                Complete Check Out
+              </Btn>
             </div>
           </Modal>
         );
