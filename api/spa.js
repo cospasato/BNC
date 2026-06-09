@@ -502,41 +502,60 @@ module.exports = async function handler(req, res) {
       await sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`.catch(()=>{});
       await sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`.catch(()=>{});
 
-      // Therapist commissions
-      const thRevenue = await sql`
-        SELECT a.therapist_id, t.name, COALESCE(t.commission_pct,0) AS commission_pct,
-               COALESCE(SUM(a.paid_amount),0) AS revenue
-        FROM appointments a
-        JOIN therapists t ON t.id = a.therapist_id
-        WHERE a.appt_date BETWEEN ${df} AND ${dt} AND a.status != 'cancelled'
-        GROUP BY a.therapist_id, t.name, t.commission_pct`.catch(()=>[]);
+      // Get ALL active therapists with their commission rate
+      const allTherapists = await sql`SELECT id, name, COALESCE(commission_pct,0) AS commission_pct FROM therapists WHERE active = true`;
 
-      // Also include reception_log revenue per therapist
-      const thRecepRevenue = await sql`
-        SELECT r.therapist_id, COALESCE(SUM(r.paid_amount),0) AS revenue
-        FROM reception_log r
-        WHERE r.in_time::date BETWEEN ${df}::date AND ${dt}::date AND r.status = 'completed'
-        GROUP BY r.therapist_id`;
+      // Revenue from appointments per therapist
+      const apptRevByTh = await sql`
+        SELECT therapist_id, COALESCE(SUM(paid_amount),0) AS revenue
+        FROM appointments
+        WHERE appt_date BETWEEN ${df} AND ${dt}
+          AND status != 'cancelled'
+          AND therapist_id IS NOT NULL
+        GROUP BY therapist_id`.catch(()=>[]);
 
-      const therapistCommissions = thRevenue.map(t => {
-        const recep = thRecepRevenue.find(r=>r.therapist_id===t.therapist_id);
-        const totalRev = Number(t.revenue) + Number(recep?.revenue||0);
-        const pct = Number(t.commission_pct||0);
-        return { ...t, revenue: totalRev, commission_amount: Math.round(totalRev * pct / 100) };
-      });
+      // Revenue from reception_log per therapist
+      const recepRevByTh = await sql`
+        SELECT therapist_id, COALESCE(SUM(paid_amount),0) AS revenue
+        FROM reception_log
+        WHERE in_time::date BETWEEN ${df}::date AND ${dt}::date
+          AND status = 'completed'
+          AND therapist_id IS NOT NULL
+        GROUP BY therapist_id`.catch(()=>[]);
 
-      // Total sales (appointments + reception)
-      const apptTotal = await sql`SELECT COALESCE(SUM(paid_amount),0) AS total FROM appointments WHERE appt_date BETWEEN ${df} AND ${dt} AND status != 'cancelled'`;
+      // Combine: show all therapists who have ANY revenue OR have a commission rate set
+      const therapistCommissions = allTherapists
+        .map(t => {
+          const apptRev   = Number(apptRevByTh.find(r=>r.therapist_id===t.id)?.revenue||0);
+          const recepRev  = Number(recepRevByTh.find(r=>r.therapist_id===t.id)?.revenue||0);
+          const totalRev  = apptRev + recepRev;
+          const pct       = Number(t.commission_pct||0);
+          return {
+            therapist_id:       t.id,
+            name:               t.name,
+            commission_pct:     pct,
+            revenue:            totalRev,
+            appt_revenue:       apptRev,
+            recep_revenue:      recepRev,
+            commission_amount:  Math.round(totalRev * pct / 100),
+          };
+        })
+        .filter(t => t.revenue > 0 || t.commission_pct > 0); // show if they worked OR have a rate
+
+      // Total sales (appointments + reception combined)
+      const apptTotal  = await sql`SELECT COALESCE(SUM(paid_amount),0) AS total FROM appointments WHERE appt_date BETWEEN ${df} AND ${dt} AND status != 'cancelled'`;
       const recepTotal = await sql`SELECT COALESCE(SUM(paid_amount),0) AS total FROM reception_log WHERE in_time::date BETWEEN ${df}::date AND ${dt}::date AND status = 'completed'`;
       const totalSales = Number(apptTotal[0].total) + Number(recepTotal[0].total);
 
-      // Staff (reception) commissions based on total sales
-      const staffList = await sql`SELECT id, name, role, commission_pct FROM staff WHERE active = true AND commission_pct > 0`;
-      const staffCommissions = staffList.map(s => ({
-        ...s,
-        total_sales: totalSales,
-        commission_amount: Math.round(totalSales * Number(s.commission_pct) / 100)
-      }));
+      // Staff commissions — show ALL active staff with a rate (not just > 0)
+      const staffList = await sql`SELECT id, name, role, COALESCE(commission_pct,0) AS commission_pct FROM staff WHERE active = true`;
+      const staffCommissions = staffList
+        .filter(s => Number(s.commission_pct) > 0)
+        .map(s => ({
+          ...s,
+          total_sales:        totalSales,
+          commission_amount:  Math.round(totalSales * Number(s.commission_pct) / 100),
+        }));
 
       return res.status(200).json({
         period: { from: df, to: dt },

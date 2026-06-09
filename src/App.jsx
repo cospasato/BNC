@@ -2734,6 +2734,132 @@ function NewApptModal({therapists,rooms,services,pricing,payMethods,offers,user,
   );
 }
 
+function TherapistCommissionTab({ therapistUser, data }) {
+  const [dateFrom, setDateFrom] = useState(()=>{
+    const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
+  });
+  const [dateTo,  setDateTo]  = useState(()=>new Date().toISOString().split("T")[0]);
+  const [report,  setReport]  = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [payouts, setPayouts] = useState([]);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [r, p] = await Promise.all([
+        api.getCommission(dateFrom, dateTo),
+        api.getPayouts(therapistUser.id),
+      ]);
+      setReport(r);
+      setPayouts(Array.isArray(p) ? p : []);
+    } catch(e) { console.warn("Commission load error:", e.message); }
+    setLoading(false);
+  };
+
+  useEffect(()=>{ load(); }, []);
+
+  const presets = [
+    ["This Month", ()=>{ const d=new Date(); setDateFrom(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01"); setDateTo(new Date().toISOString().split("T")[0]); }],
+    ["Last Month", ()=>{ const d=new Date(); d.setMonth(d.getMonth()-1); const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"); setDateFrom(`${y}-${m}-01`); setDateTo(new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split("T")[0]); }],
+    ["This Year",  ()=>{ const y=new Date().getFullYear(); setDateFrom(`${y}-01-01`); setDateTo(`${y}-12-31`); }],
+  ];
+
+  // Find this therapist's data in the report
+  const myData = report?.therapist_commissions?.find(t => t.therapist_id === therapistUser.id);
+  const totalPaidOut = payouts.reduce((s,p)=>s+Number(p.amount),0);
+  const remaining    = Math.max(0, (myData?.commission_amount||0) - totalPaidOut);
+
+  return (
+    <div>
+      {/* Period selector */}
+      <Card style={{marginBottom:16}}>
+        <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:12}}>💵 My Earnings</div>
+        <div style={{display:"flex",gap:7,marginBottom:10,flexWrap:"wrap"}}>
+          {presets.map(([l,fn])=>(
+            <button key={l} onClick={()=>{ fn(); setTimeout(load,50); }}
+              style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${G2}`,background:WH,color:G6,cursor:"pointer",fontFamily:"inherit"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+            style={{padding:"6px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+          <span style={{color:G4}}>→</span>
+          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+            style={{padding:"6px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+          <button onClick={load}
+            style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${PL}`,background:PLF,color:PL,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            Calculate
+          </button>
+        </div>
+        {(dateFrom||dateTo)&&<div style={{marginTop:6,fontSize:12,color:G6}}>{dateFrom} → {dateTo}</div>}
+      </Card>
+
+      {loading&&<div style={{textAlign:"center",padding:30,color:G4}}>Calculating…</div>}
+
+      {!loading&&(
+        <div>
+          {/* Summary cards */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div style={{background:WH,border:`1px solid ${G2}`,borderRadius:12,padding:"16px"}}>
+              <div style={{fontSize:11,color:G6,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>💰 Revenue Generated</div>
+              <div style={{fontSize:26,fontWeight:700,color:PL,fontFamily:"'Playfair Display',serif"}}>{fmt(myData?.revenue||0)}</div>
+              {myData&&(
+                <div style={{fontSize:11,color:G4,marginTop:4}}>
+                  Appointments: {fmt(myData.appt_revenue||0)} · Walk-ins: {fmt(myData.recep_revenue||0)}
+                </div>
+              )}
+            </div>
+            <div style={{background:WH,border:`1px solid ${G2}`,borderRadius:12,padding:"16px"}}>
+              <div style={{fontSize:11,color:G6,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>📊 Commission Rate</div>
+              <div style={{fontSize:26,fontWeight:700,color:BK,fontFamily:"'Playfair Display',serif"}}>{data.commission_pct||0}%</div>
+              <div style={{fontSize:11,color:G4,marginTop:4}}>Set by management</div>
+            </div>
+            <div style={{background:OKB,border:`1px solid ${OK}20`,borderRadius:12,padding:"16px"}}>
+              <div style={{fontSize:11,color:OK,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>✅ Total Earned</div>
+              <div style={{fontSize:26,fontWeight:700,color:OK,fontFamily:"'Playfair Display',serif"}}>{fmt(myData?.commission_amount||0)}</div>
+              <div style={{fontSize:11,color:G4,marginTop:4}}>{data.commission_pct||0}% of {fmt(myData?.revenue||0)}</div>
+            </div>
+            <div style={{background:remaining>0?ERB:OKB,border:`1px solid ${remaining>0?ER:OK}20`,borderRadius:12,padding:"16px"}}>
+              <div style={{fontSize:11,color:remaining>0?ER:OK,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>
+                {remaining>0?"⏳ Pending Payout":"✓ Fully Paid"}
+              </div>
+              <div style={{fontSize:26,fontWeight:700,color:remaining>0?ER:OK,fontFamily:"'Playfair Display',serif"}}>{fmt(remaining)}</div>
+              <div style={{fontSize:11,color:G4,marginTop:4}}>Paid out: {fmt(totalPaidOut)}</div>
+            </div>
+          </div>
+
+          {!myData&&(
+            <div style={{textAlign:"center",padding:"24px 20px",background:WH,borderRadius:12,border:`1px solid ${G2}`,color:G4,fontSize:14,marginBottom:16}}>
+              No sessions recorded for this period
+            </div>
+          )}
+
+          {/* Payout history */}
+          <Card>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📋 Payout History</div>
+            {payouts.length===0
+              ? <div style={{color:G4,fontSize:13,textAlign:"center",padding:12}}>No payouts recorded yet for this account</div>
+              : payouts.map(p=>(
+                <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${G1}`}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:OKB,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>💵</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:14,color:OK}}>{fmt(p.amount)}</div>
+                    <div style={{fontSize:11,color:G6}}>{fmtDate(p.period_from)} → {fmtDate(p.period_to)}</div>
+                    {p.notes&&<div style={{fontSize:11,color:G4}}>{p.notes}</div>}
+                  </div>
+                  <div style={{fontSize:11,color:G4,textAlign:"right"}}>{fmtDate(p.created_at)}</div>
+                </div>
+              ))
+            }
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── THERAPIST PORTAL ──────────────────────────────────────────────────────────
 function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pricing, services, rooms, pop }) {
   const [tab, setTab] = useState("profile");
@@ -2776,7 +2902,7 @@ function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pri
 
       {/* Tab bar */}
       <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
-        {[["profile","My Profile","👤"],["photos","My Photos","📷"],["status","Availability","🟢"],["pin","Change PIN","🔑"]].map(([id,label,icon])=>(
+        {[["profile","My Profile","👤"],["photos","My Photos","📷"],["status","Availability","🟢"],["commission","My Earnings","💵"],["pin","Change PIN","🔑"]].map(([id,label,icon])=>(
           <button key={id} onClick={()=>setTab(id)}
             style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:tab===id?PL:G6,borderBottom:`3px solid ${tab===id?PL:"transparent"}`,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
             {icon} {label}
@@ -2794,6 +2920,9 @@ function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pri
 
         {/* ── AVAILABILITY TAB ── */}
         {tab==="status"&&<TherapistStatusTab data={data} setData={setData} therapistUser={therapistUser} setTherapistUser={setTherapistUser} pop={pop}/>}
+
+        {/* ── COMMISSION TAB ── */}
+        {tab==="commission"&&<TherapistCommissionTab therapistUser={therapistUser} data={data}/>}
 
         {/* ── PIN TAB ── */}
         {tab==="pin"&&<TherapistPinTab data={data} therapistUser={therapistUser} pop={pop}/>}
