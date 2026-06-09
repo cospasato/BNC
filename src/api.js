@@ -81,4 +81,7 @@ export const api = {
   // Therapist self-service (same endpoints, just for clarity)
   therapistLogin:      b      => p('resource=staff&action=login', b),
   therapistUpdate:     (id,b) => pt(`resource=therapists&id=${id}`, b),
+
+  // Commission
+  getCommission: (df,dt) => g(`resource=commission${df?'&date_from='+df:''}${dt?'&date_to='+dt:''}`),
 };

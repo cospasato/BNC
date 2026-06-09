@@ -18,14 +18,14 @@ module.exports = async function handler(req, res) {
         return res.status(200).json(rows);
       }
       if (req.method === 'POST') {
-        const { name, phone, email, bio, photo, photos, specialties, outcall, pin, availability } = req.body || {};
+        const { name, phone, email, bio, photo, photos, specialties, outcall, pin, availability, commission_pct } = req.body || {};
         if (!name) return res.status(400).json({ error: 'name required' });
         let rows;
         try {
           rows = await sql`
-            INSERT INTO therapists (name, phone, email, email_unique, bio, photo, photos, specialties, outcall, pin_hash, availability)
+            INSERT INTO therapists (name, phone, email, email_unique, bio, photo, photos, specialties, outcall, pin_hash, availability, commission_pct)
             VALUES (${name}, ${phone||null}, ${email||null}, ${email||null}, ${bio||''}, ${photo||null},
-                    ${photos||[]}, ${specialties||[]}, ${outcall !== false}, ${pin||null}, ${availability||'available'})
+                    ${photos||[]}, ${specialties||[]}, ${outcall !== false}, ${pin||null}, ${availability||'available'}, ${commission_pct||0})
             RETURNING *`;
         } catch(e) {
           if (e.message && e.message.includes('does not exist')) {
@@ -52,9 +52,10 @@ module.exports = async function handler(req, res) {
               photos       = COALESCE(${photos       ?? null}, photos),
               specialties  = COALESCE(${specialties  ?? null}, specialties),
               outcall      = COALESCE(${outcall      ?? null}, outcall),
-              availability = COALESCE(${availability ?? null}, availability),
-              active       = COALESCE(${active       ?? null}, active),
-              pin_hash     = ${pin}
+              availability  = COALESCE(${availability  ?? null}, availability),
+              commission_pct= COALESCE(${commission_pct?? null}, commission_pct),
+              active        = COALESCE(${active        ?? null}, active),
+              pin_hash      = ${pin}
               WHERE id = ${id} RETURNING *`;
           } else {
             rows = await sql`UPDATE therapists SET
@@ -67,8 +68,9 @@ module.exports = async function handler(req, res) {
               photos       = COALESCE(${photos       ?? null}, photos),
               specialties  = COALESCE(${specialties  ?? null}, specialties),
               outcall      = COALESCE(${outcall      ?? null}, outcall),
-              availability = COALESCE(${availability ?? null}, availability),
-              active       = COALESCE(${active       ?? null}, active)
+              availability  = COALESCE(${availability  ?? null}, availability),
+              commission_pct= COALESCE(${commission_pct ?? null}, commission_pct),
+              active        = COALESCE(${active        ?? null}, active)
               WHERE id = ${id} RETURNING *`;
           }
         } catch(e) {
@@ -366,7 +368,7 @@ module.exports = async function handler(req, res) {
     // ── STAFF ─────────────────────────────────────────────────
     if (resource === 'staff') {
       if (req.method === 'GET' && action !== 'login') {
-        const rows = await sql`SELECT id,name,email,phone,role,active,created_at FROM staff ORDER BY created_at ASC`;
+        const rows = await sql`SELECT id,name,email,phone,role,commission_pct,active,created_at FROM staff ORDER BY created_at ASC`;
         return res.status(200).json(rows);
       }
       if (req.method === 'POST' && action === 'login') {
@@ -384,10 +386,10 @@ module.exports = async function handler(req, res) {
         return res.status(201).json(rows[0]);
       }
       if (req.method === 'PUT' && id) {
-        const { name, phone, role, pin, active } = req.body || {};
+        const { name, phone, role, pin, active, commission_pct } = req.body || {};
         const rows = pin
-          ? await sql`UPDATE staff SET name=COALESCE(${name??null},name),phone=COALESCE(${phone??null},phone),role=COALESCE(${role??null},role),active=COALESCE(${active??null},active),pin_hash=${pin} WHERE id=${id} RETURNING id,name,email,phone,role,active`
-          : await sql`UPDATE staff SET name=COALESCE(${name??null},name),phone=COALESCE(${phone??null},phone),role=COALESCE(${role??null},role),active=COALESCE(${active??null},active) WHERE id=${id} RETURNING id,name,email,phone,role,active`;
+          ? await sql`UPDATE staff SET name=COALESCE(${name??null},name),phone=COALESCE(${phone??null},phone),role=COALESCE(${role??null},role),active=COALESCE(${active??null},active),commission_pct=COALESCE(${commission_pct??null},commission_pct),pin_hash=${pin} WHERE id=${id} RETURNING id,name,email,phone,role,commission_pct,active`
+          : await sql`UPDATE staff SET name=COALESCE(${name??null},name),phone=COALESCE(${phone??null},phone),role=COALESCE(${role??null},role),active=COALESCE(${active??null},active),commission_pct=COALESCE(${commission_pct??null},commission_pct) WHERE id=${id} RETURNING id,name,email,phone,role,commission_pct,active`;
         if (!rows.length) return res.status(404).json({ error: 'Not found' });
         return res.status(200).json(rows[0]);
       }
@@ -483,7 +485,57 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    return res.status(400).json({ error: `Unknown resource: ${resource}` });
+    // ── COMMISSION REPORT ────────────────────────────────────
+    if (resource === 'commission') {
+      const { date_from, date_to } = req.query;
+      const df = date_from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+      const dt = date_to   || new Date().toISOString().split('T')[0];
+
+      // Therapist commissions
+      const thRevenue = await sql`
+        SELECT a.therapist_id, t.name, t.commission_pct,
+               COALESCE(SUM(a.paid_amount),0) AS revenue
+        FROM appointments a
+        JOIN therapists t ON t.id = a.therapist_id
+        WHERE a.appt_date BETWEEN ${df} AND ${dt} AND a.status != 'cancelled'
+        GROUP BY a.therapist_id, t.name, t.commission_pct`;
+
+      // Also include reception_log revenue per therapist
+      const thRecepRevenue = await sql`
+        SELECT r.therapist_id, COALESCE(SUM(r.paid_amount),0) AS revenue
+        FROM reception_log r
+        WHERE r.in_time::date BETWEEN ${df}::date AND ${dt}::date AND r.status = 'completed'
+        GROUP BY r.therapist_id`;
+
+      const therapistCommissions = thRevenue.map(t => {
+        const recep = thRecepRevenue.find(r=>r.therapist_id===t.therapist_id);
+        const totalRev = Number(t.revenue) + Number(recep?.revenue||0);
+        const pct = Number(t.commission_pct||0);
+        return { ...t, revenue: totalRev, commission_amount: Math.round(totalRev * pct / 100) };
+      });
+
+      // Total sales (appointments + reception)
+      const apptTotal = await sql`SELECT COALESCE(SUM(paid_amount),0) AS total FROM appointments WHERE appt_date BETWEEN ${df} AND ${dt} AND status != 'cancelled'`;
+      const recepTotal = await sql`SELECT COALESCE(SUM(paid_amount),0) AS total FROM reception_log WHERE in_time::date BETWEEN ${df}::date AND ${dt}::date AND status = 'completed'`;
+      const totalSales = Number(apptTotal[0].total) + Number(recepTotal[0].total);
+
+      // Staff (reception) commissions based on total sales
+      const staffList = await sql`SELECT id, name, role, commission_pct FROM staff WHERE active = true AND commission_pct > 0`;
+      const staffCommissions = staffList.map(s => ({
+        ...s,
+        total_sales: totalSales,
+        commission_amount: Math.round(totalSales * Number(s.commission_pct) / 100)
+      }));
+
+      return res.status(200).json({
+        period: { from: df, to: dt },
+        total_sales: totalSales,
+        therapist_commissions: therapistCommissions,
+        staff_commissions: staffCommissions,
+      });
+    }
+
+        return res.status(400).json({ error: `Unknown resource: ${resource}` });
 
   } catch (err) {
     console.error('spa API error:', err.message, err.stack);

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS staff (
   phone       TEXT,
   role        TEXT NOT NULL DEFAULT 'Receptionist',  -- Admin | Manager | Receptionist | Therapist
   pin_hash    TEXT NOT NULL,
+  commission_pct NUMERIC NOT NULL DEFAULT 0,   -- % of total sales for reception staff
   active      BOOLEAN NOT NULL DEFAULT true,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS therapists (
   specialties   TEXT[] NOT NULL DEFAULT '{}',       -- e.g. ["Swedish","Deep Tissue"]
   outcall       BOOLEAN NOT NULL DEFAULT true,      -- available for home/hotel visits
   active        BOOLEAN NOT NULL DEFAULT true,
+  commission_pct NUMERIC NOT NULL DEFAULT 0,   -- % of revenue earned by therapist
   sort_order    INTEGER NOT NULL DEFAULT 0,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -27,6 +27,9 @@ module.exports = async function handler(req, res) {
       `ALTER TABLE rooms DROP COLUMN IF EXISTS price_per_night`,
       `ALTER TABLE rooms DROP COLUMN IF EXISTS photos`,
       `ALTER TABLE rooms DROP COLUMN IF EXISTS video_url`,
+      // Commission columns
+      `ALTER TABLE therapists ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`,
+      `ALTER TABLE staff ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`,
       // Pricing: add room_id column (plain TEXT, no FK to avoid issues)
       `ALTER TABLE pricing ADD COLUMN IF NOT EXISTS room_id TEXT`,
       // Make room_type nullable so old rows still work
