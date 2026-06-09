@@ -806,7 +806,7 @@ export default function App(){
             {!loading&&aTab==="expenses"&&<ExpensesTab expenses={expenses} setExpenses={setExpenses} pop={pop} user={user}/>}
             {!loading&&aTab==="reports"&&<ReportsTab appts={appts} reception={reception} expenses={expenses} therapists={therapists} services={services} payMethods={payMethods}/>}
             {!loading&&aTab==="payments"&&<PaymentsTab payMethods={payMethods} setPayMethods={setPayMethods} pop={pop}/>}
-            {!loading&&aTab==="commission"&&<CommissionTab therapists={therapists} setTherapists={setTherapists} staff={staff} setStaff={setStaff} pop={pop}/>}
+            {!loading&&aTab==="commission"&&<CommissionTab therapists={therapists} setTherapists={setTherapists} staff={staff} setStaff={setStaff} user={user} pop={pop}/>}
             {!loading&&aTab==="staff"&&user?.role==="Admin"&&<StaffTab staff={staff} setStaff={setStaff} pop={pop} currentUser={user}/>}
           </div>
         </div>
@@ -2142,255 +2142,339 @@ function PaymentsTab({payMethods,setPayMethods,pop}){
   );
 }
 
-function CommissionTab({therapists, setTherapists, staff, setStaff, pop}) {
-  const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
-  });
+function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) {
+  const [dateFrom, setDateFrom] = useState(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";});
   const [dateTo,   setDateTo]   = useState(()=>new Date().toISOString().split("T")[0]);
   const [report,   setReport]   = useState(null);
-  const [loading,  setLoading]  = useState(false);
-  const [saving,   setSaving]   = useState({});
+  const [loadingR, setLoadingR] = useState(false);
+  const [payouts,  setPayouts]  = useState([]);
+  const [payoutModal, setPayoutModal] = useState(null); // {id, name, type, earned, already_paid}
+  const [payoutAmt,   setPayoutAmt]   = useState("");
+  const [payoutNote,  setPayoutNote]  = useState("");
+  const [savingPct, setSavingPct] = useState({});
 
-  const loadReport = async () => {
-    setLoading(true);
-    try { const r = await api.getCommission(dateFrom, dateTo); setReport(r); }
-    catch(e) { pop(e.message||"Failed to load","err"); }
-    setLoading(false);
-  };
+  // Local editable commission % state — initialized from props
+  const [thPcts, setThPcts] = useState(()=>{
+    const m={}; therapists.forEach(t=>{m[t.id]=String(t.commission_pct||0);}); return m;
+  });
+  const [stPcts, setStPcts] = useState(()=>{
+    const m={}; staff.forEach(s=>{m[s.id]=String(s.commission_pct||0);}); return m;
+  });
 
-  useEffect(()=>{ loadReport(); },[]);
-
-  // Save therapist commission %
-  const saveTherapistPct = async (th, pct) => {
-    setSaving(s=>({...s,[th.id]:true}));
-    try {
-      const u = await api.updateTherapist(th.id, { commission_pct: Number(pct) });
-      setTherapists(p=>p.map(t=>t.id===th.id?{...t,...u}:t));
-      pop(`${th.name} commission set to ${pct}%`);
-    } catch(e) { pop(e.message,"err"); }
-    setSaving(s=>({...s,[th.id]:false}));
-  };
-
-  // Save staff commission %
-  const saveStaffPct = async (s, pct) => {
-    setSaving(sv=>({...sv,[s.id]:true}));
-    try {
-      const u = await api.updateStaff(s.id, { commission_pct: Number(pct) });
-      setStaff(p=>p.map(x=>x.id===s.id?{...x,...u}:x));
-      pop(`${s.name} commission set to ${pct}%`);
-    } catch(e) { pop(e.message,"err"); }
-    setSaving(sv=>({...sv,[s.id]:false}));
-  };
-
-  // Local editable pct state
-  const [thPcts,  setThPcts]  = useState({});
-  const [stPcts,  setStPcts]  = useState({});
-
+  // Keep pct state in sync when parent data loads
   useEffect(()=>{
-    const tp = {}; therapists.forEach(t=>{ tp[t.id]=String(t.commission_pct||0); });
-    setThPcts(tp);
+    const m={}; therapists.forEach(t=>{if(thPcts[t.id]===undefined) m[t.id]=String(t.commission_pct||0);});
+    if(Object.keys(m).length) setThPcts(p=>({...m,...p}));
   },[therapists]);
-
   useEffect(()=>{
-    const sp = {}; staff.forEach(s=>{ sp[s.id]=String(s.commission_pct||0); });
-    setStPcts(sp);
+    const m={}; staff.forEach(s=>{if(stPcts[s.id]===undefined) m[s.id]=String(s.commission_pct||0);});
+    if(Object.keys(m).length) setStPcts(p=>({...m,...p}));
   },[staff]);
 
-  const presets = [
-    ["This Month", ()=>{ const d=new Date(); setDateFrom(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01"); setDateTo(new Date().toISOString().split("T")[0]); }],
-    ["Last Month", ()=>{ const d=new Date(); d.setMonth(d.getMonth()-1); const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"); setDateFrom(`${y}-${m}-01`); setDateTo(new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split("T")[0]); }],
-    ["This Year",  ()=>{ const y=new Date().getFullYear(); setDateFrom(`${y}-01-01`); setDateTo(`${y}-12-31`); }],
+  const loadReport = async()=>{
+    setLoadingR(true);
+    try{ const r=await api.getCommission(dateFrom,dateTo); setReport(r); }
+    catch(e){ pop(e.message||"Failed to load report","err"); }
+    setLoadingR(false);
+  };
+
+  const loadPayouts = async()=>{
+    try{ const p=await api.getPayouts(); setPayouts(p); } catch{}
+  };
+
+  useEffect(()=>{ loadReport(); loadPayouts(); },[]);
+
+  const saveThPct = async(t)=>{
+    const pct = Number(thPcts[t.id]||0);
+    setSavingPct(s=>({...s,[t.id]:true}));
+    try{
+      const u=await api.updateTherapist(t.id,{commission_pct:pct});
+      setTherapists(p=>p.map(x=>x.id===t.id?{...x,commission_pct:pct}:x));
+      pop(`${t.name}: ${pct}% saved`);
+    }catch(e){ pop(e.message,"err"); }
+    setSavingPct(s=>({...s,[t.id]:false}));
+  };
+
+  const saveStPct = async(s)=>{
+    const pct = Number(stPcts[s.id]||0);
+    setSavingPct(sv=>({...sv,[s.id]:true}));
+    try{
+      const u=await api.updateStaff(s.id,{commission_pct:pct});
+      setStaff(p=>p.map(x=>x.id===s.id?{...x,commission_pct:pct}:x));
+      pop(`${s.name}: ${pct}% saved`);
+    }catch(e){ pop(e.message,"err"); }
+    setSavingPct(sv=>({...sv,[s.id]:false}));
+  };
+
+  const recordPayout = async()=>{
+    if(!payoutModal||!payoutAmt) return;
+    try{
+      const p=await api.createPayout({
+        recipient_id:   payoutModal.id,
+        recipient_type: payoutModal.type,
+        recipient_name: payoutModal.name,
+        amount:         Number(payoutAmt),
+        period_from:    dateFrom,
+        period_to:      dateTo,
+        notes:          payoutNote||null,
+        paid_by:        user?.id||null,
+      });
+      setPayouts(prev=>[p,...prev]);
+      setPayoutModal(null); setPayoutAmt(""); setPayoutNote("");
+      pop(`Payout recorded for ${payoutModal.name} ✓`);
+    }catch(e){ pop(e.message,"err"); }
+  };
+
+  const deletePayout = async(id,name)=>{
+    if(!window.confirm(`Delete payout for ${name}?`)) return;
+    try{ await api.deletePayout(id); setPayouts(p=>p.filter(x=>x.id!==id)); pop("Deleted"); }
+    catch(e){ pop(e.message,"err"); }
+  };
+
+  // Calculate already paid per recipient in current period
+  const alreadyPaid = (recipientId)=>
+    payouts.filter(p=>p.recipient_id===recipientId && p.period_from===dateFrom && p.period_to===dateTo)
+           .reduce((s,p)=>s+Number(p.amount),0);
+
+  const presets=[
+    ["This Month",()=>{const d=new Date();setDateFrom(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01");setDateTo(new Date().toISOString().split("T")[0]);}],
+    ["Last Month",()=>{const d=new Date();d.setMonth(d.getMonth()-1);const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0");setDateFrom(`${y}-${m}-01`);setDateTo(new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split("T")[0]);}],
+    ["This Year", ()=>{const y=new Date().getFullYear();setDateFrom(`${y}-01-01`);setDateTo(`${y}-12-31`);}],
   ];
 
-  return (
+  // Pct input widget
+  const PctInput = ({id, val, onChange, onSave, saving, color=PL})=>(
+    <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+      <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+        <input type="number" min="0" max="100" step="0.5" value={val}
+          onChange={e=>onChange(e.target.value)}
+          style={{width:66,padding:"7px 22px 7px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",textAlign:"right"}}/>
+        <span style={{position:"absolute",right:6,fontSize:12,color:G4,pointerEvents:"none"}}>%</span>
+      </div>
+      <button onClick={onSave} disabled={saving}
+        style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${color}`,background:saving?G1:`${color}15`,
+          color:saving?G4:color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+        {saving?"…":"Save"}
+      </button>
+    </div>
+  );
+
+  return(
     <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:"0 0 20px"}}>Commission</h2>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:"0 0 20px"}}>Commission & Payouts</h2>
 
-      {/* ── SECTION 1: SET COMMISSION RATES ── */}
+      {/* ── SET RATES ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24}}>
-
-        {/* Therapists */}
         <Card>
-          <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:4}}>💆 Therapist Commission</div>
-          <div style={{fontSize:12,color:G6,marginBottom:14}}>Each therapist earns a % of the revenue they personally generate.</div>
+          <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:3}}>💆 Therapist Rates</div>
+          <div style={{fontSize:12,color:G6,marginBottom:14}}>% of revenue each therapist personally earns</div>
           {therapists.filter(t=>t.active).length===0&&<div style={{color:G4,fontSize:13}}>No active therapists</div>}
           {therapists.filter(t=>t.active).map(t=>(
             <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${G1}`}}>
               {t.photo
-                ? <img src={t.photo} alt={t.name} style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
-                : <div style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${PLD},${PL})`,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:13,flexShrink:0}}>{t.name[0]}</div>
+                ?<img src={t.photo} alt={t.name} style={{width:32,height:32,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
+                :<div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${PLD},${PL})`,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:12,flexShrink:0}}>{t.name[0]}</div>
               }
-              <div style={{flex:1,minWidth:0}}>
+              <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                 <div style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</div>
-                <div style={{fontSize:11,color:G6}}>{t.specialties?.slice(0,2).join(", ")||"Therapist"}</div>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-                  <input type="number" min="0" max="100" step="0.5"
-                    value={thPcts[t.id]??String(t.commission_pct||0)}
-                    onChange={e=>setThPcts(p=>({...p,[t.id]:e.target.value}))}
-                    style={{width:64,padding:"6px 24px 6px 8px",border:`1px solid ${G2}`,borderRadius:7,fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",textAlign:"right"}}/>
-                  <span style={{position:"absolute",right:6,fontSize:13,color:G6,pointerEvents:"none"}}>%</span>
-                </div>
-                <button onClick={()=>saveTherapistPct(t, thPcts[t.id]??t.commission_pct)}
-                  disabled={saving[t.id]}
-                  style={{padding:"6px 11px",borderRadius:7,border:`1px solid ${PL}`,background:PLF,color:PL,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                  {saving[t.id]?"…":"Save"}
-                </button>
-              </div>
+              <PctInput id={t.id} val={thPcts[t.id]??String(t.commission_pct||0)}
+                onChange={v=>setThPcts(p=>({...p,[t.id]:v}))}
+                onSave={()=>saveThPct(t)} saving={!!savingPct[t.id]} color={PL}/>
             </div>
           ))}
         </Card>
 
-        {/* Reception/Staff */}
         <Card>
-          <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:4}}>🚪 Reception Staff Commission</div>
-          <div style={{fontSize:12,color:G6,marginBottom:14}}>Reception staff earn a % of the total sales for the period.</div>
-          {staff.filter(s=>s.active&&s.role!=="Admin").length===0&&<div style={{color:G4,fontSize:13}}>No reception staff</div>}
+          <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:3}}>🚪 Reception Staff Rates</div>
+          <div style={{fontSize:12,color:G6,marginBottom:14}}>% of total sales for the period</div>
+          {staff.filter(s=>s.active).length===0&&<div style={{color:G4,fontSize:13}}>No staff</div>}
           {staff.filter(s=>s.active).map(s=>(
             <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${G1}`}}>
-              <div style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${IN}BB,${IN})`,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:13,flexShrink:0}}>{s.name[0]}</div>
+              <div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${IN}BB,${IN})`,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:12,flexShrink:0}}>{s.name[0]}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</div>
                 <div style={{fontSize:11,color:G6}}>{s.role}</div>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-                  <input type="number" min="0" max="100" step="0.5"
-                    value={stPcts[s.id]??String(s.commission_pct||0)}
-                    onChange={e=>setStPcts(p=>({...p,[s.id]:e.target.value}))}
-                    style={{width:64,padding:"6px 24px 6px 8px",border:`1px solid ${G2}`,borderRadius:7,fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",textAlign:"right"}}/>
-                  <span style={{position:"absolute",right:6,fontSize:13,color:G6,pointerEvents:"none"}}>%</span>
-                </div>
-                <button onClick={()=>saveStaffPct(s, stPcts[s.id]??s.commission_pct)}
-                  disabled={saving[s.id]}
-                  style={{padding:"6px 11px",borderRadius:7,border:`1px solid ${IN}`,background:INB,color:IN,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                  {saving[s.id]?"…":"Save"}
-                </button>
-              </div>
+              <PctInput id={s.id} val={stPcts[s.id]??String(s.commission_pct||0)}
+                onChange={v=>setStPcts(p=>({...p,[s.id]:v}))}
+                onSave={()=>saveStPct(s)} saving={!!savingPct[s.id]} color={IN}/>
             </div>
           ))}
         </Card>
       </div>
 
-      {/* ── SECTION 2: COMMISSION REPORT ── */}
-      <Card>
-        <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:14}}>📊 Commission Report</div>
+      {/* ── COMMISSION REPORT + PAYOUT ── */}
+      <Card style={{marginBottom:20}}>
+        <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:14}}>📊 Commission Report & Payout</div>
         {/* Date range */}
-        <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:7,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
           {presets.map(([l,fn])=>(
-            <button key={l} onClick={()=>{ fn(); setTimeout(loadReport,50); }}
-              style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${G2}`,background:WH,color:G6,cursor:"pointer",fontFamily:"inherit"}}>
-              {l}
-            </button>
+            <button key={l} onClick={()=>{fn();setTimeout(loadReport,50);}}
+              style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${G2}`,background:WH,color:G6,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
           ))}
           <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
             style={{padding:"6px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
           <span style={{color:G4}}>→</span>
           <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
             style={{padding:"6px 9px",border:`1px solid ${G2}`,borderRadius:7,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
-          <button onClick={loadReport}
+          <button onClick={()=>{loadReport();loadPayouts();}}
             style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${PL}`,background:PLF,color:PL,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             Generate
           </button>
         </div>
 
-        {loading&&<div style={{textAlign:"center",padding:30,color:G4}}>Calculating…</div>}
+        {loadingR&&<div style={{textAlign:"center",padding:30,color:G4}}>Calculating…</div>}
 
-        {report&&!loading&&(
-          <div>
-            {/* Total Sales KPI */}
-            <div style={{background:PLF,border:`1px solid ${PL}20`,borderRadius:10,padding:"14px 18px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em"}}>Total Sales ({report.period.from} → {report.period.to})</div>
-                <div style={{fontSize:28,fontWeight:700,color:PL,fontFamily:"'Playfair Display',serif"}}>{fmt(report.total_sales)}</div>
+        {report&&!loadingR&&(()=>{
+          const totalComm = (report.therapist_commissions||[]).reduce((s,t)=>s+t.commission_amount,0)
+                          + (report.staff_commissions||[]).reduce((s,t)=>s+t.commission_amount,0);
+          return(
+            <div>
+              {/* Summary */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
+                {[["Total Sales",fmt(report.total_sales),PL,"💰"],
+                  ["Total Commission",fmt(totalComm),ER,"💵"],
+                  ["Net After Commission",fmt(report.total_sales-totalComm),OK,"📈"]
+                ].map(([l,v,col,ic])=>(
+                  <div key={l} style={{background:G1,borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:11,color:G6,fontWeight:700,marginBottom:4}}>{ic} {l.toUpperCase()}</div>
+                    <div style={{fontSize:20,fontWeight:700,color:col,fontFamily:"'Playfair Display',serif"}}>{v}</div>
+                  </div>
+                ))}
               </div>
-              <div style={{fontSize:32}}>💰</div>
+
+              {/* Therapist rows */}
+              {(report.therapist_commissions||[]).length>0&&(
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>💆 Therapists</div>
+                  {report.therapist_commissions.map(t=>{
+                    const paid   = alreadyPaid(t.therapist_id);
+                    const unpaid = Math.max(0, t.commission_amount - paid);
+                    return(
+                      <div key={t.therapist_id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:WH,borderRadius:10,border:`1px solid ${G2}`,marginBottom:8,flexWrap:"wrap"}}>
+                        <div style={{flex:1,minWidth:160}}>
+                          <div style={{fontWeight:700,fontSize:14}}>{t.name}</div>
+                          <div style={{fontSize:12,color:G6,marginTop:2}}>Revenue: {fmt(t.revenue)} · Rate: {t.commission_pct||0}%</div>
+                        </div>
+                        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+                          <div style={{textAlign:"center"}}>
+                            <div style={{fontSize:10,color:G6,marginBottom:2}}>EARNED</div>
+                            <div style={{fontWeight:700,fontSize:16,color:PL}}>{fmt(t.commission_amount)}</div>
+                          </div>
+                          <div style={{textAlign:"center"}}>
+                            <div style={{fontSize:10,color:G6,marginBottom:2}}>PAID OUT</div>
+                            <div style={{fontWeight:700,fontSize:16,color:OK}}>{fmt(paid)}</div>
+                          </div>
+                          <div style={{textAlign:"center"}}>
+                            <div style={{fontSize:10,color:G6,marginBottom:2}}>REMAINING</div>
+                            <div style={{fontWeight:700,fontSize:16,color:unpaid>0?ER:OK}}>{fmt(unpaid)}</div>
+                          </div>
+                          <button onClick={()=>{setPayoutModal({id:t.therapist_id,name:t.name,type:"therapist",earned:t.commission_amount,paid});setPayoutAmt(String(unpaid>0?unpaid:""));setPayoutNote("");}}
+                            style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${OK}`,background:OKB,color:OK,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                            💵 Pay Out
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Staff rows */}
+              {(report.staff_commissions||[]).length>0&&(
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>🚪 Reception Staff</div>
+                  {report.staff_commissions.map(s=>{
+                    const paid   = alreadyPaid(s.id);
+                    const unpaid = Math.max(0, s.commission_amount - paid);
+                    return(
+                      <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:WH,borderRadius:10,border:`1px solid ${G2}`,marginBottom:8,flexWrap:"wrap"}}>
+                        <div style={{flex:1,minWidth:160}}>
+                          <div style={{fontWeight:700,fontSize:14}}>{s.name} <span style={{fontSize:12,color:G6,fontWeight:400}}>· {s.role}</span></div>
+                          <div style={{fontSize:12,color:G6,marginTop:2}}>Total Sales: {fmt(s.total_sales)} · Rate: {s.commission_pct||0}%</div>
+                        </div>
+                        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+                          <div style={{textAlign:"center"}}>
+                            <div style={{fontSize:10,color:G6,marginBottom:2}}>EARNED</div>
+                            <div style={{fontWeight:700,fontSize:16,color:IN}}>{fmt(s.commission_amount)}</div>
+                          </div>
+                          <div style={{textAlign:"center"}}>
+                            <div style={{fontSize:10,color:G6,marginBottom:2}}>PAID OUT</div>
+                            <div style={{fontWeight:700,fontSize:16,color:OK}}>{fmt(paid)}</div>
+                          </div>
+                          <div style={{textAlign:"center"}}>
+                            <div style={{fontSize:10,color:G6,marginBottom:2}}>REMAINING</div>
+                            <div style={{fontWeight:700,fontSize:16,color:unpaid>0?ER:OK}}>{fmt(unpaid)}</div>
+                          </div>
+                          <button onClick={()=>{setPayoutModal({id:s.id,name:s.name,type:"staff",earned:s.commission_amount,paid});setPayoutAmt(String(unpaid>0?unpaid:""));setPayoutNote("");}}
+                            style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${OK}`,background:OKB,color:OK,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                            💵 Pay Out
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {(report.therapist_commissions||[]).length===0&&(report.staff_commissions||[]).length===0&&(
+                <div style={{textAlign:"center",padding:30,color:G4,fontSize:14}}>No commission data for this period. Set rates above and make sure appointments exist.</div>
+              )}
             </div>
-
-            {/* Therapist commissions table */}
-            {report.therapist_commissions?.length>0&&(
-              <div style={{marginBottom:20}}>
-                <div style={{fontSize:13,fontWeight:700,color:BK,marginBottom:10}}>💆 Therapist Earnings</div>
-                <div style={{borderRadius:10,border:`1px solid ${G2}`,overflow:"hidden"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                    <thead>
-                      <tr style={{background:G1,borderBottom:`1px solid ${G2}`}}>
-                        {["Therapist","Revenue Generated","Commission %","Amount Due"].map(h=>(
-                          <th key={h} style={{padding:"10px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".05em"}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.therapist_commissions.map((t,i)=>(
-                        <tr key={t.therapist_id} style={{borderBottom:`1px solid ${G1}`,background:i%2===0?WH:G1}}>
-                          <td style={{padding:"11px 14px",fontWeight:700}}>{t.name}</td>
-                          <td style={{padding:"11px 14px",fontWeight:700,color:IN}}>{fmt(t.revenue)}</td>
-                          <td style={{padding:"11px 14px"}}>
-                            <span style={{background:PLF,color:PL,padding:"3px 9px",borderRadius:99,fontSize:12,fontWeight:700}}>{t.commission_pct||0}%</span>
-                          </td>
-                          <td style={{padding:"11px 14px",fontWeight:700,color:OK,fontSize:15}}>{fmt(t.commission_amount)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{background:G1,borderTop:`2px solid ${G2}`}}>
-                        <td colSpan={3} style={{padding:"11px 14px",fontWeight:700}}>Total Therapist Commission</td>
-                        <td style={{padding:"11px 14px",fontWeight:700,color:OK,fontSize:15}}>
-                          {fmt(report.therapist_commissions.reduce((s,t)=>s+t.commission_amount,0))}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Staff commissions table */}
-            {report.staff_commissions?.length>0&&(
-              <div>
-                <div style={{fontSize:13,fontWeight:700,color:BK,marginBottom:10}}>🚪 Reception Staff Earnings</div>
-                <div style={{borderRadius:10,border:`1px solid ${G2}`,overflow:"hidden"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                    <thead>
-                      <tr style={{background:G1,borderBottom:`1px solid ${G2}`}}>
-                        {["Staff","Role","Total Sales","Commission %","Amount Due"].map(h=>(
-                          <th key={h} style={{padding:"10px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".05em"}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.staff_commissions.map((s,i)=>(
-                        <tr key={s.id} style={{borderBottom:`1px solid ${G1}`,background:i%2===0?WH:G1}}>
-                          <td style={{padding:"11px 14px",fontWeight:700}}>{s.name}</td>
-                          <td style={{padding:"11px 14px",color:G6}}>{s.role}</td>
-                          <td style={{padding:"11px 14px",fontWeight:700,color:IN}}>{fmt(s.total_sales)}</td>
-                          <td style={{padding:"11px 14px"}}>
-                            <span style={{background:INB,color:IN,padding:"3px 9px",borderRadius:99,fontSize:12,fontWeight:700}}>{s.commission_pct||0}%</span>
-                          </td>
-                          <td style={{padding:"11px 14px",fontWeight:700,color:OK,fontSize:15}}>{fmt(s.commission_amount)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{background:G1,borderTop:`2px solid ${G2}`}}>
-                        <td colSpan={4} style={{padding:"11px 14px",fontWeight:700}}>Total Staff Commission</td>
-                        <td style={{padding:"11px 14px",fontWeight:700,color:OK,fontSize:15}}>
-                          {fmt(report.staff_commissions.reduce((s,x)=>s+x.commission_amount,0))}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {report.therapist_commissions?.length===0&&report.staff_commissions?.length===0&&(
-              <div style={{textAlign:"center",padding:30,color:G4}}>No commission data for this period. Set commission percentages above first.</div>
-            )}
-          </div>
-        )}
+          );
+        })()}
       </Card>
+
+      {/* ── PAYOUT HISTORY ── */}
+      <Card>
+        <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:14}}>📋 Payout History</div>
+        {payouts.length===0&&<div style={{color:G4,fontSize:13,textAlign:"center",padding:16}}>No payouts recorded yet</div>}
+        {payouts.map(p=>(
+          <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${G1}`,flexWrap:"wrap"}}>
+            <div style={{width:32,height:32,borderRadius:"50%",background:p.recipient_type==="therapist"?PLF:INB,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+              {p.recipient_type==="therapist"?"💆":"🚪"}
+            </div>
+            <div style={{flex:1,minWidth:120}}>
+              <div style={{fontWeight:700,fontSize:13}}>{p.recipient_name}</div>
+              <div style={{fontSize:11,color:G6}}>{fmtDate(p.period_from)} → {fmtDate(p.period_to)}</div>
+              {p.notes&&<div style={{fontSize:11,color:G4}}>{p.notes}</div>}
+            </div>
+            <div style={{fontWeight:700,fontSize:16,color:OK}}>{fmt(p.amount)}</div>
+            <div style={{fontSize:11,color:G4}}>{fmtDate(p.created_at)}</div>
+            <button onClick={()=>deletePayout(p.id,p.recipient_name)}
+              style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:16,padding:"2px 6px"}}>×</button>
+          </div>
+        ))}
+      </Card>
+
+      {/* Payout modal */}
+      {payoutModal&&(
+        <Modal title={`Pay Out — ${payoutModal.name}`} onClose={()=>setPayoutModal(null)}>
+          <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            {[["Period", `${dateFrom} → ${dateTo}`],
+              ["Commission Earned", fmt(payoutModal.earned)],
+              ["Already Paid",      fmt(payoutModal.paid)],
+              ["Remaining",         fmt(Math.max(0,payoutModal.earned-payoutModal.paid))],
+            ].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:13,borderBottom:`1px solid ${G2}`}}>
+                <span style={{color:G6}}>{k}</span><strong>{v}</strong>
+              </div>
+            ))}
+          </div>
+          <Inp label="Amount to Pay (TZS)" type="number" value={payoutAmt} onChange={e=>setPayoutAmt(e.target.value)} placeholder="Enter amount"/>
+          <Inp label="Notes (optional)" value={payoutNote} onChange={e=>setPayoutNote(e.target.value)} placeholder="e.g. Cash payment, Bank transfer…"/>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setPayoutModal(null)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn v="ok" onClick={recordPayout} disabled={!payoutAmt} style={{flex:1,justifyContent:"center"}}>
+              Record Payout ✓
+            </Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
-
 
 function StaffTab({staff,setStaff,pop,currentUser}){
   const [modal,setModal]=useState(false);

@@ -189,3 +189,17 @@ ALTER TABLE therapists ADD COLUMN IF NOT EXISTS availability TEXT NOT NULL DEFAU
 ALTER TABLE therapists ADD COLUMN IF NOT EXISTS email_unique TEXT UNIQUE;
 -- Copy existing email to email_unique for login
 UPDATE therapists SET email_unique = email WHERE email IS NOT NULL AND email_unique IS NULL;
+
+-- ── PAYOUTS ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS payouts (
+  id            TEXT PRIMARY KEY DEFAULT 'PO' || upper(substr(md5(random()::text), 1, 6)),
+  recipient_id  TEXT NOT NULL,               -- therapist id or staff id
+  recipient_type TEXT NOT NULL DEFAULT 'therapist', -- therapist | staff
+  recipient_name TEXT NOT NULL,
+  amount        BIGINT NOT NULL,
+  period_from   DATE NOT NULL,
+  period_to     DATE NOT NULL,
+  notes         TEXT,
+  paid_by       TEXT,                        -- staff id who recorded payment
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

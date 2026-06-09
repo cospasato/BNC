@@ -29,6 +29,11 @@ module.exports = async function handler(req, res) {
             RETURNING *`;
         } catch(e) {
           if (e.message && e.message.includes('does not exist')) {
+            // Auto-add commission_pct column if missing then retry
+            await sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`.catch(()=>{});
+            await sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}'`.catch(()=>{});
+            await sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS availability TEXT NOT NULL DEFAULT 'available'`.catch(()=>{});
+            await sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS email_unique TEXT`.catch(()=>{});
             rows = await sql`
               INSERT INTO therapists (name, phone, email, bio, photo, specialties, outcall)
               VALUES (${name}, ${phone||null}, ${email||null}, ${bio||''}, ${photo||null}, ${specialties||[]}, ${outcall !== false})
@@ -368,7 +373,8 @@ module.exports = async function handler(req, res) {
     // ── STAFF ─────────────────────────────────────────────────
     if (resource === 'staff') {
       if (req.method === 'GET' && action !== 'login') {
-        const rows = await sql`SELECT id,name,email,phone,role,commission_pct,active,created_at FROM staff ORDER BY created_at ASC`;
+        await sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`.catch(()=>{});
+        const rows = await sql`SELECT id,name,email,phone,role,COALESCE(commission_pct,0) AS commission_pct,active,created_at FROM staff ORDER BY created_at ASC`;
         return res.status(200).json(rows);
       }
       if (req.method === 'POST' && action === 'login') {
@@ -491,14 +497,18 @@ module.exports = async function handler(req, res) {
       const df = date_from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
       const dt = date_to   || new Date().toISOString().split('T')[0];
 
+      // Ensure columns exist
+      await sql`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`.catch(()=>{});
+      await sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS commission_pct NUMERIC NOT NULL DEFAULT 0`.catch(()=>{});
+
       // Therapist commissions
       const thRevenue = await sql`
-        SELECT a.therapist_id, t.name, t.commission_pct,
+        SELECT a.therapist_id, t.name, COALESCE(t.commission_pct,0) AS commission_pct,
                COALESCE(SUM(a.paid_amount),0) AS revenue
         FROM appointments a
         JOIN therapists t ON t.id = a.therapist_id
         WHERE a.appt_date BETWEEN ${df} AND ${dt} AND a.status != 'cancelled'
-        GROUP BY a.therapist_id, t.name, t.commission_pct`;
+        GROUP BY a.therapist_id, t.name, t.commission_pct`.catch(()=>[]);
 
       // Also include reception_log revenue per therapist
       const thRecepRevenue = await sql`
@@ -533,6 +543,45 @@ module.exports = async function handler(req, res) {
         therapist_commissions: therapistCommissions,
         staff_commissions: staffCommissions,
       });
+    }
+
+        // ── PAYOUTS ──────────────────────────────────────────────
+    if (resource === 'payouts') {
+      // Ensure table exists
+      await sql`CREATE TABLE IF NOT EXISTS payouts (
+        id            TEXT PRIMARY KEY DEFAULT 'PO' || upper(substr(md5(random()::text), 1, 6)),
+        recipient_id  TEXT NOT NULL,
+        recipient_type TEXT NOT NULL DEFAULT 'therapist',
+        recipient_name TEXT NOT NULL,
+        amount        BIGINT NOT NULL,
+        period_from   DATE NOT NULL,
+        period_to     DATE NOT NULL,
+        notes         TEXT,
+        paid_by       TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`.catch(()=>{});
+
+      if (req.method === 'GET') {
+        const { recipient_id } = req.query;
+        const rows = recipient_id
+          ? await sql`SELECT * FROM payouts WHERE recipient_id=${recipient_id} ORDER BY created_at DESC`
+          : await sql`SELECT * FROM payouts ORDER BY created_at DESC LIMIT 200`;
+        return res.status(200).json(rows);
+      }
+      if (req.method === 'POST') {
+        const { recipient_id, recipient_type, recipient_name, amount, period_from, period_to, notes, paid_by } = req.body || {};
+        if (!recipient_id || !amount || !period_from || !period_to)
+          return res.status(400).json({ error: 'recipient_id, amount, period_from, period_to required' });
+        const rows = await sql`
+          INSERT INTO payouts (recipient_id, recipient_type, recipient_name, amount, period_from, period_to, notes, paid_by)
+          VALUES (${recipient_id}, ${recipient_type||'therapist'}, ${recipient_name||''}, ${amount}, ${period_from}, ${period_to}, ${notes||null}, ${paid_by||null})
+          RETURNING *`;
+        return res.status(201).json(rows[0]);
+      }
+      if (req.method === 'DELETE' && id) {
+        await sql`DELETE FROM payouts WHERE id=${id}`;
+        return res.status(200).json({ success: true });
+      }
     }
 
         return res.status(400).json({ error: `Unknown resource: ${resource}` });

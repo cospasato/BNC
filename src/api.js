@@ -83,5 +83,9 @@ export const api = {
   therapistUpdate:     (id,b) => pt(`resource=therapists&id=${id}`, b),
 
   // Commission
-  getCommission: (df,dt) => g(`resource=commission${df?'&date_from='+df:''}${dt?'&date_to='+dt:''}`),
+  getCommission:  (df,dt) => g(`resource=commission${df?'&date_from='+df:''}${dt?'&date_to='+dt:''}`),
+  // Payouts
+  getPayouts:     (rid)  => g(`resource=payouts${rid?'&recipient_id='+rid:''}`),
+  createPayout:   b      => p('resource=payouts', b),
+  deletePayout:   id     => d(`resource=payouts&id=${id}`),
 };
