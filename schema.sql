@@ -203,3 +203,15 @@ CREATE TABLE IF NOT EXISTS payouts (
   paid_by       TEXT,                        -- staff id who recorded payment
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ── PAYMENTS (PesaPal online payments) ───────────────────────
+CREATE TABLE IF NOT EXISTS payments (
+  id                TEXT PRIMARY KEY DEFAULT 'PM' || upper(substr(md5(random()::text), 1, 6)),
+  appointment_id    TEXT UNIQUE REFERENCES appointments(id),
+  amount            BIGINT NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending',  -- pending | completed | failed
+  pesapal_order_id  TEXT,
+  redirect_url      TEXT,
+  paid_at           TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

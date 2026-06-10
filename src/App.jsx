@@ -821,6 +821,7 @@ export default function App(){
       {view==="book"      &&<BookingPortal/>}
       {view==="customer"  &&customer&&<CustomerPortal/>}
       {view==="admin"     &&user&&<AdminPortal/>}
+      {view==="payment_complete"&&<PaymentCompletePage customer={customer} navTo={navTo} pop={pop}/>}
       {view==="therapist" &&therapistUser&&<TherapistPortal therapistUser={therapistUser} setTherapistUser={setTherapistUser} therapistLogout={therapistLogout} pricing={pricing} services={services} rooms={rooms} pop={pop}/>}
       {/* Modals */}
       {modal==="login"&&<StaffLoginModal onLogin={doLogin} onClose={()=>setModal(null)} pop={pop}/>}
@@ -2559,6 +2560,69 @@ function StaffTab({staff,setStaff,pop,currentUser}){
     </div>
   );
 }
+
+// ── PAYMENT COMPLETE PAGE ─────────────────────────────────────
+function PaymentCompletePage({ customer, navTo, pop }) {
+  const [status, setStatus] = useState("checking"); // checking | completed | failed | pending
+  const [apptId, setApptId] = useState(null);
+
+  useEffect(()=>{
+    const params   = new URLSearchParams(window.location.search);
+    const aid      = params.get("appt");
+    const trackId  = params.get("OrderTrackingId") || params.get("order_tracking_id");
+    setApptId(aid);
+
+    if(!trackId || !aid) { setStatus("pending"); return; }
+
+    fetch(`/api/pesapal?action=status&order_tracking_id=${trackId}&appointment_id=${aid}`)
+      .then(r=>r.json())
+      .then(d=>{
+        if(d.status==="Completed")  setStatus("completed");
+        else if(d.status==="Failed" || d.status==="Invalid") setStatus("failed");
+        else setStatus("pending");
+      })
+      .catch(()=>setStatus("pending"));
+  },[]);
+
+  const CONFIG = {
+    checking:  { icon:"⏳", color:WA, bg:WAB, title:"Checking payment…",       msg:"Please wait while we verify your payment." },
+    completed: { icon:"✅", color:OK, bg:OKB, title:"Payment Successful!",      msg:"Your booking is confirmed. We'll see you soon!" },
+    failed:    { icon:"❌", color:ER, bg:ERB, title:"Payment Failed",           msg:"Your payment was not completed. Please try again or choose a different method." },
+    pending:   { icon:"⏳", color:WA, bg:WAB, title:"Booking Received",         msg:"Your appointment is booked. Payment can be completed at the venue." },
+  };
+  const cfg = CONFIG[status] || CONFIG.pending;
+
+  return(
+    <div style={{minHeight:"100vh",background:G1,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:WH,borderRadius:16,padding:"40px 32px",maxWidth:460,width:"100%",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,.1)"}}>
+        <div style={{width:72,height:72,borderRadius:"50%",background:cfg.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 20px"}}>
+          {cfg.icon}
+        </div>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:cfg.color,marginBottom:10}}>{cfg.title}</h2>
+        <p style={{color:G6,fontSize:15,lineHeight:1.7,marginBottom:24}}>{cfg.msg}</p>
+        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+          {customer&&(
+            <button onClick={()=>{ window.history.pushState({},"","/"); navTo("customer"); }}
+              style={{padding:"11px 22px",borderRadius:9,border:"none",background:PL,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              View My Bookings
+            </button>
+          )}
+          <button onClick={()=>{ window.history.pushState({},"","/"); navTo("land"); }}
+            style={{padding:"11px 22px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            Back to Home
+          </button>
+        </div>
+        {status==="failed"&&(
+          <button onClick={()=>{ window.history.pushState({},"","/"); navTo("book"); }}
+            style={{marginTop:12,padding:"11px 22px",borderRadius:9,border:`1px solid ${PL}`,background:PLF,color:PL,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+            Try Booking Again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 // ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
 function TherapistGrid({therapists,onBook}){
