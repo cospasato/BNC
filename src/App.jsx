@@ -357,56 +357,26 @@ export default function App(){
         </div>
       </div>
 
-      {/* Service types */}
+      {/* Service types - only 2 cards */}
       <div style={{padding:"48px 20px",maxWidth:900,margin:"0 auto"}}>
         <div style={{textAlign:"center",marginBottom:36}}>
           <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:30,color:BK,margin:"0 0 10px"}}>How We Serve You</h2>
           <p style={{color:G6,fontSize:15}}>Choose what works best for your lifestyle</p>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:20}}>
-          {[["🏢","In-House","Visit our spa","Enjoy our fully equipped rooms, ambiance, and full service menu"],
-            ["🏠","Outcall Home","We come to you","Our therapist visits your home with all equipment needed"],
-            ["🏨","Outcall Hotel","Hotel service","Relaxing massage in your hotel room at your convenience"]].map(([ic,title,sub,desc])=>(
-            <div key={title} style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:24,textAlign:"center",cursor:"pointer",transition:"box-shadow .2s"}}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:600,margin:"0 auto"}}>
+          {[["🏢","In-House","Visit our spa","Enjoy our fully equipped treatment rooms and full service menu"],
+            ["🏨","Outcall","We come to you","Our therapist visits your hotel, home or office with all equipment"]].map(([ic,title,sub,desc])=>(
+            <div key={title} style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:28,textAlign:"center",cursor:"pointer",transition:"box-shadow .2s"}}
               onClick={()=>navTo("book",1)} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 30px rgba(123,63,110,.15)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-              <div style={{fontSize:36,marginBottom:12}}>{ic}</div>
-              <div style={{fontWeight:700,fontSize:16,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{title}</div>
+              <div style={{fontSize:40,marginBottom:14}}>{ic}</div>
+              <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:6}}>{title}</div>
               <div style={{fontSize:12,color:PL,fontWeight:700,marginBottom:8}}>{sub}</div>
-              <div style={{fontSize:13,color:G6,lineHeight:1.6}}>{desc}</div>
+              <div style={{fontSize:13,color:G6,lineHeight:1.7}}>{desc}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Services preview */}
-      {services.length>0&&(
-        <div style={{background:G1,padding:"48px 20px"}}>
-          <div style={{maxWidth:900,margin:"0 auto"}}>
-            <div style={{textAlign:"center",marginBottom:32}}>
-              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:BK,margin:"0 0 8px"}}>Our Services</h2>
-              <p style={{color:G6,fontSize:14}}>Starting prices shown</p>
-            </div>
-            {Object.entries(services.reduce((a,s)=>{(a[s.category]||(a[s.category]=[])).push(s);return a;},{})).map(([cat,svs])=>(
-              <div key={cat} style={{marginBottom:28}}>
-                <div style={{fontSize:12,fontWeight:700,color:PL,textTransform:"uppercase",letterSpacing:".1em",marginBottom:12}}>{cat}</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
-                  {svs.map(sv=>{
-                    const minPrice=pricing.filter(p=>p.service_id===sv.id).map(p=>Number(p.price));
-                    const from=minPrice.length?Math.min(...minPrice):0;
-                    return(
-                      <div key={sv.id} style={{background:WH,borderRadius:10,padding:"14px 16px",border:`1px solid ${G2}`}}>
-                        <div style={{fontWeight:700,fontSize:14,color:BK,marginBottom:4}}>{sv.name}</div>
-                        <div style={{fontSize:12,color:G6,marginBottom:6}}>{sv.duration_min} min</div>
-                        {from>0&&<div style={{fontSize:13,fontWeight:700,color:PL}}>From {fmt(from)}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Therapists - ALL listed with clear availability */}
       {therapists.length>0&&(
@@ -416,7 +386,7 @@ export default function App(){
               <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:30,color:BK,margin:"0 0 8px"}}>Our Therapists</h2>
               <p style={{color:G6,fontSize:14,marginBottom:28}}>Available for in-house sessions at our locations and outcall visits to your home or hotel</p>
             </div>
-            <TherapistGrid therapists={therapists} onBook={()=>navTo("book",1)}/>
+            <TherapistGrid therapists={therapists} onBook={(thId)=>{if(thId) setBD&&setBD(d=>({...d,therapistId:thId})); navTo("book",1);}}/>
           </div>
         </div>
       )}
@@ -607,7 +577,7 @@ export default function App(){
                       const sel=bD.services.find(s=>s.id===sv.id);
                       return(
                         <div key={sv.id} onClick={()=>toggleService(sv)}
-                          style={{background:WH,borderRadius:10,border:`2px solid ${sel?PL:G2}`,padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,transition:"all .15s",background:sel?PLF:WH}}>
+                          style={{background:sel?PLF:WH,borderRadius:10,border:`2px solid ${sel?PL:G2}`,padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,transition:"all .15s"}}>
                           <div style={{flex:1}}>
                             <div style={{fontWeight:700,fontSize:14,color:BK}}>{sv.name}</div>
                             <div style={{fontSize:12,color:G6,marginTop:2}}>{sv.duration_min} min {sv.description&&"· "+sv.description.slice(0,40)}</div>
@@ -1119,8 +1089,11 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
 }
 
 function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,payMethods,pop,user}){
+  // Split name/phone into own state to prevent input focus loss on re-render
+  const [clientName,  setClientName]  = useState("");
+  const [clientPhone, setClientPhone] = useState("");
   const [form,setForm] = useState({
-    name:"", phone:"", therapistId:"", roomId:"",
+    therapistId:"", roomId:"",
     serviceType:"inhouse", selServices:[], disc:0, discT:"pct",
     paid:0, method:"Cash", notes:""
   });
@@ -1162,17 +1135,18 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
   };
 
   const resetForm=()=>{
-    setForm({name:"",phone:"",therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:payMethods[0]||"Cash",notes:""});
+    setClientName(""); setClientPhone("");
+    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:payMethods[0]||"Cash",notes:""});
     setStep(1);
   };
 
   const startSession=async()=>{
-    if(!form.name) return pop("Client name required","err");
+    if(!clientName.trim()) return pop("Client name required","err");
     if(form.selServices.length===0) return pop("Select at least one service","err");
     try{
       const r = await api.createReception({
-        customer_name:  form.name,
-        customer_phone: form.phone,
+        customer_name:  clientName,
+        customer_phone: clientPhone,
         therapist_id:   form.therapistId||null,
         room_id:        form.roomId||null,
         service_type:   form.serviceType,
@@ -1243,8 +1217,8 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
         {step===1&&(
           <div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <Inp label="Client Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Full name"/>
-              <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="+255 7XX…"/>
+  <input value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="e.g. Jane Mwangi" style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/></div>
+              <div><label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Phone</label><input value={clientPhone} onChange={e=>setClientPhone(e.target.value)} placeholder="+255 7XX…" style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/></div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <Sel label="Therapist" value={form.therapistId} onChange={e=>setForm(f=>({...f,therapistId:e.target.value}))}>
@@ -1269,7 +1243,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
                 ))}
               </div>
             </div>
-            <Btn onClick={()=>{if(!form.name)return pop("Client name required","err");setStep(2);}} style={{width:"100%",justifyContent:"center"}}>
+            <Btn onClick={()=>{if(!clientName.trim())return pop("Client name required","err");setStep(2);}} style={{width:"100%",justifyContent:"center"}}>
               Continue → Choose Services
             </Btn>
           </div>
@@ -1279,7 +1253,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
         {step===2&&(
           <div>
             <div style={{fontSize:13,color:G6,marginBottom:12}}>
-              <strong>{form.name}</strong> · {therapists.find(t=>t.id===form.therapistId)?.name||"Any therapist"} · {rooms.find(r=>r.id===form.roomId)?.name||"No room"} · {form.serviceType==="inhouse"?"In-House":"Outcall"}
+              <strong>{clientName}</strong> · {therapists.find(t=>t.id===form.therapistId)?.name||"Any therapist"} · {rooms.find(r=>r.id===form.roomId)?.name||"No room"} · {form.serviceType==="inhouse"?"In-House":"Outcall"}
             </div>
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Select Services *</label>
@@ -1330,7 +1304,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
         {step===3&&(
           <div>
             <div style={{fontSize:13,color:G6,marginBottom:14}}>
-              <strong>{form.name}</strong> · {form.selServices.map(s=>s.name).join(", ")}
+              <strong>{clientName}</strong> · {form.selServices.map(s=>s.name).join(", ")}
             </div>
             {/* Discount */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
@@ -2627,6 +2601,7 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 // ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
 function TherapistGrid({therapists,onBook}){
   const [filter,setFilter]=useState("all");
+  const [selTh,setSelTh]=useState(null);
   const shown = filter==="incall"
     ? therapists.filter(t=>!t.outcall||t.active) // all incall-capable (those at the studio)
     : filter==="outcall"
@@ -2647,7 +2622,7 @@ function TherapistGrid({therapists,onBook}){
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:16}}>
         {shown.map(th=>(
           <div key={th.id} style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden",transition:"box-shadow .2s",cursor:"pointer"}}
-            onClick={onBook}
+            onClick={()=>setSelTh(th)}
             onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px rgba(123,63,110,.18)"}
             onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
             {th.photo?(
@@ -2684,6 +2659,76 @@ function TherapistGrid({therapists,onBook}){
       <div style={{textAlign:"center",marginTop:32}}>
         <button onClick={onBook} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book a Session →</button>
       </div>
+
+      {/* Therapist detail modal */}
+      {selTh&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 12px",overflowY:"auto"}}
+          onClick={e=>e.target===e.currentTarget&&setSelTh(null)}>
+          <div style={{background:WH,borderRadius:16,width:"100%",maxWidth:560,boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+            {/* Photos gallery */}
+            {(selTh.photos?.length>0||selTh.photo)?
+              <TherapistGallery photos={[...(selTh.photos||[]),selTh.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i)}/>
+              :<div style={{paddingTop:"60%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`,borderRadius:"16px 16px 0 0"}}>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:60,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{selTh.name[0]}</div>
+              </div>
+            }
+            <div style={{padding:"20px 22px 24px"}}>
+              {/* Close */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                <div>
+                  <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BK,margin:"0 0 4px"}}>{selTh.name}</h2>
+                  {selTh.specialties?.length>0&&<div style={{fontSize:13,color:G6}}>{selTh.specialties.join(" · ")}</div>}
+                </div>
+                <button onClick={()=>setSelTh(null)} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:G4,lineHeight:1}}>×</button>
+              </div>
+              {/* Availability badges */}
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                <span style={{background:OKB,color:OK,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
+                {selTh.outcall&&<span style={{background:PLF,color:PL,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏠 Outcall</span>}
+                {selTh.availability&&<span style={{background:{available:OKB,outcall_only:WAB,unavailable:ERB}[selTh.availability]||G1,color:{available:OK,outcall_only:WA,unavailable:ER}[selTh.availability]||G6,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{{available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"}[selTh.availability]||selTh.availability}</span>}
+              </div>
+              {/* Bio */}
+              {selTh.bio&&<p style={{fontSize:14,color:G6,lineHeight:1.7,marginBottom:16}}>{selTh.bio}</p>}
+              {/* Contact */}
+              {selTh.phone&&<div style={{fontSize:13,color:G6,marginBottom:4}}>📞 {selTh.phone}</div>}
+              {/* Book button */}
+              <button onClick={()=>{setSelTh(null);onBook(selTh.id);}}
+                style={{width:"100%",marginTop:16,padding:"13px",border:"none",borderRadius:10,background:PL,color:WH,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"'Playfair Display',serif"}}>
+                Book with {selTh.name.split(" ")[0]} →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TherapistGallery({photos}) {
+  const [idx,setIdx]=useState(0);
+  return(
+    <div style={{borderRadius:"16px 16px 0 0",overflow:"hidden"}}>
+      <div style={{paddingTop:"65%",position:"relative",background:G2}}>
+        <img src={photos[idx]} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+        {photos.length>1&&(
+          <>
+            <button onClick={()=>setIdx(i=>(i-1+photos.length)%photos.length)}
+              style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+            <button onClick={()=>setIdx(i=>(i+1)%photos.length)}
+              style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+            <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+              {photos.map((_,i)=><div key={i} onClick={()=>setIdx(i)} style={{width:6,height:6,borderRadius:"50%",background:i===idx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",cursor:"pointer"}}/>)}
+            </div>
+          </>
+        )}
+      </div>
+      {photos.length>1&&(
+        <div style={{display:"flex",gap:6,padding:"8px 8px 0",overflowX:"auto",background:G1}}>
+          {photos.map((src,i)=>(
+            <img key={i} src={src} onClick={()=>setIdx(i)} alt="" style={{width:56,height:44,objectFit:"cover",borderRadius:6,cursor:"pointer",flexShrink:0,border:`2px solid ${i===idx?PL:"transparent"}`}}/>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
