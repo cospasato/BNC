@@ -280,8 +280,11 @@ export default function App(){
   const bDisc = bD.discT==="pct"?Math.round(bBase*bD.disc/100):Number(bD.disc);
   const bTotal= Math.max(0,bBase-bDisc);
 
+  const [bookingLoading, setBookingLoading] = useState(false);
+
   const confirmBooking = async()=>{
     if(!customer){ setPendingBook(true); setCustModal("login"); return; }
+    setBookingLoading(true);
     try{
       const created = await api.createAppt({
         customer_id: customer.id, customer_name: bD.name||customer.name,
@@ -294,8 +297,34 @@ export default function App(){
         payment_method: bD.method||"Cash", notes: bD.notes, status:"pending"
       });
       setAppts(p=>[...p,created]);
+
+      // If PesaPal selected, redirect to payment
+      if(bD.method==="PesaPal") {
+        try{
+          const payRes = await fetch("/api/pesapal?action=create",{
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({
+              appointment_id: created.id,
+              amount:         bTotal,
+              customer_name:  bD.name||customer.name,
+              customer_email: bD.email||customer.email||"",
+              customer_phone: bD.phone||customer.phone||"",
+              description:    bD.services.map(s=>s.name).join(", ")||"Massage TZ Booking",
+            })
+          });
+          const payData = await payRes.json();
+          if(payData.redirect_url){
+            window.location.href = payData.redirect_url;
+            return;
+          } else {
+            pop("Payment gateway error: "+(payData.error||"Could not connect"),"err");
+          }
+        }catch(pe){ pop("Could not connect to payment gateway","err"); }
+      }
+
       goStep(6);
     }catch(e){ pop(e.message||"Booking failed","err"); }
+    setBookingLoading(false);
   };
 
   // ── PRICING HELPER: get price for selected booking ──
@@ -659,9 +688,41 @@ export default function App(){
                   </div>
                 </div>
               </Card>
-              {/* Auth gate */}
-              {!customer?(
-                <Card style={{borderColor:PL,borderWidth:2}}>
+              {/* Payment method selection */}
+              {customer&&(
+                <Card>
+                  <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:14}}>💳 How would you like to pay?</div>
+
+                  {/* PesaPal online */}
+                  <div onClick={()=>setBD(d=>({...d,method:"PesaPal"}))}
+                    style={{border:`2px solid ${bD.method==="PesaPal"?PL:G2}`,background:bD.method==="PesaPal"?PLF:WH,borderRadius:12,padding:"14px 16px",cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",gap:14,transition:"all .15s"}}>
+                    <span style={{fontSize:28}}>💳</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14,color:bD.method==="PesaPal"?PL:BK}}>Pay Online Now</div>
+                      <div style={{fontSize:12,color:G6,marginTop:2}}>M-Pesa · Tigo Pesa · Airtel Money · Card — secure & instant</div>
+                    </div>
+                    <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${bD.method==="PesaPal"?PL:G2}`,background:bD.method==="PesaPal"?PL:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {bD.method==="PesaPal"&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
+                    </div>
+                  </div>
+
+                  {/* Pay on arrival */}
+                  <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Or pay on arrival</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                    {(payMethods.length?payMethods:["Cash"]).map(pm=>(
+                      <button key={pm} onClick={()=>setBD(d=>({...d,method:pm}))}
+                        style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                          border:`2px solid ${bD.method===pm?PL:G2}`,background:bD.method===pm?PLF:WH,color:bD.method===pm?PL:G6}}>
+                        {pm}
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Auth gate — not logged in */}
+              {!customer&&(
+                <Card style={{border:`2px solid ${PL}`}}>
                   <div style={{fontWeight:700,color:PL,fontSize:14,marginBottom:6}}>💆 Sign in to confirm your booking</div>
                   <div style={{fontSize:13,color:G6,marginBottom:14}}>Create a free account or sign in to confirm and track your appointment.</div>
                   <div style={{display:"flex",gap:10}}>
@@ -669,13 +730,24 @@ export default function App(){
                     <Btn v="out" onClick={()=>{setPendingBook(true);setCustModal("register");}} style={{flex:1,justifyContent:"center"}}>Create Account</Btn>
                   </div>
                 </Card>
-              ):(
-                <div style={{display:"flex",gap:10}}>
-                  <Btn v="ghost" onClick={()=>goStep(4)}>← Back</Btn>
-                  <Btn onClick={confirmBooking} disabled={!bD.name&&!customer} style={{flex:1,justifyContent:"center",background:PL}}>Confirm Booking →</Btn>
-                </div>
               )}
-              {customer&&<div style={{display:"flex",gap:10,marginTop:10}}><Btn v="ghost" onClick={()=>goStep(4)} style={{flex:1,justifyContent:"center"}}>← Back</Btn></div>}
+
+              {/* Action buttons */}
+              <div style={{display:"flex",gap:10,marginTop:6}}>
+                <Btn v="ghost" onClick={()=>goStep(4)} style={{flex:"0 0 auto"}}>← Back</Btn>
+                {customer&&(
+                  <button onClick={confirmBooking} disabled={bookingLoading}
+                    style={{flex:1,padding:"13px",border:"none",borderRadius:10,cursor:bookingLoading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,
+                      background:bD.method==="PesaPal"?`linear-gradient(135deg,#1565C0,#1976D2)`:`linear-gradient(135deg,${PLD},${PL})`,
+                      color:WH,opacity:bookingLoading?.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                    {bookingLoading
+                      ? "Processing…"
+                      : bD.method==="PesaPal"
+                      ? "💳 Pay & Confirm"
+                      : "✓ Confirm Booking"}
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
