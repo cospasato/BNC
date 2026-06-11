@@ -681,32 +681,13 @@ export default function App(){
               <p style={{color:G6,fontSize:14,marginBottom:20}}>Check details before confirming</p>
               <Card>
                 <ST c="Your Details"/>
-                <div style={{marginBottom:14}}>
-                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Full Name</label>
-                  <input value={bdName} onChange={e=>setBdName(e.target.value)}
-                    placeholder={customer?.name||"Your name"}
-                    style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-                  <div>
-                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Phone</label>
-                    <input value={bdPhone} onChange={e=>setBdPhone(e.target.value)}
-                      placeholder={customer?.phone||"+255 7XX…"}
-                      style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-                  </div>
-                  <div>
-                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Email (optional)</label>
-                    <input value={bdEmail} onChange={e=>setBdEmail(e.target.value)}
-                      placeholder={customer?.email||""}
-                      style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-                  </div>
-                </div>
-                <div style={{marginBottom:14}}>
-                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Notes (optional)</label>
-                  <textarea value={bdNotes} onChange={e=>setBdNotes(e.target.value)}
-                    placeholder="Any preferences or health notes…" rows={2}
-                    style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-                </div>
+                <BookingDetailsForm
+                  bdName={bdName}   setBdName={setBdName}
+                  bdPhone={bdPhone} setBdPhone={setBdPhone}
+                  bdEmail={bdEmail} setBdEmail={setBdEmail}
+                  bdNotes={bdNotes} setBdNotes={setBdNotes}
+                  customer={customer}
+                />
               </Card>
               {/* Summary */}
               <Card>
@@ -2788,6 +2769,40 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 
 
 // ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
+// ── Stable booking details form — defined outside App() to prevent remounting ──
+function BookingDetailsForm({ bdName, setBdName, bdPhone, setBdPhone, bdEmail, setBdEmail, bdNotes, setBdNotes, customer }) {
+  const L = { display:"block", fontSize:11, fontWeight:700, color:G8, marginBottom:5, textTransform:"uppercase", letterSpacing:".05em" };
+  const I = { width:"100%", padding:"9px 11px", border:`1px solid ${G2}`, borderRadius:8, fontSize:14, outline:"none", fontFamily:"inherit", boxSizing:"border-box" };
+  return (
+    <div>
+      <div style={{marginBottom:14}}>
+        <label style={L}>Full Name</label>
+        <input value={bdName} onChange={e=>setBdName(e.target.value)}
+          placeholder={customer?.name||"Your name"} style={I}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+        <div>
+          <label style={L}>Phone</label>
+          <input value={bdPhone} onChange={e=>setBdPhone(e.target.value)}
+            placeholder={customer?.phone||"+255 7XX…"} style={I}/>
+        </div>
+        <div>
+          <label style={L}>Email (optional)</label>
+          <input value={bdEmail} onChange={e=>setBdEmail(e.target.value)}
+            placeholder={customer?.email||""} style={I}/>
+        </div>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={L}>Notes (optional)</label>
+        <textarea value={bdNotes} onChange={e=>setBdNotes(e.target.value)}
+          placeholder="Any preferences, allergies or health notes…" rows={2}
+          style={{...I, resize:"vertical"}}/>
+      </div>
+    </div>
+  );
+}
+
+
 function TherapistGrid({therapists,onBook}){
   const [filter,setFilter] = useState("all");
   const [selTh,  setSelTh] = useState(null);
