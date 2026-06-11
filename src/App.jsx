@@ -1461,39 +1461,57 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
 }
 
 function TherapistsTab({therapists,setTherapists,pop}){
-  const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",phone:"",email:"",bio:"",photo:"",photos:[],specialties:"",outcall:true,active:true,pin:"",availability:"available"});
+  const [modal,setModal]   = useState(false);
+  const [uploading,setUploading] = useState(false);
+  const [form,setForm]     = useState({
+    id:null,name:"",phone:"",email:"",bio:"",
+    photo:"",photos:[],specialties:"",
+    outcall:true,active:true,pin:"",availability:"available"
+  });
 
-  const open=(t)=>{if(t) setForm({...t,specialties:(t.specialties||[]).join(", "),pin:"",photos:t.photos||[]});else setForm({id:null,name:"",phone:"",email:"",bio:"",photo:"",photos:[],specialties:"",outcall:true,active:true,pin:"",availability:"available"}); setModal(true);};
+  const open = (t) => {
+    if(t) setForm({...t, specialties:(t.specialties||[]).join(", "), pin:"", photos:t.photos||[], photo:t.photo||""});
+    else  setForm({id:null,name:"",phone:"",email:"",bio:"",photo:"",photos:[],specialties:"",outcall:true,active:true,pin:"",availability:"available"});
+    setModal(true);
+  };
 
-  const save=async()=>{
+  const save = async() => {
     if(!form.name) return;
     const specs = typeof form.specialties==="string"
       ? form.specialties.split(",").map(s=>s.trim()).filter(Boolean)
       : (form.specialties||[]);
-    const payload={
+    const payload = {
       name:form.name, phone:form.phone||"", email:form.email||"",
-      bio:form.bio||"", photo:form.photo||null, photos:form.photos||[],
-      specialties:specs, outcall:!!form.outcall, active:form.active!==false,
+      bio:form.bio||"", photo:form.photos[0]||form.photo||null,
+      photos:form.photos||[], specialties:specs,
+      outcall:!!form.outcall, active:form.active!==false,
       availability:form.availability||"available"
     };
-    if(form.pin) payload.pin=form.pin;
+    if(form.pin) payload.pin = form.pin;
     try{
       if(form.id){ const u=await api.updateTherapist(form.id,payload); setTherapists(p=>p.map(t=>t.id===form.id?u:t)); pop("Therapist updated"); }
-      else{ const u=await api.createTherapist(payload); setTherapists(p=>[...p,u]); pop("Therapist added"); }
+      else        { const u=await api.createTherapist(payload);         setTherapists(p=>[...p,u]);                    pop("Therapist added"); }
       setModal(false);
-    }catch(e){pop(e.message,"err");}
+    }catch(e){ pop(e.message,"err"); }
   };
 
-  const uploadPhoto=async(e)=>{
-    const f=e.target.files?.[0]; if(!f) return;
-    const b64=await compressPhoto(f); setForm(f=>({...f,photo:b64}));
+  const addPhotos = async(e) => {
+    const files = Array.from(e.target.files||[]);
+    if(!files.length) return;
+    setUploading(true);
+    const compressed = await Promise.all(files.map(f=>compressPhoto(f)));
+    setForm(f=>({ ...f, photos:[...f.photos,...compressed].slice(0,8) }));
+    setUploading(false);
+    e.target.value="";
   };
 
-  const deactivate=async(t)=>{
+  const removePhoto = (i) => setForm(f=>({ ...f, photos:f.photos.filter((_,idx)=>idx!==i) }));
+  const moveFirst   = (i) => setForm(f=>{ const p=[...f.photos]; const [img]=p.splice(i,1); p.unshift(img); return {...f,photos:p}; });
+
+  const deactivate = async(t) => {
     try{ const u=await api.updateTherapist(t.id,{active:!t.active}); setTherapists(p=>p.map(x=>x.id===t.id?{...x,...u}:x)); pop(u.active?"Activated":"Deactivated"); }catch(e){pop(e.message,"err");}
   };
-  const del=async(t)=>{
+  const del = async(t) => {
     if(!window.confirm(`Delete ${t.name}?`)) return;
     try{ await api.deleteTherapist(t.id); setTherapists(p=>p.filter(x=>x.id!==t.id)); pop("Deleted"); }catch(e){pop(e.message,"err");}
   };
@@ -1505,33 +1523,36 @@ function TherapistsTab({therapists,setTherapists,pop}){
         <Btn onClick={()=>open(null)}>+ Add Therapist</Btn>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14}}>
-        {therapists.map(t=>(
-          <Card key={t.id} style={{padding:0,overflow:"hidden",opacity:t.active?1:.65}}>
-            {t.photo?(
-              <div style={{paddingTop:"75%",position:"relative",background:G1}}>
-                <img src={t.photo} alt={t.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+        {therapists.map(t=>{
+          const mainPhoto = (t.photos||[])[0] || t.photo;
+          const photoCount = (t.photos||[]).length || (t.photo?1:0);
+          return(
+            <Card key={t.id} style={{padding:0,overflow:"hidden",opacity:t.active?1:.65}}>
+              <div style={{paddingTop:"75%",position:"relative",background:mainPhoto?G1:`linear-gradient(135deg,${PLD},${PL})`}}>
+                {mainPhoto
+                  ? <img src={mainPhoto} alt={t.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                  : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,color:WH,fontFamily:"'Playfair Display',serif"}}>{t.name?.[0]}</div>
+                }
+                {photoCount>1&&<div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.6)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>📷 {photoCount}</div>}
               </div>
-            ):(
-              <div style={{paddingTop:"75%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,color:WH,fontFamily:"'Playfair Display',serif"}}>{t.name?.[0]}</div>
+              <div style={{padding:"12px 14px 14px"}}>
+                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{t.name}</div>
+                {(t.specialties||[]).length>0&&<div style={{fontSize:12,color:G6,marginBottom:6}}>{(t.specialties||[]).join(" · ")}</div>}
+                <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+                  {t.outcall&&<span style={{background:PLF,color:PL,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>Outcall ✓</span>}
+                  <span style={{background:t.active?OKB:G1,color:t.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{t.active?"Active":"Inactive"}</span>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>open(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
+                  <button onClick={()=>deactivate(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${t.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:t.active?WA:OK,fontWeight:700}}>{t.active?"Deactivate":"Activate"}</button>
+                  <button onClick={()=>del(t)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
+                </div>
               </div>
-            )}
-            <div style={{padding:"12px 14px 14px"}}>
-              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{t.name}</div>
-              {(t.specialties||[]).length>0&&<div style={{fontSize:12,color:G6,marginBottom:6}}>{(t.specialties||[]).join(" · ")}</div>}
-              <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
-                {t.outcall&&<span style={{background:PLF,color:PL,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>Outcall ✓</span>}
-                <span style={{background:t.active?OKB:G1,color:t.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{t.active?"Active":"Inactive"}</span>
-              </div>
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>open(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
-                <button onClick={()=>deactivate(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${t.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:t.active?WA:OK,fontWeight:700}}>{t.active?"Deactivate":"Activate"}</button>
-                <button onClick={()=>del(t)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
-              </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
+
       {modal&&(
         <Modal title={form.id?"Edit Therapist":"Add Therapist"} onClose={()=>setModal(false)} wide>
           <Inp label="Full Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Aisha Mwangi"/>
@@ -1544,15 +1565,10 @@ function TherapistsTab({therapists,setTherapists,pop}){
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
             <Inp label={form.id?"New Login PIN (blank = keep)":"Login PIN (4–6 digits)"} type="password" value={form.pin||""} onChange={e=>setForm(f=>({...f,pin:e.target.value}))} placeholder={form.id?"Leave blank to keep…":"Set a PIN"} maxLength={6}/>
             <Sel label="Availability" value={form.availability||"available"} onChange={e=>setForm(f=>({...f,availability:e.target.value}))}>
-              <option value="available">🟢 Available (Incall + Outcall)</option>
+              <option value="available">🟢 Available</option>
               <option value="outcall_only">🟡 Outcall Only</option>
               <option value="unavailable">🔴 Unavailable</option>
             </Sel>
-          </div>
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Profile Photo (main)</label>
-            {form.photo&&<img src={form.photo} alt="" style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:8,display:"block"}}/>}
-            <input type="file" accept="image/*" onChange={uploadPhoto} style={{fontSize:13}}/>
           </div>
           <div style={{display:"flex",gap:12,marginBottom:14}}>
             <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
@@ -1560,9 +1576,43 @@ function TherapistsTab({therapists,setTherapists,pop}){
               Accepts Outcall Requests
             </label>
           </div>
-          {form.email&&<div style={{background:PLF,border:`1px solid ${PL}20`,borderRadius:8,padding:"8px 12px",fontSize:12,color:PL,marginBottom:14}}>
-            💡 Therapist logs in with email <strong>{form.email}</strong> and the PIN you set above.
-          </div>}
+
+          {/* ── MULTI-PHOTO UPLOAD ── */}
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>
+              Photos ({form.photos.length}/8) — First photo is the profile picture
+            </label>
+            {/* Photo grid */}
+            {form.photos.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:10}}>
+                {form.photos.map((src,i)=>(
+                  <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",border:`2px solid ${i===0?PL:G2}`}}>
+                    <div style={{paddingTop:"100%",position:"relative"}}>
+                      <img src={src} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                    </div>
+                    {i===0&&<div style={{position:"absolute",top:3,left:3,background:PL,color:WH,fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99}}>MAIN</div>}
+                    <div style={{position:"absolute",top:3,right:3,display:"flex",gap:3}}>
+                      {i>0&&(
+                        <button onClick={()=>moveFirst(i)} title="Set as main"
+                          style={{width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.6)",color:WH,border:"none",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>★</button>
+                      )}
+                      <button onClick={()=>removePhoto(i)}
+                        style={{width:20,height:20,borderRadius:"50%",background:"rgba(200,0,0,.8)",color:WH,border:"none",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Upload button */}
+            {form.photos.length<8&&(
+              <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",border:`2px dashed ${G2}`,borderRadius:8,cursor:"pointer",fontSize:13,color:G6,background:WH}}>
+                📷 {uploading?"Uploading…":"Add Photos (select multiple)"}
+                <input type="file" accept="image/*" multiple onChange={addPhotos} style={{display:"none"}} disabled={uploading}/>
+              </label>
+            )}
+            <div style={{fontSize:11,color:G4,marginTop:5}}>Click ★ to set any photo as the main profile picture. Up to 8 photos.</div>
+          </div>
+
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
             <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save Changes":"Add Therapist"}</Btn>
@@ -2623,19 +2673,24 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 
 // ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
 function TherapistGrid({therapists,onBook}){
-  const [filter,setFilter]=useState("all");
-  const [selTh,setSelTh]=useState(null);
+  const [filter,setFilter] = useState("all");
+  const [selTh,  setSelTh] = useState(null);
+
   const shown = filter==="incall"
-    ? therapists.filter(t=>!t.outcall||t.active) // all incall-capable (those at the studio)
+    ? therapists.filter(t=>t.active)
     : filter==="outcall"
-    ? therapists.filter(t=>t.outcall)
-    : therapists;
+    ? therapists.filter(t=>t.outcall&&t.active)
+    : therapists.filter(t=>t.active);
+
+  if(selTh) return (
+    <TherapistPage th={selTh} onBack={()=>setSelTh(null)} onBook={(id)=>{setSelTh(null);onBook(id);}}/>
+  );
 
   return(
     <div>
       {/* Filter chips */}
       <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:28,flexWrap:"wrap"}}>
-        {[["all","All"],["incall","In-House (Incall)"],["outcall","Outcall"]].map(([f,l])=>(
+        {[["all","All Therapists"],["incall","In-House"],["outcall","Outcall Available"]].map(([f,l])=>(
           <button key={f} onClick={()=>setFilter(f)}
             style={{padding:"7px 16px",borderRadius:99,fontSize:13,fontWeight:700,border:`2px solid ${filter===f?PL:G2}`,background:filter===f?PL:WH,color:filter===f?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
             {l}
@@ -2643,86 +2698,149 @@ function TherapistGrid({therapists,onBook}){
         ))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:16}}>
-        {shown.map(th=>(
-          <div key={th.id} style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden",transition:"box-shadow .2s",cursor:"pointer"}}
-            onClick={()=>setSelTh(th)}
-            onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px rgba(123,63,110,.18)"}
-            onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-            {th.photo?(
-              <div style={{paddingTop:"90%",position:"relative",background:G1}}>
-                <img src={th.photo} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-              </div>
-            ):(
-              <div style={{paddingTop:"90%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
-              </div>
-            )}
-            <div style={{padding:"12px 14px 14px"}}>
-              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:5}}>{th.name}</div>
-              {th.specialties?.length>0&&(
-                <div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{th.specialties.slice(0,3).join(" · ")}</div>
-              )}
-              {/* Availability badges */}
-              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                <span style={{background:OKB,color:OK,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3}}>
-                  🏢 Incall
-                </span>
-                {th.outcall&&(
-                  <span style={{background:PLF,color:PL,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3}}>
-                    🏠 Outcall
-                  </span>
+        {shown.map(th=>{
+          const mainPhoto = (th.photos||[])[0]||th.photo;
+          return(
+            <div key={th.id}
+              onClick={()=>setSelTh(th)}
+              style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden",cursor:"pointer",transition:"all .2s"}}
+              onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px rgba(123,63,110,.18)"}
+              onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+              <div style={{paddingTop:"90%",position:"relative",background:mainPhoto?G1:`linear-gradient(135deg,${PLD},${PL})`}}>
+                {mainPhoto
+                  ? <img src={mainPhoto} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                  : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
+                }
+                {(th.photos||[]).length>1&&(
+                  <div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.55)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>
+                    📷 {th.photos.length}
+                  </div>
                 )}
               </div>
-              {th.bio&&<div style={{fontSize:11,color:G4,marginTop:7,lineHeight:1.5}}>{th.bio.slice(0,70)}{th.bio.length>70?"…":""}</div>}
+              <div style={{padding:"12px 14px 14px"}}>
+                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:5}}>{th.name}</div>
+                {th.specialties?.length>0&&<div style={{fontSize:12,color:G6,marginBottom:8}}>{th.specialties.slice(0,2).join(" · ")}</div>}
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  <span style={{background:OKB,color:OK,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700}}>🏢 Incall</span>
+                  {th.outcall&&<span style={{background:PLF,color:PL,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700}}>🏠 Outcall</span>}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-        {shown.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1",textAlign:"center"}}>No therapists in this category</div>}
+          );
+        })}
+        {shown.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1",textAlign:"center"}}>No therapists found</div>}
       </div>
       <div style={{textAlign:"center",marginTop:32}}>
-        <button onClick={onBook} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book a Session →</button>
+        <button onClick={()=>onBook(null)}
+          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
+          Book a Session →
+        </button>
       </div>
+    </div>
+  );
+}
 
-      {/* Therapist detail modal */}
-      {selTh&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 12px",overflowY:"auto"}}
-          onClick={e=>e.target===e.currentTarget&&setSelTh(null)}>
-          <div style={{background:WH,borderRadius:16,width:"100%",maxWidth:560,boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
-            {/* Photos gallery */}
-            {(selTh.photos?.length>0||selTh.photo)?
-              <TherapistGallery photos={[...(selTh.photos||[]),selTh.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i)}/>
-              :<div style={{paddingTop:"60%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`,borderRadius:"16px 16px 0 0"}}>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:60,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{selTh.name[0]}</div>
-              </div>
-            }
-            <div style={{padding:"20px 22px 24px"}}>
-              {/* Close */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                <div>
-                  <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BK,margin:"0 0 4px"}}>{selTh.name}</h2>
-                  {selTh.specialties?.length>0&&<div style={{fontSize:13,color:G6}}>{selTh.specialties.join(" · ")}</div>}
-                </div>
-                <button onClick={()=>setSelTh(null)} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:G4,lineHeight:1}}>×</button>
-              </div>
-              {/* Availability badges */}
-              <div style={{display:"flex",gap:8,marginBottom:14}}>
-                <span style={{background:OKB,color:OK,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
-                {selTh.outcall&&<span style={{background:PLF,color:PL,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏠 Outcall</span>}
-                {selTh.availability&&<span style={{background:{available:OKB,outcall_only:WAB,unavailable:ERB}[selTh.availability]||G1,color:{available:OK,outcall_only:WA,unavailable:ER}[selTh.availability]||G6,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{{available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"}[selTh.availability]||selTh.availability}</span>}
-              </div>
-              {/* Bio */}
-              {selTh.bio&&<p style={{fontSize:14,color:G6,lineHeight:1.7,marginBottom:16}}>{selTh.bio}</p>}
-              {/* Contact */}
-              {selTh.phone&&<div style={{fontSize:13,color:G6,marginBottom:4}}>📞 {selTh.phone}</div>}
-              {/* Book button */}
-              <button onClick={()=>{setSelTh(null);onBook(selTh.id);}}
-                style={{width:"100%",marginTop:16,padding:"13px",border:"none",borderRadius:10,background:PL,color:WH,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"'Playfair Display',serif"}}>
-                Book with {selTh.name.split(" ")[0]} →
-              </button>
+function TherapistPage({th, onBack, onBook}) {
+  const [photoIdx, setPhotoIdx] = useState(0);
+  const photos = [...new Set([...(th.photos||[]), th.photo].filter(Boolean))];
+  const avColor = {available:OK, outcall_only:WA, unavailable:ER};
+  const avLabel = {available:"🟢 Available", outcall_only:"🟡 Outcall Only", unavailable:"🔴 Unavailable"};
+
+  return(
+    <div style={{maxWidth:720,margin:"0 auto"}}>
+      {/* Back */}
+      <button onClick={onBack}
+        style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:G6,cursor:"pointer",fontSize:14,fontFamily:"inherit",marginBottom:16,fontWeight:600}}>
+        ← Back to Therapists
+      </button>
+
+      <div style={{background:WH,borderRadius:16,overflow:"hidden",border:`1px solid ${G2}`,boxShadow:"0 4px 24px rgba(0,0,0,.08)"}}>
+
+        {/* Photo gallery */}
+        {photos.length>0?(
+          <div>
+            <div style={{paddingTop:"55%",position:"relative",background:BK}}>
+              <img src={photos[photoIdx]} alt={th.name}
+                style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+              {photos.length>1&&(
+                <>
+                  <button onClick={()=>setPhotoIdx(i=>(i-1+photos.length)%photos.length)}
+                    style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",width:38,height:38,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                  <button onClick={()=>setPhotoIdx(i=>(i+1)%photos.length)}
+                    style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",width:38,height:38,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                  <div style={{position:"absolute",bottom:10,left:"50%",transform:"translateX(-50%)",display:"flex",gap:5}}>
+                    {photos.map((_,i)=>(
+                      <div key={i} onClick={()=>setPhotoIdx(i)}
+                        style={{width:8,height:8,borderRadius:"50%",background:i===photoIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",cursor:"pointer"}}/>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
+            {/* Thumbnail strip */}
+            {photos.length>1&&(
+              <div style={{display:"flex",gap:6,padding:"8px 12px",background:G1,overflowX:"auto"}}>
+                {photos.map((src,i)=>(
+                  <img key={i} src={src} onClick={()=>setPhotoIdx(i)} alt=""
+                    style={{width:60,height:48,objectFit:"cover",borderRadius:6,cursor:"pointer",flexShrink:0,
+                      border:`2px solid ${i===photoIdx?PL:"transparent"}`,transition:"border-color .15s"}}/>
+                ))}
+              </div>
+            )}
           </div>
+        ):(
+          <div style={{paddingTop:"45%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:72,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name[0]}</div>
+          </div>
+        )}
+
+        <div style={{padding:"24px 28px 32px"}}>
+          {/* Name + availability */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
+            <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:BK,margin:0}}>{th.name}</h1>
+            {th.availability&&(
+              <span style={{background:`${avColor[th.availability]||G4}18`,color:avColor[th.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,flexShrink:0}}>
+                {avLabel[th.availability]||th.availability}
+              </span>
+            )}
+          </div>
+
+          {/* Specialties */}
+          {th.specialties?.length>0&&(
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
+              {th.specialties.map((s,i)=>(
+                <span key={i} style={{background:PLF,color:PL,padding:"5px 13px",borderRadius:99,fontSize:13,fontWeight:600}}>{s}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Service badges */}
+          <div style={{display:"flex",gap:8,marginBottom:20}}>
+            <span style={{background:OKB,color:OK,padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>🏢 In-House</span>
+            {th.outcall&&<span style={{background:PLF,color:PL,padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>🏠 Outcall</span>}
+          </div>
+
+          {/* Bio */}
+          {th.bio&&(
+            <p style={{fontSize:15,color:G6,lineHeight:1.8,marginBottom:24,borderLeft:`3px solid ${PL}`,paddingLeft:14}}>
+              {th.bio}
+            </p>
+          )}
+
+          {/* Contact */}
+          {th.phone&&(
+            <div style={{fontSize:14,color:G6,marginBottom:20,display:"flex",alignItems:"center",gap:8}}>
+              <span>📞</span><span>{th.phone}</span>
+            </div>
+          )}
+
+          {/* Book button */}
+          <button onClick={()=>onBook(th.id)}
+            style={{width:"100%",padding:"15px",border:"none",borderRadius:12,background:PL,color:WH,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"'Playfair Display',serif",letterSpacing:".02em"}}>
+            Book with {th.name.split(" ")[0]} →
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
