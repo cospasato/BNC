@@ -424,7 +424,7 @@ export default function App(){
       setBD(d=>{
         const exists=d.services.find(s=>s.id===sv.id);
         if(exists) return {...d,services:d.services.filter(s=>s.id!==sv.id)};
-        return {...d,services:[...d.services,{id:sv.id,name:sv.name,price:getPrice(sv.id,bRoomType,d.serviceType)}]};
+        return {...d,services:[...d.services,{id:sv.id,name:sv.name,price:getPrice(sv.id,bRoomId,d.serviceType)}]};
       });
     };
 
