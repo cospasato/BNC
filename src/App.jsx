@@ -2697,33 +2697,43 @@ function TherapistGrid({therapists,onBook}){
           </button>
         ))}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:20}}>
         {shown.map(th=>{
-          const mainPhoto = (th.photos||[])[0]||th.photo;
+          const photos = [...new Set([...(th.photos||[]),th.photo].filter(Boolean))];
+          const mainPhoto = photos[0];
           return(
             <div key={th.id}
               onClick={()=>setSelTh(th)}
-              style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden",cursor:"pointer",transition:"all .2s"}}
-              onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px rgba(123,63,110,.18)"}
-              onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-              <div style={{paddingTop:"90%",position:"relative",background:mainPhoto?G1:`linear-gradient(135deg,${PLD},${PL})`}}>
+              style={{background:WH,borderRadius:16,overflow:"hidden",cursor:"pointer",transition:"all .2s",boxShadow:"0 2px 12px rgba(0,0,0,.08)"}}
+              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="0 12px 36px rgba(123,63,110,.22)";}}
+              onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.08)";}}>
+              {/* Photo — tall portrait ratio */}
+              <div style={{paddingTop:"120%",position:"relative",background:mainPhoto?G1:`linear-gradient(160deg,${PLD},${PL})`}}>
                 {mainPhoto
-                  ? <img src={mainPhoto} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-                  : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
+                  ? <img src={mainPhoto} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+                  : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:60,color:"rgba(255,255,255,.5)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
                 }
-                {(th.photos||[]).length>1&&(
-                  <div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.55)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>
-                    📷 {th.photos.length}
+                {/* Gradient overlay at bottom */}
+                <div style={{position:"absolute",bottom:0,left:0,right:0,height:"45%",background:"linear-gradient(to top,rgba(0,0,0,.7),transparent)",pointerEvents:"none"}}/>
+                {/* Name overlaid on photo */}
+                <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 16px"}}>
+                  <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:WH,marginBottom:3,textShadow:"0 1px 4px rgba(0,0,0,.4)"}}>{th.name}</div>
+                  {th.specialties?.length>0&&(
+                    <div style={{fontSize:12,color:"rgba(255,255,255,.8)"}}>{th.specialties.slice(0,2).join(" · ")}</div>
+                  )}
+                </div>
+                {/* Photo count badge */}
+                {photos.length>1&&(
+                  <div style={{position:"absolute",top:10,right:10,background:"rgba(0,0,0,.5)",color:WH,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:99,backdropFilter:"blur(4px)"}}>
+                    📷 {photos.length}
                   </div>
                 )}
               </div>
-              <div style={{padding:"12px 14px 14px"}}>
-                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:5}}>{th.name}</div>
-                {th.specialties?.length>0&&<div style={{fontSize:12,color:G6,marginBottom:8}}>{th.specialties.slice(0,2).join(" · ")}</div>}
-                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                  <span style={{background:OKB,color:OK,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700}}>🏢 Incall</span>
-                  {th.outcall&&<span style={{background:PLF,color:PL,padding:"3px 9px",borderRadius:99,fontSize:11,fontWeight:700}}>🏠 Outcall</span>}
-                </div>
+              {/* Badges */}
+              <div style={{padding:"10px 14px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{background:OKB,color:OK,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏢 Incall</span>
+                {th.outcall&&<span style={{background:PLF,color:PL,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏠 Outcall</span>}
+                <span style={{marginLeft:"auto",fontSize:11,color:G4,fontWeight:600}}>Tap for details →</span>
               </div>
             </div>
           );
