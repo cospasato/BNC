@@ -282,19 +282,19 @@ export default function App(){
 
   const [bookingLoading, setBookingLoading] = useState(false);
 
-  const confirmBooking = async()=>{
+  const confirmBooking = async(overrides={})=>{
     if(!customer){ setPendingBook(true); setCustModal("login"); return; }
     setBookingLoading(true);
     try{
       const created = await api.createAppt({
-        customer_id: customer.id, customer_name: bD.name||customer.name,
-        customer_phone: bD.phone||customer.phone, customer_email: bD.email||customer.email,
+        customer_id: customer.id, customer_name: overrides.name||bD.name||customer.name,
+        customer_phone: overrides.phone||bD.phone||customer.phone, customer_email: overrides.email||bD.email||customer.email||"",
         therapist_id: bD.therapistId||null, room_id: bD.roomId||null,
         service_type: bD.serviceType, outcall_address: bD.outcallAddr,
         appt_date: bD.date, appt_time: bD.time, duration_min: 60,
         services: bD.services, base_amount: bBase, discount: bD.disc,
         discount_type: bD.discT, total_amount: bTotal, paid_amount: 0,
-        payment_method: bD.method||"Cash", notes: bD.notes, status:"pending"
+        payment_method: bD.method||"Cash", notes: overrides.notes||bD.notes||"", status:"pending"
       });
       setAppts(p=>[...p,created]);
 
@@ -306,9 +306,9 @@ export default function App(){
             body: JSON.stringify({
               appointment_id: created.id,
               amount:         bTotal,
-              customer_name:  bD.name||customer.name,
-              customer_email: bD.email||customer.email||"",
-              customer_phone: bD.phone||customer.phone||"",
+              customer_name:  overrides.name||bD.name||customer.name,
+              customer_email: overrides.email||bD.email||customer.email||"",
+              customer_phone: overrides.phone||bD.phone||customer.phone||"",
               description:    bD.services.map(s=>s.name).join(", ")||"Massage TZ Booking",
             })
           });
@@ -448,6 +448,17 @@ export default function App(){
     const locTherapists = bD.serviceType==="outcall" ? therapists.filter(t=>t.outcall) : therapists;
     const selTh = therapists.find(t=>t.id===bD.therapistId);
     const selRm = rooms.find(r=>r.id===bD.roomId);
+
+    // Local state for text fields to prevent focus-loss on re-render
+    const [localName,  setLocalName]  = useState(bD.name  || customer?.name  || "");
+    const [localPhone, setLocalPhone] = useState(bD.phone || customer?.phone || "");
+    const [localEmail, setLocalEmail] = useState(bD.email || customer?.email || "");
+    const [localNotes, setLocalNotes] = useState(bD.notes || "");
+
+    // Sync to bD when step changes (not on every keystroke)
+    const syncDetails = () => {
+      setBD(d=>({...d, name:localName, phone:localPhone, email:localEmail, notes:localNotes}));
+    };
 
     const toggleService = (sv)=>{
       setBD(d=>{
@@ -657,12 +668,32 @@ export default function App(){
               <p style={{color:G6,fontSize:14,marginBottom:20}}>Check details before confirming</p>
               <Card>
                 <ST c="Your Details"/>
-                <Inp label="Full Name" value={bD.name} onChange={e=>setBD(d=>({...d,name:e.target.value}))} placeholder={customer?.name||"Your name"}/>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  <Inp label="Phone" value={bD.phone} onChange={e=>setBD(d=>({...d,phone:e.target.value}))} placeholder={customer?.phone||"+255 7XX…"}/>
-                  <Inp label="Email (optional)" value={bD.email} onChange={e=>setBD(d=>({...d,email:e.target.value}))} placeholder={customer?.email||""}/>
+                <div style={{marginBottom:14}}>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Full Name</label>
+                  <input value={localName} onChange={e=>setLocalName(e.target.value)}
+                    placeholder={customer?.name||"Your name"}
+                    style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
-                <Txa label="Notes (optional)" value={bD.notes} onChange={e=>setBD(d=>({...d,notes:e.target.value}))} placeholder="Any preferences or health notes…" rows={2}/>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                  <div>
+                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Phone</label>
+                    <input value={localPhone} onChange={e=>setLocalPhone(e.target.value)}
+                      placeholder={customer?.phone||"+255 7XX…"}
+                      style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Email (optional)</label>
+                    <input value={localEmail} onChange={e=>setLocalEmail(e.target.value)}
+                      placeholder={customer?.email||""}
+                      style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Notes (optional)</label>
+                  <textarea value={localNotes} onChange={e=>setLocalNotes(e.target.value)}
+                    placeholder="Any preferences or health notes…" rows={2}
+                    style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                </div>
               </Card>
               {/* Summary */}
               <Card>
@@ -736,7 +767,7 @@ export default function App(){
               <div style={{display:"flex",gap:10,marginTop:6}}>
                 <Btn v="ghost" onClick={()=>goStep(4)} style={{flex:"0 0 auto"}}>← Back</Btn>
                 {customer&&(
-                  <button onClick={confirmBooking} disabled={bookingLoading}
+                  <button onClick={()=>confirmBooking({name:localName,phone:localPhone,email:localEmail,notes:localNotes})} disabled={bookingLoading}
                     style={{flex:1,padding:"13px",border:"none",borderRadius:10,cursor:bookingLoading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,
                       background:bD.method==="PesaPal"?`linear-gradient(135deg,#1565C0,#1976D2)`:`linear-gradient(135deg,${PLD},${PL})`,
                       color:WH,opacity:bookingLoading?.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
