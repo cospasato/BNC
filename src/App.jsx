@@ -147,11 +147,11 @@ export default function App(){
   // Booking wizard
   const initBD = {date:td(),time:"10:00",serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:""};
   // Separate stable state for text inputs (prevents focus-loss on re-render)
-  const [bdName,  setBdName]  = useState("");
-  const [bdPhone, setBdPhone] = useState("");
-  const [bdEmail, setBdEmail] = useState("");
-  const [bdNotes, setBdNotes] = useState("");
-  const resetBdText = () => { setBdName(""); setBdPhone(""); setBdEmail(""); setBdNotes(""); };
+  const bdNameRef  = useRef("");
+  const bdPhoneRef = useRef("");
+  const bdEmailRef = useRef("");
+  const bdNotesRef = useRef("");
+  const resetBdText = () => { bdNameRef.current=""; bdPhoneRef.current=""; bdEmailRef.current=""; bdNotesRef.current=""; };
   const [bStep,setBStep]    = useState(1);
   const [bD,setBD]          = useState(initBD);
   const [pendingBook,setPendingBook] = useState(false); // auth gate at confirm
@@ -290,10 +290,10 @@ export default function App(){
 
   const confirmBooking = async()=>{
     if(!customer){ setPendingBook(true); setCustModal("login"); return; }
-    const cName  = bdName.trim()  || customer.name  || "";
-    const cPhone = bdPhone.trim() || customer.phone || "";
-    const cEmail = bdEmail.trim() || customer.email || "";
-    const cNotes = bdNotes.trim();
+    const cName  = (bdNameRef.current||"").trim()  || customer.name  || "";
+    const cPhone = (bdPhoneRef.current||"").trim() || customer.phone || "";
+    const cEmail = (bdEmailRef.current||"").trim() || customer.email || "";
+    const cNotes = (bdNotesRef.current||"").trim();
     if(!cName||!cPhone)  return pop("Please enter your name and phone number","err");
     if(!bD.date||!bD.time) return pop("Please select a date and time","err");
     setBookingLoading(true);
@@ -462,14 +462,14 @@ export default function App(){
     const selRm = rooms.find(r=>r.id===bD.roomId);
 
     // Use App-level stable state for text fields (prevents focus-loss on re-render)
-    // bdName, bdPhone, bdEmail, bdNotes and their setters come from App() closure
+    // bdNameRef, bdPhoneRef, bdEmailRef, bdNotesRef come from App() closure (useRef - no re-renders)
 
     // Pre-fill from customer when they log in or when reaching step 5
     useEffect(()=>{
       if(customer) {
-        if(!bdName  && customer.name)  setBdName(customer.name);
-        if(!bdPhone && customer.phone) setBdPhone(customer.phone);
-        if(!bdEmail && customer.email) setBdEmail(customer.email);
+        if(!bdNameRef.current  && customer.name)  bdNameRef.current  = customer.name;
+        if(!bdPhoneRef.current && customer.phone) bdPhoneRef.current = customer.phone;
+        if(!bdEmailRef.current && customer.email) bdEmailRef.current = customer.email;
       }
     },[customer?.id]);
 
@@ -682,10 +682,8 @@ export default function App(){
               <Card>
                 <ST c="Your Details"/>
                 <BookingDetailsForm
-                  bdName={bdName}   setBdName={setBdName}
-                  bdPhone={bdPhone} setBdPhone={setBdPhone}
-                  bdEmail={bdEmail} setBdEmail={setBdEmail}
-                  bdNotes={bdNotes} setBdNotes={setBdNotes}
+                  nameRef={bdNameRef}   phoneRef={bdPhoneRef}
+                  emailRef={bdEmailRef} notesRef={bdNotesRef}
                   customer={customer}
                 />
               </Card>
@@ -2769,32 +2767,40 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 
 
 // ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
-// ── Stable booking details form — defined outside App() to prevent remounting ──
-function BookingDetailsForm({ bdName, setBdName, bdPhone, setBdPhone, bdEmail, setBdEmail, bdNotes, setBdNotes, customer }) {
+// ── Stable booking details form — uncontrolled inputs with refs, no re-renders ──
+function BookingDetailsForm({ nameRef, phoneRef, emailRef, notesRef, customer }) {
   const L = { display:"block", fontSize:11, fontWeight:700, color:G8, marginBottom:5, textTransform:"uppercase", letterSpacing:".05em" };
   const I = { width:"100%", padding:"9px 11px", border:`1px solid ${G2}`, borderRadius:8, fontSize:14, outline:"none", fontFamily:"inherit", boxSizing:"border-box" };
   return (
     <div>
       <div style={{marginBottom:14}}>
         <label style={L}>Full Name</label>
-        <input value={bdName} onChange={e=>setBdName(e.target.value)}
+        <input
+          defaultValue={nameRef.current||customer?.name||""}
+          onChange={e=>{ nameRef.current=e.target.value; }}
           placeholder={customer?.name||"Your name"} style={I}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
         <div>
           <label style={L}>Phone</label>
-          <input value={bdPhone} onChange={e=>setBdPhone(e.target.value)}
+          <input
+            defaultValue={phoneRef.current||customer?.phone||""}
+            onChange={e=>{ phoneRef.current=e.target.value; }}
             placeholder={customer?.phone||"+255 7XX…"} style={I}/>
         </div>
         <div>
           <label style={L}>Email (optional)</label>
-          <input value={bdEmail} onChange={e=>setBdEmail(e.target.value)}
+          <input
+            defaultValue={emailRef.current||customer?.email||""}
+            onChange={e=>{ emailRef.current=e.target.value; }}
             placeholder={customer?.email||""} style={I}/>
         </div>
       </div>
       <div style={{marginBottom:14}}>
         <label style={L}>Notes (optional)</label>
-        <textarea value={bdNotes} onChange={e=>setBdNotes(e.target.value)}
+        <textarea
+          defaultValue={notesRef.current||""}
+          onChange={e=>{ notesRef.current=e.target.value; }}
           placeholder="Any preferences, allergies or health notes…" rows={2}
           style={{...I, resize:"vertical"}}/>
       </div>
