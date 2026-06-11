@@ -2757,96 +2757,124 @@ function TherapistPage({th, onBack, onBook}) {
   const avLabel = {available:"🟢 Available", outcall_only:"🟡 Outcall Only", unavailable:"🔴 Unavailable"};
 
   return(
-    <div style={{maxWidth:720,margin:"0 auto"}}>
+    <div style={{maxWidth:800,margin:"0 auto"}}>
       {/* Back */}
       <button onClick={onBack}
         style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:G6,cursor:"pointer",fontSize:14,fontFamily:"inherit",marginBottom:16,fontWeight:600}}>
         ← Back to Therapists
       </button>
 
-      <div style={{background:WH,borderRadius:16,overflow:"hidden",border:`1px solid ${G2}`,boxShadow:"0 4px 24px rgba(0,0,0,.08)"}}>
+      <div style={{background:WH,borderRadius:20,overflow:"hidden",boxShadow:"0 8px 40px rgba(0,0,0,.12)"}}>
 
-        {/* Photo gallery */}
+        {/* ── BIG HERO PHOTO ── */}
         {photos.length>0?(
           <div>
-            <div style={{paddingTop:"55%",position:"relative",background:BK}}>
+            {/* Main large image */}
+            <div style={{paddingTop:"75%",position:"relative",background:BK}}>
               <img src={photos[photoIdx]} alt={th.name}
-                style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+
+              {/* Dark gradient — name overlay at bottom */}
+              <div style={{position:"absolute",bottom:0,left:0,right:0,height:"50%",
+                background:"linear-gradient(to top,rgba(0,0,0,.8) 0%,rgba(0,0,0,.3) 60%,transparent 100%)",
+                pointerEvents:"none"}}/>
+
+              {/* Name + availability overlaid on photo */}
+              <div style={{position:"absolute",bottom:20,left:24,right:24}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:12}}>
+                  <div>
+                    <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(24px,5vw,36px)",color:WH,margin:"0 0 6px",textShadow:"0 2px 8px rgba(0,0,0,.4)"}}>{th.name}</h1>
+                    {th.specialties?.length>0&&(
+                      <div style={{fontSize:13,color:"rgba(255,255,255,.85)"}}>{th.specialties.slice(0,3).join(" · ")}</div>
+                    )}
+                  </div>
+                  {th.availability&&(
+                    <span style={{background:`${avColor[th.availability]||G4}CC`,color:WH,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,flexShrink:0,backdropFilter:"blur(6px)"}}>
+                      {avLabel[th.availability]||th.availability}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Arrow nav */}
               {photos.length>1&&(
                 <>
                   <button onClick={()=>setPhotoIdx(i=>(i-1+photos.length)%photos.length)}
-                    style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",width:38,height:38,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                    style={{position:"absolute",left:14,top:"45%",transform:"translateY(-50%)",width:44,height:44,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"2px solid rgba(255,255,255,.3)",color:WH,fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>‹</button>
                   <button onClick={()=>setPhotoIdx(i=>(i+1)%photos.length)}
-                    style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",width:38,height:38,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
-                  <div style={{position:"absolute",bottom:10,left:"50%",transform:"translateX(-50%)",display:"flex",gap:5}}>
-                    {photos.map((_,i)=>(
-                      <div key={i} onClick={()=>setPhotoIdx(i)}
-                        style={{width:8,height:8,borderRadius:"50%",background:i===photoIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",cursor:"pointer"}}/>
-                    ))}
+                    style={{position:"absolute",right:14,top:"45%",transform:"translateY(-50%)",width:44,height:44,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"2px solid rgba(255,255,255,.3)",color:WH,fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>›</button>
+                  {/* Dot indicators */}
+                  <div style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,.45)",color:WH,fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:99,backdropFilter:"blur(4px)"}}>
+                    {photoIdx+1} / {photos.length}
                   </div>
                 </>
               )}
             </div>
+
             {/* Thumbnail strip */}
             {photos.length>1&&(
-              <div style={{display:"flex",gap:6,padding:"8px 12px",background:G1,overflowX:"auto"}}>
+              <div style={{display:"flex",gap:6,padding:"10px 12px",background:G1,overflowX:"auto",scrollbarWidth:"none"}}>
                 {photos.map((src,i)=>(
                   <img key={i} src={src} onClick={()=>setPhotoIdx(i)} alt=""
-                    style={{width:60,height:48,objectFit:"cover",borderRadius:6,cursor:"pointer",flexShrink:0,
-                      border:`2px solid ${i===photoIdx?PL:"transparent"}`,transition:"border-color .15s"}}/>
+                    style={{width:70,height:56,objectFit:"cover",objectPosition:"top",borderRadius:8,cursor:"pointer",flexShrink:0,
+                      border:`3px solid ${i===photoIdx?PL:"transparent"}`,transition:"all .15s",
+                      opacity:i===photoIdx?1:.65}}/>
                 ))}
               </div>
             )}
           </div>
         ):(
-          <div style={{paddingTop:"45%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:72,color:WH,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name[0]}</div>
+          <div style={{paddingTop:"65%",position:"relative",background:`linear-gradient(160deg,${PLD},${PL})`}}>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:80,color:"rgba(255,255,255,.3)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name[0]}</div>
+            <div style={{position:"absolute",bottom:24,left:24}}>
+              <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:32,color:WH,margin:0}}>{th.name}</h1>
+            </div>
           </div>
         )}
 
+        {/* ── DETAILS ── */}
         <div style={{padding:"24px 28px 32px"}}>
-          {/* Name + availability */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
-            <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:BK,margin:0}}>{th.name}</h1>
-            {th.availability&&(
-              <span style={{background:`${avColor[th.availability]||G4}18`,color:avColor[th.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,flexShrink:0}}>
-                {avLabel[th.availability]||th.availability}
-              </span>
-            )}
+
+          {/* Badges */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+            <span style={{background:OKB,color:OK,padding:"6px 16px",borderRadius:99,fontSize:13,fontWeight:700}}>🏢 In-House</span>
+            {th.outcall&&<span style={{background:PLF,color:PL,padding:"6px 16px",borderRadius:99,fontSize:13,fontWeight:700}}>🏠 Outcall</span>}
           </div>
 
-          {/* Specialties */}
+          {/* Specialties chips */}
           {th.specialties?.length>0&&(
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
-              {th.specialties.map((s,i)=>(
-                <span key={i} style={{background:PLF,color:PL,padding:"5px 13px",borderRadius:99,fontSize:13,fontWeight:600}}>{s}</span>
-              ))}
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Specialties</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                {th.specialties.map((s,i)=>(
+                  <span key={i} style={{background:G1,color:G8,padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:600,border:`1px solid ${G2}`}}>{s}</span>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Service badges */}
-          <div style={{display:"flex",gap:8,marginBottom:20}}>
-            <span style={{background:OKB,color:OK,padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>🏢 In-House</span>
-            {th.outcall&&<span style={{background:PLF,color:PL,padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>🏠 Outcall</span>}
-          </div>
-
           {/* Bio */}
           {th.bio&&(
-            <p style={{fontSize:15,color:G6,lineHeight:1.8,marginBottom:24,borderLeft:`3px solid ${PL}`,paddingLeft:14}}>
-              {th.bio}
-            </p>
+            <div style={{marginBottom:24}}>
+              <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>About</div>
+              <p style={{fontSize:15,color:G6,lineHeight:1.85,margin:0}}>{th.bio}</p>
+            </div>
           )}
 
           {/* Contact */}
           {th.phone&&(
-            <div style={{fontSize:14,color:G6,marginBottom:20,display:"flex",alignItems:"center",gap:8}}>
-              <span>📞</span><span>{th.phone}</span>
+            <div style={{fontSize:14,color:G6,marginBottom:24,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:16}}>📞</span><span>{th.phone}</span>
             </div>
           )}
 
           {/* Book button */}
           <button onClick={()=>onBook(th.id)}
-            style={{width:"100%",padding:"15px",border:"none",borderRadius:12,background:PL,color:WH,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"'Playfair Display',serif",letterSpacing:".02em"}}>
+            style={{width:"100%",padding:"16px",border:"none",borderRadius:12,
+              background:`linear-gradient(135deg,${PLD},${PL})`,
+              color:WH,fontSize:17,fontWeight:700,cursor:"pointer",
+              fontFamily:"'Playfair Display',serif",letterSpacing:".02em",
+              boxShadow:`0 4px 20px ${PL}60`}}>
             Book with {th.name.split(" ")[0]} →
           </button>
         </div>
