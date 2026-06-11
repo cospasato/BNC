@@ -147,11 +147,11 @@ export default function App(){
   // Booking wizard
   const initBD = {date:td(),time:"10:00",serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:""};
   // Separate stable state for text inputs (prevents focus-loss on re-render)
-  const bdNameRef  = useRef("");
-  const bdPhoneRef = useRef("");
-  const bdEmailRef = useRef("");
-  const bdNotesRef = useRef("");
-  const resetBdText = () => { bdNameRef.current=""; bdPhoneRef.current=""; bdEmailRef.current=""; bdNotesRef.current=""; };
+  const [bdName,  setBdName]  = useState("");
+  const [bdPhone, setBdPhone] = useState("");
+  const [bdEmail, setBdEmail] = useState("");
+  const [bdNotes, setBdNotes] = useState("");
+  const resetBdText = () => { setBdName(""); setBdPhone(""); setBdEmail(""); setBdNotes(""); };
   const [bStep,setBStep]    = useState(1);
   const [bD,setBD]          = useState(initBD);
   const [pendingBook,setPendingBook] = useState(false); // auth gate at confirm
@@ -290,10 +290,10 @@ export default function App(){
 
   const confirmBooking = async()=>{
     if(!customer){ setPendingBook(true); setCustModal("login"); return; }
-    const cName  = (bdNameRef.current||"").trim()  || customer.name  || "";
-    const cPhone = (bdPhoneRef.current||"").trim() || customer.phone || "";
-    const cEmail = (bdEmailRef.current||"").trim() || customer.email || "";
-    const cNotes = (bdNotesRef.current||"").trim();
+    const cName  = bdName.trim()  || customer.name  || "";
+    const cPhone = bdPhone.trim() || customer.phone || "";
+    const cEmail = bdEmail.trim() || customer.email || "";
+    const cNotes = bdNotes.trim();
     if(!cName||!cPhone)  return pop("Please enter your name and phone number","err");
     if(!bD.date||!bD.time) return pop("Please select a date and time","err");
     setBookingLoading(true);
@@ -456,6 +456,343 @@ export default function App(){
 
 
   // ── BOOKING PORTAL (6 steps) ──
+  const BookingPortal = ()=>{
+    const locTherapists = bD.serviceType==="outcall" ? therapists.filter(t=>t.outcall) : therapists;
+    const selTh = therapists.find(t=>t.id===bD.therapistId);
+    const selRm = rooms.find(r=>r.id===bD.roomId);
+
+    // Use App-level stable state for text fields (prevents focus-loss on re-render)
+    // bdName, bdPhone, bdEmail, bdNotes and their setters come from App() closure
+
+    // Pre-fill from customer when they log in or when reaching step 5
+    useEffect(()=>{
+      if(customer) {
+        if(!bdName  && customer.name)  setBdName(customer.name);
+        if(!bdPhone && customer.phone) setBdPhone(customer.phone);
+        if(!bdEmail && customer.email) setBdEmail(customer.email);
+      }
+    },[customer?.id]);
+
+    const toggleService = (sv)=>{
+      setBD(d=>{
+        const exists=d.services.find(s=>s.id===sv.id);
+        if(exists) return {...d,services:d.services.filter(s=>s.id!==sv.id)};
+        return {...d,services:[...d.services,{id:sv.id,name:sv.name,price:getPrice(sv.id,bRoomId,d.serviceType)}]};
+      });
+    };
+
+    const steps=[{n:1,l:"Date & Type"},{n:2,l:"Therapist"},{n:3,l:"Room"},{n:4,l:"Services"},{n:5,l:"Confirm"}];
+
+    return(
+      <div style={{minHeight:"100vh",background:G1}}>
+        <NavBar/>
+        <div style={{maxWidth:680,margin:"0 auto",padding:"24px 16px 60px"}}>
+          {/* Progress */}
+          {bStep<6&&(
+            <div style={{display:"flex",gap:2,marginBottom:28}}>
+              {steps.map(s=>(
+                <div key={s.n} style={{flex:1,textAlign:"center"}}>
+                  <div style={{height:4,borderRadius:99,background:bStep>=s.n?PL:G2,marginBottom:5,transition:"background .3s"}}/>
+                  {!isMobile&&<div style={{fontSize:10,color:bStep===s.n?PL:G4,fontWeight:bStep===s.n?700:400}}>{s.l}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Step 1 — Date, Time, Service Type */}
+          {bStep===1&&(
+            <div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>When & How?</h2>
+              <p style={{color:G6,fontSize:14,marginBottom:24}}>Choose your date, time, and service type</p>
+              <Card>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  <Inp label="Date" type="date" value={bD.date} min={td()} onChange={e=>setBD(d=>({...d,date:e.target.value}))}/>
+                  <Inp label="Time" type="time" value={bD.time} onChange={e=>setBD(d=>({...d,time:e.target.value}))}/>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    {[["inhouse","🏢","In-House","Visit our spa studio"],["outcall","🏠","Outcall","We come to you (home/hotel)"]].map(([val,ic,label,sub])=>(
+                      <div key={val} onClick={()=>setBD(d=>({...d,serviceType:val,roomId:val==="outcall"?"":d.roomId}))}
+                        style={{border:`2px solid ${bD.serviceType===val?PL:G2}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",background:bD.serviceType===val?PLF:WH,transition:"all .15s"}}>
+                        <div style={{fontSize:24,marginBottom:6}}>{ic}</div>
+                        <div style={{fontWeight:700,fontSize:14,color:bD.serviceType===val?PL:BK}}>{label}</div>
+                        <div style={{fontSize:12,color:G6,marginTop:3}}>{sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {bD.serviceType==="outcall"&&(
+                  <Inp label="Your Address / Hotel Name & Room" value={bD.outcallAddr} onChange={e=>setBD(d=>({...d,outcallAddr:e.target.value}))} placeholder="e.g. Serena Hotel, Room 312 or 15 Masaki Street"/>
+                )}
+              </Card>
+              <div style={{display:"flex",gap:10,marginTop:6}}>
+                <Btn v="ghost" onClick={()=>navTo("land")}>← Back</Btn>
+                <Btn onClick={()=>goStep(2)} disabled={!bD.date||!bD.time||(bD.serviceType==="outcall"&&!bD.outcallAddr)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 — Therapist */}
+          {bStep===2&&(
+            <div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Therapist</h2>
+              <p style={{color:G6,fontSize:14,marginBottom:20}}>Select a therapist or let us assign one</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
+                {/* Any therapist option */}
+                <div onClick={()=>setBD(d=>({...d,therapistId:""}))}
+                  style={{border:`2px solid ${!bD.therapistId?PL:G2}`,borderRadius:12,padding:"16px 12px",cursor:"pointer",background:!bD.therapistId?PLF:WH,textAlign:"center",transition:"all .15s"}}>
+                  <div style={{width:60,height:60,borderRadius:"50%",background:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 10px"}}>🎲</div>
+                  <div style={{fontWeight:700,fontSize:14,color:!bD.therapistId?PL:BK}}>Any Available</div>
+                  <div style={{fontSize:11,color:G6,marginTop:4}}>We'll assign the best match</div>
+                </div>
+                {locTherapists.map(th=>(
+                  <div key={th.id} onClick={()=>setBD(d=>({...d,therapistId:th.id}))}
+                    style={{border:`2px solid ${bD.therapistId===th.id?PL:G2}`,borderRadius:12,overflow:"hidden",cursor:"pointer",background:bD.therapistId===th.id?PLF:WH,transition:"all .15s"}}>
+                    {th.photo?(
+                      <div style={{paddingTop:"85%",position:"relative",background:G1}}>
+                        <img src={th.photo} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                      </div>
+                    ):(
+                      <div style={{paddingTop:"85%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
+                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:WH,fontFamily:"'Playfair Display',serif"}}>{th.name?.[0]}</div>
+                      </div>
+                    )}
+                    <div style={{padding:"10px 10px 12px"}}>
+                      <div style={{fontWeight:700,fontSize:13,color:BK,marginBottom:3}}>{th.name}</div>
+                      {th.specialties?.slice(0,2).map((s,i)=><span key={i} style={{fontSize:10,color:G6,display:"block",lineHeight:1.4}}>{s}</span>)}
+                    </div>
+                  </div>
+                ))}
+                {locTherapists.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1"}}>No {bD.serviceType==="outcall"?"outcall-available ":""}therapists found.</div>}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <Btn v="ghost" onClick={()=>goStep(1)}>← Back</Btn>
+                <Btn onClick={()=>goStep(bD.serviceType==="outcall"?4:3)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Room (inhouse only) */}
+          {bStep===3&&(
+            <div>
+              {bD.serviceType==="outcall" ? (
+                /* Outcall — no room needed, just show info and continue */
+                <div>
+                  <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:20,color:BK}}>Outcall Service</h2>
+                  <div style={{background:PLF,border:`1px solid ${PL}30`,borderRadius:14,padding:"28px 24px",textAlign:"center",marginBottom:20}}>
+                    <div style={{fontSize:48,marginBottom:14}}>🏠</div>
+                    <div style={{fontWeight:700,fontSize:18,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:8}}>We come to you</div>
+                    <div style={{fontSize:14,color:G6,lineHeight:1.7}}>
+                      Our therapist will visit you at:<br/>
+                      <strong style={{color:PL}}>{bD.outcallAddr}</strong>
+                    </div>
+                    <div style={{marginTop:14,fontSize:12,color:G4}}>No room selection needed for outcall bookings</div>
+                  </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
+                    <Btn onClick={()=>goStep(4)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+                  </div>
+                </div>
+              ) : (
+                /* In-house — choose a room */
+                <div>
+                  <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Room</h2>
+                  <p style={{color:G6,fontSize:14,marginBottom:20}}>Select the room for your session</p>
+                  <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                    {rooms.length===0&&(
+                      <div style={{textAlign:"center",padding:"30px 20px",color:G4,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>
+                        No rooms available at the moment
+                      </div>
+                    )}
+                    {rooms.map(rm=>(
+                      <div key={rm.id} onClick={()=>setBD(d=>({...d,roomId:rm.id}))}
+                        style={{background:bD.roomId===rm.id?PLF:WH,borderRadius:12,border:`2px solid ${bD.roomId===rm.id?PL:G2}`,cursor:"pointer",transition:"all .15s"}}>
+                        <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:bD.roomId===rm.id?PL:BK,marginBottom:rm.amenities?.length>0?6:0}}>
+                              {rm.name}
+                            </div>
+  
+                          </div>
+                          <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${bD.roomId===rm.id?PL:G2}`,background:bD.roomId===rm.id?PL:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {bD.roomId===rm.id&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
+                    <Btn onClick={()=>goStep(4)} disabled={!bD.roomId} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 4 — Services */}
+          {bStep===4&&(
+            <div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Select Services</h2>
+              <p style={{color:G6,fontSize:14,marginBottom:20}}>You can select multiple services</p>
+              {Object.entries(services.reduce((a,s)=>{(a[s.category]||(a[s.category]=[])).push(s);return a;},{})).map(([cat,svs])=>(
+                <div key={cat} style={{marginBottom:20}}>
+                  <div style={{fontSize:12,fontWeight:700,color:PL,textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>{cat}</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {svs.map(sv=>{
+                      const price=getPrice(sv.id,bRoomId,bD.serviceType);
+                      const sel=bD.services.find(s=>s.id===sv.id);
+                      return(
+                        <div key={sv.id} onClick={()=>toggleService(sv)}
+                          style={{background:sel?PLF:WH,borderRadius:10,border:`2px solid ${sel?PL:G2}`,padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,transition:"all .15s"}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:700,fontSize:14,color:BK}}>{sv.name}</div>
+                            <div style={{fontSize:12,color:G6,marginTop:2}}>{sv.duration_min} min {sv.description&&"· "+sv.description.slice(0,40)}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontSize:15,fontWeight:700,color:price?PL:G4}}>{price?fmt(price):"—"}</div>
+                            {sel&&<div style={{fontSize:11,color:OK,fontWeight:700}}>✓ Selected</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              {bD.services.length>0&&(
+                <div style={{background:PLF,border:`1px solid ${PL}30`,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
+                  <div style={{fontSize:13,fontWeight:700,color:PL,marginBottom:6}}>Selected ({bD.services.length})</div>
+                  {bD.services.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:G8,paddingBottom:4}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomId,bD.serviceType))}</span></div>)}
+                  <div style={{borderTop:`1px solid ${PL}20`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:BK}}><span>Subtotal</span><span style={{color:PL}}>{fmt(bBase)}</span></div>
+                </div>
+              )}
+              <div style={{display:"flex",gap:10}}>
+                <Btn v="ghost" onClick={()=>goStep(bD.serviceType==="outcall"?2:3)}>← Back</Btn>
+                <Btn onClick={()=>goStep(5)} disabled={bD.services.length===0} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5 — Review & Confirm */}
+          {bStep===5&&(
+            <div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Review & Confirm</h2>
+              <p style={{color:G6,fontSize:14,marginBottom:20}}>Check details before confirming</p>
+              <Card>
+                <ST c="Your Details"/>
+                <BookingDetailsForm
+                  bdName={bdName}   setBdName={setBdName}
+                  bdPhone={bdPhone} setBdPhone={setBdPhone}
+                  bdEmail={bdEmail} setBdEmail={setBdEmail}
+                  bdNotes={bdNotes} setBdNotes={setBdNotes}
+                  customer={customer}
+                />
+              </Card>
+              {/* Summary */}
+              <Card>
+                <ST c="Booking Summary"/>
+                {[
+                  ["📅 Date & Time", `${bD.date} at ${bD.time}`],
+                  ["🔧 Type",        bD.serviceType==="outcall"?"Outcall – "+bD.outcallAddr:"In-House"],
+                  ["💆 Therapist",   selTh?.name||"Any Available"],
+                  ...(bD.serviceType==="inhouse"&&selRm?[["🚪 Room", selRm.name]]:[]),
+                ].map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                    <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:BK,textAlign:"right",maxWidth:"60%"}}>{v}</span>
+                  </div>
+                ))}
+                <div style={{marginTop:12}}>
+                  {bD.services.map(s=>(
+                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}>
+                      <span style={{color:G6}}>💆 {s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomId,bD.serviceType))}</span>
+                    </div>
+                  ))}
+                  <div style={{borderTop:`1px solid ${G2}`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700}}>
+                    <span>Total</span><span style={{color:PL}}>{fmt(bTotal)}</span>
+                  </div>
+                </div>
+              </Card>
+              {/* Payment method selection */}
+              {customer&&(
+                <Card>
+                  <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:14}}>💳 How would you like to pay?</div>
+
+                  {/* PesaPal online */}
+                  <div onClick={()=>setBD(d=>({...d,method:"PesaPal"}))}
+                    style={{border:`2px solid ${bD.method==="PesaPal"?PL:G2}`,background:bD.method==="PesaPal"?PLF:WH,borderRadius:12,padding:"14px 16px",cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",gap:14,transition:"all .15s"}}>
+                    <span style={{fontSize:28}}>💳</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14,color:bD.method==="PesaPal"?PL:BK}}>Pay Online Now</div>
+                      <div style={{fontSize:12,color:G6,marginTop:2}}>M-Pesa · Tigo Pesa · Airtel Money · Card — secure & instant</div>
+                    </div>
+                    <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${bD.method==="PesaPal"?PL:G2}`,background:bD.method==="PesaPal"?PL:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {bD.method==="PesaPal"&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
+                    </div>
+                  </div>
+
+                  {/* Pay on arrival */}
+                  <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Or pay on arrival</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                    {(payMethods.length?payMethods:["Cash"]).map(pm=>(
+                      <button key={pm} onClick={()=>setBD(d=>({...d,method:pm}))}
+                        style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                          border:`2px solid ${bD.method===pm?PL:G2}`,background:bD.method===pm?PLF:WH,color:bD.method===pm?PL:G6}}>
+                        {pm}
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Auth gate — not logged in */}
+              {!customer&&(
+                <Card style={{border:`2px solid ${PL}`}}>
+                  <div style={{fontWeight:700,color:PL,fontSize:14,marginBottom:6}}>💆 Sign in to confirm your booking</div>
+                  <div style={{fontSize:13,color:G6,marginBottom:14}}>Create a free account or sign in to confirm and track your appointment.</div>
+                  <div style={{display:"flex",gap:10}}>
+                    <Btn onClick={()=>{setPendingBook(true);setCustModal("login");}} style={{flex:1,justifyContent:"center"}}>Sign In</Btn>
+                    <Btn v="out" onClick={()=>{setPendingBook(true);setCustModal("register");}} style={{flex:1,justifyContent:"center"}}>Create Account</Btn>
+                  </div>
+                </Card>
+              )}
+
+              {/* Action buttons */}
+              <div style={{display:"flex",gap:10,marginTop:6}}>
+                <Btn v="ghost" onClick={()=>goStep(4)} style={{flex:"0 0 auto"}}>← Back</Btn>
+                {customer&&(
+                  <button onClick={confirmBooking} disabled={bookingLoading}
+                    style={{flex:1,padding:"13px",border:"none",borderRadius:10,cursor:bookingLoading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,
+                      background:bD.method==="PesaPal"?`linear-gradient(135deg,#1565C0,#1976D2)`:`linear-gradient(135deg,${PLD},${PL})`,
+                      color:WH,opacity:bookingLoading?.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                    {bookingLoading
+                      ? "Processing…"
+                      : bD.method==="PesaPal"
+                      ? "💳 Pay & Confirm"
+                      : "✓ Confirm Booking"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 6 — Confirmed */}
+          {bStep===6&&(
+            <div style={{textAlign:"center",padding:"40px 20px"}}>
+              <div style={{fontSize:64,marginBottom:20}}>🎉</div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:BK,marginBottom:10}}>Booking Confirmed!</h2>
+              <p style={{color:G6,fontSize:16,marginBottom:8}}>We'll confirm your appointment shortly.</p>
+              <p style={{color:G6,fontSize:14,marginBottom:32}}>{bD.date} at {bD.time} · {bD.serviceType==="outcall"?"Outcall":"In-House"}</p>
+              <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+                <Btn onClick={()=>{navTo("customer");setCustTab("appts");loadCustAppts(customer?.id);}}>View My Bookings</Btn>
+                <Btn v="ghost" onClick={()=>{setBD(initBD);resetBdText();navTo("land");}}>Back to Home</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // ── CUSTOMER PORTAL ──
   const CustomerPortal = ()=>(
@@ -563,20 +900,7 @@ export default function App(){
   return(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",minHeight:"100vh",background:G1}}>
       {view==="land"      &&<Landing/>}
-      {view==="book"&&<BookingPortal
-        therapists={therapists} rooms={rooms} services={services} pricing={pricing}
-        offers={offers} payMethods={payMethods} customer={customer}
-        bD={bD} setBD={setBD} bStep={bStep} setBStep={setBStep}
-        bBase={bBase} bDisc={bDisc} bTotal={bTotal} bRoomId={bRoomId}
-        getPrice={getPrice} goStep={goStep} navTo={navTo} pop={pop}
-        custModal={custModal} setCustModal={setCustModal}
-        pendingBook={pendingBook} setPendingBook={setPendingBook}
-        custLogin={custLogin} custRegister={custRegister} setAppts={setAppts}
-        bdName={bdName} setBdName={setBdName} bdPhone={bdPhone} setBdPhone={setBdPhone}
-        bdEmail={bdEmail} setBdEmail={setBdEmail} bdNotes={bdNotes} setBdNotes={setBdNotes}
-        bookingLoading={bookingLoading} setBookingLoading={setBookingLoading}
-        confirmBooking={confirmBooking} initBD={initBD} resetBdText={resetBdText}
-      />}
+      {view==="book"      &&<BookingPortal/>}
       {view==="customer"  &&customer&&<CustomerPortal/>}
       {view==="admin"     &&user&&<AdminPortal/>}
       {view==="payment_complete"&&<PaymentCompletePage customer={customer} navTo={navTo} pop={pop}/>}
@@ -2445,376 +2769,32 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 
 
 // ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
-function BookingPortal({therapists,rooms,services,pricing,offers,payMethods,customer,bD,setBD,bStep,setBStep,bBase,bDisc,bTotal,bRoomId,getPrice,goStep,navTo,pop,custModal,setCustModal,pendingBook,setPendingBook,custLogin,custRegister,setAppts,bdName,setBdName,bdPhone,setBdPhone,bdEmail,setBdEmail,bdNotes,setBdNotes,bookingLoading,setBookingLoading,confirmBooking,initBD,resetBdText}){
-  const locTherapists = bD.serviceType==="outcall" ? therapists.filter(t=>t.outcall) : therapists;
-  const selTh = therapists.find(t=>t.id===bD.therapistId);
-  const selRm = rooms.find(r=>r.id===bD.roomId);
-
-  // Use App-level stable state for text fields (prevents focus-loss on re-render)
-  // bdNameRef, bdPhoneRef, bdEmailRef, bdNotesRef come from App() closure (useRef - no re-renders)
-
-  // Pre-fill from customer when they log in or when reaching step 5
-  useEffect(()=>{
-    if(customer) {
-      if(!bdNameRef.current  && customer.name)  bdNameRef.current  = customer.name;
-      if(!bdPhoneRef.current && customer.phone) bdPhoneRef.current = customer.phone;
-      if(!bdEmailRef.current && customer.email) bdEmailRef.current = customer.email;
-    }
-  },[customer?.id]);
-
-  const toggleService = (sv)=>{
-    setBD(d=>{
-      const exists=d.services.find(s=>s.id===sv.id);
-      if(exists) return {...d,services:d.services.filter(s=>s.id!==sv.id)};
-      return {...d,services:[...d.services,{id:sv.id,name:sv.name,price:getPrice(sv.id,bRoomId,d.serviceType)}]};
-    });
-  };
-
-  const steps=[{n:1,l:"Date & Type"},{n:2,l:"Therapist"},{n:3,l:"Room"},{n:4,l:"Services"},{n:5,l:"Confirm"}];
-
-  return(
-    <div style={{minHeight:"100vh",background:G1}}>
-      <NavBar/>
-      <div style={{maxWidth:680,margin:"0 auto",padding:"24px 16px 60px"}}>
-        {/* Progress */}
-        {bStep<6&&(
-          <div style={{display:"flex",gap:2,marginBottom:28}}>
-            {steps.map(s=>(
-              <div key={s.n} style={{flex:1,textAlign:"center"}}>
-                <div style={{height:4,borderRadius:99,background:bStep>=s.n?PL:G2,marginBottom:5,transition:"background .3s"}}/>
-                {!isMobile&&<div style={{fontSize:10,color:bStep===s.n?PL:G4,fontWeight:bStep===s.n?700:400}}>{s.l}</div>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Step 1 — Date, Time, Service Type */}
-        {bStep===1&&(
-          <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>When & How?</h2>
-            <p style={{color:G6,fontSize:14,marginBottom:24}}>Choose your date, time, and service type</p>
-            <Card>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Inp label="Date" type="date" value={bD.date} min={td()} onChange={e=>setBD(d=>({...d,date:e.target.value}))}/>
-                <Inp label="Time" type="time" value={bD.time} onChange={e=>setBD(d=>({...d,time:e.target.value}))}/>
-              </div>
-              <div style={{marginBottom:14}}>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {[["inhouse","🏢","In-House","Visit our spa studio"],["outcall","🏠","Outcall","We come to you (home/hotel)"]].map(([val,ic,label,sub])=>(
-                    <div key={val} onClick={()=>setBD(d=>({...d,serviceType:val,roomId:val==="outcall"?"":d.roomId}))}
-                      style={{border:`2px solid ${bD.serviceType===val?PL:G2}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",background:bD.serviceType===val?PLF:WH,transition:"all .15s"}}>
-                      <div style={{fontSize:24,marginBottom:6}}>{ic}</div>
-                      <div style={{fontWeight:700,fontSize:14,color:bD.serviceType===val?PL:BK}}>{label}</div>
-                      <div style={{fontSize:12,color:G6,marginTop:3}}>{sub}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {bD.serviceType==="outcall"&&(
-                <Inp label="Your Address / Hotel Name & Room" value={bD.outcallAddr} onChange={e=>setBD(d=>({...d,outcallAddr:e.target.value}))} placeholder="e.g. Serena Hotel, Room 312 or 15 Masaki Street"/>
-              )}
-            </Card>
-            <div style={{display:"flex",gap:10,marginTop:6}}>
-              <Btn v="ghost" onClick={()=>navTo("land")}>← Back</Btn>
-              <Btn onClick={()=>goStep(2)} disabled={!bD.date||!bD.time||(bD.serviceType==="outcall"&&!bD.outcallAddr)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2 — Therapist */}
-        {bStep===2&&(
-          <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Therapist</h2>
-            <p style={{color:G6,fontSize:14,marginBottom:20}}>Select a therapist or let us assign one</p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
-              {/* Any therapist option */}
-              <div onClick={()=>setBD(d=>({...d,therapistId:""}))}
-                style={{border:`2px solid ${!bD.therapistId?PL:G2}`,borderRadius:12,padding:"16px 12px",cursor:"pointer",background:!bD.therapistId?PLF:WH,textAlign:"center",transition:"all .15s"}}>
-                <div style={{width:60,height:60,borderRadius:"50%",background:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 10px"}}>🎲</div>
-                <div style={{fontWeight:700,fontSize:14,color:!bD.therapistId?PL:BK}}>Any Available</div>
-                <div style={{fontSize:11,color:G6,marginTop:4}}>We'll assign the best match</div>
-              </div>
-              {locTherapists.map(th=>(
-                <div key={th.id} onClick={()=>setBD(d=>({...d,therapistId:th.id}))}
-                  style={{border:`2px solid ${bD.therapistId===th.id?PL:G2}`,borderRadius:12,overflow:"hidden",cursor:"pointer",background:bD.therapistId===th.id?PLF:WH,transition:"all .15s"}}>
-                  {th.photo?(
-                    <div style={{paddingTop:"85%",position:"relative",background:G1}}>
-                      <img src={th.photo} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-                    </div>
-                  ):(
-                    <div style={{paddingTop:"85%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
-                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:WH,fontFamily:"'Playfair Display',serif"}}>{th.name?.[0]}</div>
-                    </div>
-                  )}
-                  <div style={{padding:"10px 10px 12px"}}>
-                    <div style={{fontWeight:700,fontSize:13,color:BK,marginBottom:3}}>{th.name}</div>
-                    {th.specialties?.slice(0,2).map((s,i)=><span key={i} style={{fontSize:10,color:G6,display:"block",lineHeight:1.4}}>{s}</span>)}
-                  </div>
-                </div>
-              ))}
-              {locTherapists.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1"}}>No {bD.serviceType==="outcall"?"outcall-available ":""}therapists found.</div>}
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <Btn v="ghost" onClick={()=>goStep(1)}>← Back</Btn>
-              <Btn onClick={()=>goStep(bD.serviceType==="outcall"?4:3)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3 — Room (inhouse only) */}
-        {bStep===3&&(
-          <div>
-            {bD.serviceType==="outcall" ? (
-              /* Outcall — no room needed, just show info and continue */
-              <div>
-                <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:20,color:BK}}>Outcall Service</h2>
-                <div style={{background:PLF,border:`1px solid ${PL}30`,borderRadius:14,padding:"28px 24px",textAlign:"center",marginBottom:20}}>
-                  <div style={{fontSize:48,marginBottom:14}}>🏠</div>
-                  <div style={{fontWeight:700,fontSize:18,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:8}}>We come to you</div>
-                  <div style={{fontSize:14,color:G6,lineHeight:1.7}}>
-                    Our therapist will visit you at:<br/>
-                    <strong style={{color:PL}}>{bD.outcallAddr}</strong>
-                  </div>
-                  <div style={{marginTop:14,fontSize:12,color:G4}}>No room selection needed for outcall bookings</div>
-                </div>
-                <div style={{display:"flex",gap:10}}>
-                  <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
-                  <Btn onClick={()=>goStep(4)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-                </div>
-              </div>
-            ) : (
-              /* In-house — choose a room */
-              <div>
-                <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Room</h2>
-                <p style={{color:G6,fontSize:14,marginBottom:20}}>Select the room for your session</p>
-                <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
-                  {rooms.length===0&&(
-                    <div style={{textAlign:"center",padding:"30px 20px",color:G4,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>
-                      No rooms available at the moment
-                    </div>
-                  )}
-                  {rooms.map(rm=>(
-                    <div key={rm.id} onClick={()=>setBD(d=>({...d,roomId:rm.id}))}
-                      style={{background:bD.roomId===rm.id?PLF:WH,borderRadius:12,border:`2px solid ${bD.roomId===rm.id?PL:G2}`,cursor:"pointer",transition:"all .15s"}}>
-                      <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:bD.roomId===rm.id?PL:BK,marginBottom:rm.amenities?.length>0?6:0}}>
-                            {rm.name}
-                          </div>
-
-                        </div>
-                        <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${bD.roomId===rm.id?PL:G2}`,background:bD.roomId===rm.id?PL:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          {bD.roomId===rm.id&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{display:"flex",gap:10}}>
-                  <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
-                  <Btn onClick={()=>goStep(4)} disabled={!bD.roomId} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 4 — Services */}
-        {bStep===4&&(
-          <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Select Services</h2>
-            <p style={{color:G6,fontSize:14,marginBottom:20}}>You can select multiple services</p>
-            {Object.entries(services.reduce((a,s)=>{(a[s.category]||(a[s.category]=[])).push(s);return a;},{})).map(([cat,svs])=>(
-              <div key={cat} style={{marginBottom:20}}>
-                <div style={{fontSize:12,fontWeight:700,color:PL,textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>{cat}</div>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {svs.map(sv=>{
-                    const price=getPrice(sv.id,bRoomId,bD.serviceType);
-                    const sel=bD.services.find(s=>s.id===sv.id);
-                    return(
-                      <div key={sv.id} onClick={()=>toggleService(sv)}
-                        style={{background:sel?PLF:WH,borderRadius:10,border:`2px solid ${sel?PL:G2}`,padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,transition:"all .15s"}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:700,fontSize:14,color:BK}}>{sv.name}</div>
-                          <div style={{fontSize:12,color:G6,marginTop:2}}>{sv.duration_min} min {sv.description&&"· "+sv.description.slice(0,40)}</div>
-                        </div>
-                        <div style={{textAlign:"right",flexShrink:0}}>
-                          <div style={{fontSize:15,fontWeight:700,color:price?PL:G4}}>{price?fmt(price):"—"}</div>
-                          {sel&&<div style={{fontSize:11,color:OK,fontWeight:700}}>✓ Selected</div>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            {bD.services.length>0&&(
-              <div style={{background:PLF,border:`1px solid ${PL}30`,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
-                <div style={{fontSize:13,fontWeight:700,color:PL,marginBottom:6}}>Selected ({bD.services.length})</div>
-                {bD.services.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:G8,paddingBottom:4}}><span>{s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomId,bD.serviceType))}</span></div>)}
-                <div style={{borderTop:`1px solid ${PL}20`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:BK}}><span>Subtotal</span><span style={{color:PL}}>{fmt(bBase)}</span></div>
-              </div>
-            )}
-            <div style={{display:"flex",gap:10}}>
-              <Btn v="ghost" onClick={()=>goStep(bD.serviceType==="outcall"?2:3)}>← Back</Btn>
-              <Btn onClick={()=>goStep(5)} disabled={bD.services.length===0} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-            </div>
-          </div>
-        )}
-
-        {/* Step 5 — Review & Confirm */}
-        {bStep===5&&(
-          <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Review & Confirm</h2>
-            <p style={{color:G6,fontSize:14,marginBottom:20}}>Check details before confirming</p>
-            <Card>
-              <ST c="Your Details"/>
-              <BookingDetailsForm
-                nameRef={bdNameRef}   phoneRef={bdPhoneRef}
-                emailRef={bdEmailRef} notesRef={bdNotesRef}
-                customer={customer}
-              />
-            </Card>
-            {/* Summary */}
-            <Card>
-              <ST c="Booking Summary"/>
-              {[
-                ["📅 Date & Time", `${bD.date} at ${bD.time}`],
-                ["🔧 Type",        bD.serviceType==="outcall"?"Outcall – "+bD.outcallAddr:"In-House"],
-                ["💆 Therapist",   selTh?.name||"Any Available"],
-                ...(bD.serviceType==="inhouse"&&selRm?[["🚪 Room", selRm.name]]:[]),
-              ].map(([k,v])=>(
-                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                  <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:BK,textAlign:"right",maxWidth:"60%"}}>{v}</span>
-                </div>
-              ))}
-              <div style={{marginTop:12}}>
-                {bD.services.map(s=>(
-                  <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}>
-                    <span style={{color:G6}}>💆 {s.name}</span><span style={{fontWeight:700}}>{fmt(getPrice(s.id,bRoomId,bD.serviceType))}</span>
-                  </div>
-                ))}
-                <div style={{borderTop:`1px solid ${G2}`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700}}>
-                  <span>Total</span><span style={{color:PL}}>{fmt(bTotal)}</span>
-                </div>
-              </div>
-            </Card>
-            {/* Payment method selection */}
-            {customer&&(
-              <Card>
-                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:14}}>💳 How would you like to pay?</div>
-
-                {/* PesaPal online */}
-                <div onClick={()=>setBD(d=>({...d,method:"PesaPal"}))}
-                  style={{border:`2px solid ${bD.method==="PesaPal"?PL:G2}`,background:bD.method==="PesaPal"?PLF:WH,borderRadius:12,padding:"14px 16px",cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",gap:14,transition:"all .15s"}}>
-                  <span style={{fontSize:28}}>💳</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:14,color:bD.method==="PesaPal"?PL:BK}}>Pay Online Now</div>
-                    <div style={{fontSize:12,color:G6,marginTop:2}}>M-Pesa · Tigo Pesa · Airtel Money · Card — secure & instant</div>
-                  </div>
-                  <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${bD.method==="PesaPal"?PL:G2}`,background:bD.method==="PesaPal"?PL:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    {bD.method==="PesaPal"&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
-                  </div>
-                </div>
-
-                {/* Pay on arrival */}
-                <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Or pay on arrival</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-                  {(payMethods.length?payMethods:["Cash"]).map(pm=>(
-                    <button key={pm} onClick={()=>setBD(d=>({...d,method:pm}))}
-                      style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                        border:`2px solid ${bD.method===pm?PL:G2}`,background:bD.method===pm?PLF:WH,color:bD.method===pm?PL:G6}}>
-                      {pm}
-                    </button>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Auth gate — not logged in */}
-            {!customer&&(
-              <Card style={{border:`2px solid ${PL}`}}>
-                <div style={{fontWeight:700,color:PL,fontSize:14,marginBottom:6}}>💆 Sign in to confirm your booking</div>
-                <div style={{fontSize:13,color:G6,marginBottom:14}}>Create a free account or sign in to confirm and track your appointment.</div>
-                <div style={{display:"flex",gap:10}}>
-                  <Btn onClick={()=>{setPendingBook(true);setCustModal("login");}} style={{flex:1,justifyContent:"center"}}>Sign In</Btn>
-                  <Btn v="out" onClick={()=>{setPendingBook(true);setCustModal("register");}} style={{flex:1,justifyContent:"center"}}>Create Account</Btn>
-                </div>
-              </Card>
-            )}
-
-            {/* Action buttons */}
-            <div style={{display:"flex",gap:10,marginTop:6}}>
-              <Btn v="ghost" onClick={()=>goStep(4)} style={{flex:"0 0 auto"}}>← Back</Btn>
-              {customer&&(
-                <button onClick={confirmBooking} disabled={bookingLoading}
-                  style={{flex:1,padding:"13px",border:"none",borderRadius:10,cursor:bookingLoading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,
-                    background:bD.method==="PesaPal"?`linear-gradient(135deg,#1565C0,#1976D2)`:`linear-gradient(135deg,${PLD},${PL})`,
-                    color:WH,opacity:bookingLoading?.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                  {bookingLoading
-                    ? "Processing…"
-                    : bD.method==="PesaPal"
-                    ? "💳 Pay & Confirm"
-                    : "✓ Confirm Booking"}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Step 6 — Confirmed */}
-        {bStep===6&&(
-          <div style={{textAlign:"center",padding:"40px 20px"}}>
-            <div style={{fontSize:64,marginBottom:20}}>🎉</div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:BK,marginBottom:10}}>Booking Confirmed!</h2>
-            <p style={{color:G6,fontSize:16,marginBottom:8}}>We'll confirm your appointment shortly.</p>
-            <p style={{color:G6,fontSize:14,marginBottom:32}}>{bD.date} at {bD.time} · {bD.serviceType==="outcall"?"Outcall":"In-House"}</p>
-            <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-              <Btn onClick={()=>{navTo("customer");setCustTab("appts");loadCustAppts(customer?.id);}}>View My Bookings</Btn>
-              <Btn v="ghost" onClick={()=>{setBD(initBD);resetBdText();navTo("land");}}>Back to Home</Btn>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Stable booking details form — uncontrolled inputs with refs, no re-renders ──
-function BookingDetailsForm({ nameRef, phoneRef, emailRef, notesRef, customer }) {
+// ── Stable booking details form — defined outside App() to prevent remounting ──
+function BookingDetailsForm({ bdName, setBdName, bdPhone, setBdPhone, bdEmail, setBdEmail, bdNotes, setBdNotes, customer }) {
   const L = { display:"block", fontSize:11, fontWeight:700, color:G8, marginBottom:5, textTransform:"uppercase", letterSpacing:".05em" };
   const I = { width:"100%", padding:"9px 11px", border:`1px solid ${G2}`, borderRadius:8, fontSize:14, outline:"none", fontFamily:"inherit", boxSizing:"border-box" };
   return (
     <div>
       <div style={{marginBottom:14}}>
         <label style={L}>Full Name</label>
-        <input
-          defaultValue={nameRef.current||customer?.name||""}
-          onChange={e=>{ nameRef.current=e.target.value; }}
+        <input value={bdName} onChange={e=>setBdName(e.target.value)}
           placeholder={customer?.name||"Your name"} style={I}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
         <div>
           <label style={L}>Phone</label>
-          <input
-            defaultValue={phoneRef.current||customer?.phone||""}
-            onChange={e=>{ phoneRef.current=e.target.value; }}
+          <input value={bdPhone} onChange={e=>setBdPhone(e.target.value)}
             placeholder={customer?.phone||"+255 7XX…"} style={I}/>
         </div>
         <div>
           <label style={L}>Email (optional)</label>
-          <input
-            defaultValue={emailRef.current||customer?.email||""}
-            onChange={e=>{ emailRef.current=e.target.value; }}
+          <input value={bdEmail} onChange={e=>setBdEmail(e.target.value)}
             placeholder={customer?.email||""} style={I}/>
         </div>
       </div>
       <div style={{marginBottom:14}}>
         <label style={L}>Notes (optional)</label>
-        <textarea
-          defaultValue={notesRef.current||""}
-          onChange={e=>{ notesRef.current=e.target.value; }}
+        <textarea value={bdNotes} onChange={e=>setBdNotes(e.target.value)}
           placeholder="Any preferences, allergies or health notes…" rows={2}
           style={{...I, resize:"vertical"}}/>
       </div>
