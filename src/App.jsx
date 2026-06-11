@@ -146,6 +146,12 @@ export default function App(){
 
   // Booking wizard
   const initBD = {date:td(),time:"10:00",serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:""};
+  // Separate stable state for text inputs (prevents focus-loss on re-render)
+  const [bdName,  setBdName]  = useState("");
+  const [bdPhone, setBdPhone] = useState("");
+  const [bdEmail, setBdEmail] = useState("");
+  const [bdNotes, setBdNotes] = useState("");
+  const resetBdText = () => { setBdName(""); setBdPhone(""); setBdEmail(""); setBdNotes(""); };
   const [bStep,setBStep]    = useState(1);
   const [bD,setBD]          = useState(initBD);
   const [pendingBook,setPendingBook] = useState(false); // auth gate at confirm
@@ -282,19 +288,25 @@ export default function App(){
 
   const [bookingLoading, setBookingLoading] = useState(false);
 
-  const confirmBooking = async(overrides={})=>{
+  const confirmBooking = async()=>{
     if(!customer){ setPendingBook(true); setCustModal("login"); return; }
+    const cName  = bdName.trim()  || customer.name  || "";
+    const cPhone = bdPhone.trim() || customer.phone || "";
+    const cEmail = bdEmail.trim() || customer.email || "";
+    const cNotes = bdNotes.trim();
+    if(!cName||!cPhone)  return pop("Please enter your name and phone number","err");
+    if(!bD.date||!bD.time) return pop("Please select a date and time","err");
     setBookingLoading(true);
     try{
       const created = await api.createAppt({
-        customer_id: customer.id, customer_name: overrides.name||bD.name||customer.name,
-        customer_phone: overrides.phone||bD.phone||customer.phone, customer_email: overrides.email||bD.email||customer.email||"",
+        customer_id: customer.id, customer_name: cName,
+        customer_phone: cPhone, customer_email: cEmail,
         therapist_id: bD.therapistId||null, room_id: bD.roomId||null,
-        service_type: bD.serviceType, outcall_address: bD.outcallAddr,
+        service_type: bD.serviceType, outcall_address: bD.outcallAddr||"",
         appt_date: bD.date, appt_time: bD.time, duration_min: 60,
-        services: bD.services, base_amount: bBase, discount: bD.disc,
-        discount_type: bD.discT, total_amount: bTotal, paid_amount: 0,
-        payment_method: bD.method||"Cash", notes: overrides.notes||bD.notes||"", status:"pending"
+        services: bD.services, base_amount: bBase, discount: bD.disc||0,
+        discount_type: bD.discT||"pct", total_amount: bTotal, paid_amount: 0,
+        payment_method: bD.method||"Cash", notes: cNotes, status:"pending"
       });
       setAppts(p=>[...p,created]);
 
@@ -306,9 +318,9 @@ export default function App(){
             body: JSON.stringify({
               appointment_id: created.id,
               amount:         bTotal,
-              customer_name:  overrides.name||bD.name||customer.name,
-              customer_email: overrides.email||bD.email||customer.email||"",
-              customer_phone: overrides.phone||bD.phone||customer.phone||"",
+              customer_name:  cName,
+              customer_email: cEmail,
+              customer_phone: cPhone,
               description:    bD.services.map(s=>s.name).join(", ")||"Massage TZ Booking",
             })
           });
@@ -449,16 +461,17 @@ export default function App(){
     const selTh = therapists.find(t=>t.id===bD.therapistId);
     const selRm = rooms.find(r=>r.id===bD.roomId);
 
-    // Local state for text fields to prevent focus-loss on re-render
-    const [localName,  setLocalName]  = useState(bD.name  || customer?.name  || "");
-    const [localPhone, setLocalPhone] = useState(bD.phone || customer?.phone || "");
-    const [localEmail, setLocalEmail] = useState(bD.email || customer?.email || "");
-    const [localNotes, setLocalNotes] = useState(bD.notes || "");
+    // Use App-level stable state for text fields (prevents focus-loss on re-render)
+    // bdName, bdPhone, bdEmail, bdNotes and their setters come from App() closure
 
-    // Sync to bD when step changes (not on every keystroke)
-    const syncDetails = () => {
-      setBD(d=>({...d, name:localName, phone:localPhone, email:localEmail, notes:localNotes}));
-    };
+    // Pre-fill from customer when they log in or when reaching step 5
+    useEffect(()=>{
+      if(customer) {
+        if(!bdName  && customer.name)  setBdName(customer.name);
+        if(!bdPhone && customer.phone) setBdPhone(customer.phone);
+        if(!bdEmail && customer.email) setBdEmail(customer.email);
+      }
+    },[customer?.id]);
 
     const toggleService = (sv)=>{
       setBD(d=>{
@@ -670,27 +683,27 @@ export default function App(){
                 <ST c="Your Details"/>
                 <div style={{marginBottom:14}}>
                   <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Full Name</label>
-                  <input value={localName} onChange={e=>setLocalName(e.target.value)}
+                  <input value={bdName} onChange={e=>setBdName(e.target.value)}
                     placeholder={customer?.name||"Your name"}
                     style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
                   <div>
                     <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Phone</label>
-                    <input value={localPhone} onChange={e=>setLocalPhone(e.target.value)}
+                    <input value={bdPhone} onChange={e=>setBdPhone(e.target.value)}
                       placeholder={customer?.phone||"+255 7XX…"}
                       style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
                   </div>
                   <div>
                     <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Email (optional)</label>
-                    <input value={localEmail} onChange={e=>setLocalEmail(e.target.value)}
+                    <input value={bdEmail} onChange={e=>setBdEmail(e.target.value)}
                       placeholder={customer?.email||""}
                       style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
                   </div>
                 </div>
                 <div style={{marginBottom:14}}>
                   <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Notes (optional)</label>
-                  <textarea value={localNotes} onChange={e=>setLocalNotes(e.target.value)}
+                  <textarea value={bdNotes} onChange={e=>setBdNotes(e.target.value)}
                     placeholder="Any preferences or health notes…" rows={2}
                     style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                 </div>
@@ -767,7 +780,7 @@ export default function App(){
               <div style={{display:"flex",gap:10,marginTop:6}}>
                 <Btn v="ghost" onClick={()=>goStep(4)} style={{flex:"0 0 auto"}}>← Back</Btn>
                 {customer&&(
-                  <button onClick={()=>confirmBooking({name:localName,phone:localPhone,email:localEmail,notes:localNotes})} disabled={bookingLoading}
+                  <button onClick={confirmBooking} disabled={bookingLoading}
                     style={{flex:1,padding:"13px",border:"none",borderRadius:10,cursor:bookingLoading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,
                       background:bD.method==="PesaPal"?`linear-gradient(135deg,#1565C0,#1976D2)`:`linear-gradient(135deg,${PLD},${PL})`,
                       color:WH,opacity:bookingLoading?.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
@@ -791,7 +804,7 @@ export default function App(){
               <p style={{color:G6,fontSize:14,marginBottom:32}}>{bD.date} at {bD.time} · {bD.serviceType==="outcall"?"Outcall":"In-House"}</p>
               <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
                 <Btn onClick={()=>{navTo("customer");setCustTab("appts");loadCustAppts(customer?.id);}}>View My Bookings</Btn>
-                <Btn v="ghost" onClick={()=>{setBD(initBD);navTo("land");}}>Back to Home</Btn>
+                <Btn v="ghost" onClick={()=>{setBD(initBD);resetBdText();navTo("land");}}>Back to Home</Btn>
               </div>
             </div>
           )}
@@ -806,14 +819,14 @@ export default function App(){
       <NavBar/>
       <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
         {[["appts","My Appointments","📋"],["newappt","Book Session","💆"],["profile","My Profile","👤"]].map(([id,label,icon])=>(
-          <button key={id} onClick={()=>{ if(id==="newappt"){setBD(initBD);navTo("book",1);}else setCustTab(id); }}
+          <button key={id} onClick={()=>{ if(id==="newappt"){setBD(initBD);resetBdText();navTo("book",1);}else setCustTab(id); }}
             style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:custTab===id?PL:G6,borderBottom:`3px solid ${custTab===id?PL:"transparent"}`,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:0}}>
             {icon} {label}
           </button>
         ))}
       </div>
       <div style={{maxWidth:720,margin:"0 auto",padding:"16px 12px 40px"}}>
-        {custTab==="appts"&&<CustApptsTab customer={customer} appts={custAppts} loading={custLoading} onRefresh={()=>loadCustAppts(customer.id)} onBook={()=>{setBD(initBD);navTo("book",1);}} therapists={therapists}/>}
+        {custTab==="appts"&&<CustApptsTab customer={customer} appts={custAppts} loading={custLoading} onRefresh={()=>loadCustAppts(customer.id)} onBook={()=>{setBD(initBD);resetBdText();navTo("book",1);}} therapists={therapists}/>}
         {custTab==="profile"&&<CustProfileTab customer={customer} setCustomer={setCustomer} pop={pop}/>}
       </div>
     </div>
