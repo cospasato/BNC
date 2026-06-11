@@ -344,60 +344,75 @@ export default function App(){
 
   // ── LANDING PAGE ──
   const Landing = ()=>(
-    <div>
+    <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
       <NavBar/>
+
       {/* Hero */}
-      <div style={{background:`linear-gradient(135deg,${PLD} 0%,${BK} 100%)`,padding:"70px 20px 60px",textAlign:"center"}}>
-        <div style={{fontSize:13,color:GOLD,letterSpacing:".2em",textTransform:"uppercase",marginBottom:14}}>Luxury Wellness Experience</div>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:Math.min(44,window.innerWidth*.09)+"px",color:WH,margin:"0 0 16px",lineHeight:1.2}}>MASSAGE TZ</h1>
-        <p style={{color:"rgba(255,255,255,.7)",fontSize:16,maxWidth:480,margin:"0 auto 32px",lineHeight:1.7}}>Professional massage & wellness services — at our studio or at your location</p>
+      <div style={{background:`linear-gradient(150deg,${BK} 0%,${PLD} 60%,${PL} 100%)`,padding:"80px 20px 70px",textAlign:"center"}}>
+        <div style={{fontSize:11,color:GOLD,letterSpacing:".25em",textTransform:"uppercase",marginBottom:16,fontWeight:700}}>✦ Professional Spa & Massage ✦</div>
+        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(36px,8vw,58px)",color:WH,margin:"0 0 18px",lineHeight:1.15}}>MASSAGE TZ</h1>
+        <p style={{color:"rgba(255,255,255,.75)",fontSize:17,maxWidth:500,margin:"0 auto 36px",lineHeight:1.8}}>
+          Professional massage & wellness services — at our studio or we come to you
+        </p>
         <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-          <button onClick={()=>navTo("book",1)} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"13px 34px",fontSize:16,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book Appointment</button>
-          <button onClick={()=>navTo("book",1)} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.3)",borderRadius:10,padding:"13px 28px",fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>View Services</button>
+          <button onClick={()=>navTo("book",1)}
+            style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"14px 36px",fontSize:16,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
+            Book Appointment
+          </button>
         </div>
       </div>
 
-      {/* Service types - only 2 cards */}
-      <div style={{padding:"48px 20px",maxWidth:900,margin:"0 auto"}}>
+      {/* How We Serve You — 2 cards only */}
+      <div style={{padding:"52px 20px",maxWidth:700,margin:"0 auto"}}>
         <div style={{textAlign:"center",marginBottom:36}}>
           <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:30,color:BK,margin:"0 0 10px"}}>How We Serve You</h2>
-          <p style={{color:G6,fontSize:15}}>Choose what works best for your lifestyle</p>
+          <p style={{color:G6,fontSize:15}}>Choose what works best for you</p>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:600,margin:"0 auto"}}>
-          {[["🏢","In-House","Visit our spa","Enjoy our fully equipped treatment rooms and full service menu"],
-            ["🏨","Outcall","We come to you","Our therapist visits your hotel, home or office with all equipment"]].map(([ic,title,sub,desc])=>(
-            <div key={title} style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:28,textAlign:"center",cursor:"pointer",transition:"box-shadow .2s"}}
-              onClick={()=>navTo("book",1)} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 30px rgba(123,63,110,.15)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-              <div style={{fontSize:40,marginBottom:14}}>{ic}</div>
-              <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:6}}>{title}</div>
-              <div style={{fontSize:12,color:PL,fontWeight:700,marginBottom:8}}>{sub}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+          {[
+            ["🏢","In-House","At Our Studio","Visit our fully equipped spa studio and enjoy our full service menu in a relaxing environment"],
+            ["🏨","Outcall","We Come to You","Our therapist brings everything needed to your hotel room, home, or office"],
+          ].map(([ic,title,sub,desc])=>(
+            <div key={title} onClick={()=>navTo("book",1)}
+              style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"28px 22px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+              onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 8px 30px rgba(123,63,110,.18)`;e.currentTarget.style.borderColor=PL;}}
+              onMouseLeave={e=>{e.currentTarget.style.boxShadow="";e.currentTarget.style.borderColor=G2;}}>
+              <div style={{fontSize:42,marginBottom:14}}>{ic}</div>
+              <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:5}}>{title}</div>
+              <div style={{fontSize:12,color:PL,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:".08em"}}>{sub}</div>
               <div style={{fontSize:13,color:G6,lineHeight:1.7}}>{desc}</div>
             </div>
           ))}
         </div>
       </div>
 
-
-      {/* Therapists - ALL listed with clear availability */}
+      {/* Therapists */}
       {therapists.length>0&&(
         <div style={{background:G1,padding:"52px 20px"}}>
           <div style={{maxWidth:960,margin:"0 auto"}}>
-            <div style={{textAlign:"center",marginBottom:16}}>
+            <div style={{textAlign:"center",marginBottom:32}}>
               <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:30,color:BK,margin:"0 0 8px"}}>Our Therapists</h2>
-              <p style={{color:G6,fontSize:14,marginBottom:28}}>Available for in-house sessions at our locations and outcall visits to your home or hotel</p>
+              <p style={{color:G6,fontSize:14}}>Click a therapist to view their profile and book</p>
             </div>
-            <TherapistGrid therapists={therapists} onBook={(thId)=>{if(thId) setBD&&setBD(d=>({...d,therapistId:thId})); navTo("book",1);}}/>
+            <TherapistGrid therapists={therapists} onBook={(thId)=>{ if(thId) setBD(d=>({...d,therapistId:thId})); navTo("book",1); }}/>
           </div>
         </div>
       )}
 
-      {/* Footer */}
-      <div style={{background:BK,padding:"28px 20px",textAlign:"center"}}>
-        <div style={{color:G4,fontSize:13}}>© 2025 MASSAGE TZ · All rights reserved</div>
-        <button onClick={()=>setModal("login")} style={{marginTop:10,background:"none",border:"none",color:G6,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Staff Login</button>
+      {/* CTA */}
+      <div style={{background:BK,padding:"52px 20px",textAlign:"center"}}>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:WH,margin:"0 0 16px"}}>Ready to relax?</h2>
+        <button onClick={()=>navTo("book",1)}
+          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"13px 34px",fontSize:16,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
+          Book a Session →
+        </button>
+        <div style={{marginTop:20,fontSize:12,color:G6}}>
+          <button onClick={()=>setModal("login")} style={{background:"none",border:"none",color:G6,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Staff Login</button>
+        </div>
       </div>
     </div>
   );
+
 
   // ── BOOKING PORTAL (6 steps) ──
   const BookingPortal = ()=>{
