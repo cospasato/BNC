@@ -1231,9 +1231,17 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
         {/* STEP 1 — Client & Room */}
         {step===1&&(
           <div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-  <input value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="e.g. Jane Mwangi" style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/></div>
-              <div><label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Phone</label><input value={clientPhone} onChange={e=>setClientPhone(e.target.value)} placeholder="+255 7XX…" style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Client Name *</label>
+                <input value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="e.g. Jane Mwangi"
+                  style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Phone</label>
+                <input value={clientPhone} onChange={e=>setClientPhone(e.target.value)} placeholder="+255 7XX…"
+                  style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <Sel label="Therapist" value={form.therapistId} onChange={e=>setForm(f=>({...f,therapistId:e.target.value}))}>
