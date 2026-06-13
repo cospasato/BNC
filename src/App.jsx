@@ -344,49 +344,12 @@ export default function App(){
 
   // ── NAVBAR ──
   const isMobile = typeof window!=="undefined"&&window.innerWidth<640;
-  const NavBar = ()=>(
-    <nav style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",flexShrink:0}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>navTo("land")}>
-        <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <span style={{color:WH,fontWeight:900,fontSize:9,fontFamily:"'Playfair Display',serif",textAlign:"center",lineHeight:1.1,letterSpacing:".02em"}}>MTZ</span>
-        </div>
-        {!isMobile&&<div>
-          <div style={{color:WH,fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",lineHeight:1.2}}>MASSAGE TZ</div>
-          <div style={{color:G4,fontSize:10,letterSpacing:".12em",textTransform:"uppercase"}}>Massage & Outcall</div>
-        </div>}
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
-        {!isMobile&&!customer&&!user&&<button onClick={()=>navTo("book",1)} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.25)",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Book Now</button>}
-        {therapistUser&&!user&&(
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <button onClick={()=>navTo("therapist")} style={{background:"transparent",color:WH,border:`1px solid ${PL}`,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
-              <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>💆</span>
-              {!isMobile&&therapistUser.name}
-            </button>
-            <button onClick={therapistLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
-          </div>
-        )}
-        {customer&&!user&&!therapistUser&&(
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <button onClick={()=>navTo("customer")} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
-              <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{customer.name?.[0]?.toUpperCase()}</span>
-              {!isMobile&&customer.name}
-            </button>
-            <button onClick={custLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
-          </div>
-        )}
-        {!customer&&!user&&<button onClick={()=>setCustModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Login":"My Account"}</button>}
-        {!user&&<button onClick={()=>setModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Staff":"Staff Login"}</button>}
-        
-      </div>
-    </nav>
-  );
 
 
   // ── LANDING PAGE ──
   const Landing = ()=>(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
-      <NavBar/>
+      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
 
       {/* Hero */}
       <div style={{background:`linear-gradient(150deg,${BK} 0%,${PLD} 60%,${PL} 100%)`,padding:"80px 20px 70px",textAlign:"center"}}>
@@ -460,7 +423,7 @@ export default function App(){
   // ── CUSTOMER PORTAL ──
   const CustomerPortal = ()=>(
     <div style={{minHeight:"100vh",background:G1}}>
-      <NavBar/>
+      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
       <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
         {[["appts","My Appointments","📋"],["newappt","Book Session","💆"],["profile","My Profile","👤"]].map(([id,label,icon])=>(
           <button key={id} onClick={()=>{ if(id==="newappt"){setBD(initBD);resetBdText();navTo("book",1);}else setCustTab(id); }}
@@ -490,7 +453,7 @@ export default function App(){
     const SIDEBAR_W = 210;
     return(
       <div style={{minHeight:"100vh",background:G1,display:"flex",flexDirection:"column"}}>
-        <NavBar/>
+        <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
         <div style={{display:"flex",flex:1,position:"relative"}}>
           {/* Desktop sidebar */}
           {isDesktop&&(
@@ -2475,7 +2438,7 @@ function BookingPortal({therapists,rooms,services,pricing,offers,payMethods,cust
 
   return(
     <div style={{minHeight:"100vh",background:G1}}>
-      <NavBar/>
+      <NavBar navTo={navTo} customer={customer} user={null} therapistUser={null} therapistLogout={()=>{}} custLogout={()=>{}} setCustModal={setCustModal} setModal={setModal}/>
       <div style={{maxWidth:680,margin:"0 auto",padding:"24px 16px 60px"}}>
         {/* Progress */}
         {bStep<6&&(
@@ -2782,6 +2745,47 @@ function BookingPortal({therapists,rooms,services,pricing,offers,payMethods,cust
       </div>
     </div>
   );
+}
+
+function NavBar({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal}){
+const isMobile = typeof window!=="undefined" && window.innerWidth<640;
+return (
+  <nav style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",flexShrink:0}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>navTo("land")}>
+      <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <span style={{color:WH,fontWeight:900,fontSize:9,fontFamily:"'Playfair Display',serif",textAlign:"center",lineHeight:1.1,letterSpacing:".02em"}}>MTZ</span>
+      </div>
+      {!isMobile&&<div>
+        <div style={{color:WH,fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",lineHeight:1.2}}>MASSAGE TZ</div>
+        <div style={{color:G4,fontSize:10,letterSpacing:".12em",textTransform:"uppercase"}}>Massage & Outcall</div>
+      </div>}
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      {!isMobile&&!customer&&!user&&<button onClick={()=>navTo("book",1)} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.25)",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Book Now</button>}
+      {therapistUser&&!user&&(
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>navTo("therapist")} style={{background:"transparent",color:WH,border:`1px solid ${PL}`,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+            <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>💆</span>
+            {!isMobile&&therapistUser.name}
+          </button>
+          <button onClick={therapistLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
+        </div>
+      )}
+      {customer&&!user&&!therapistUser&&(
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>navTo("customer")} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+            <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{customer.name?.[0]?.toUpperCase()}</span>
+            {!isMobile&&customer.name}
+          </button>
+          <button onClick={custLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
+        </div>
+      )}
+      {!customer&&!user&&<button onClick={()=>setCustModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Login":"My Account"}</button>}
+      {!user&&<button onClick={()=>setModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Staff":"Staff Login"}</button>}
+      
+    </div>
+  </nav>
+);
 }
 
 // ── Stable booking details form — defined outside App() to prevent remounting ──
