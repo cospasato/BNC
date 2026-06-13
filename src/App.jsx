@@ -2454,7 +2454,7 @@ function PackagesTab({packages,setPackages,services,rooms,pop}){
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <div>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Number of Masseuses</label>
-              <div style={{display:"flex",gap:6"}}>
+              <div style={{display:"flex",gap:6}}>
                 {[1,2,3,4].map(n=>(
                   <button key={n} onClick={()=>setForm(f=>({...f,masseuses:n}))}
                     style={{flex:1,padding:"8px 4px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
