@@ -365,99 +365,12 @@ export default function App(){
 
 
   // ── LANDING PAGE ──
-  const Landing = ()=>(
-    <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
-      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser}
-        therapistLogout={therapistLogout} custLogout={custLogout}
-        setCustModal={setCustModal} setModal={setModal}/>
-
-      {/* ── COMPACT HERO ── */}
-      <div style={{background:`linear-gradient(150deg,${BK} 0%,${PLD} 60%,${PL} 100%)`,
-        padding:"36px 20px 28px",textAlign:"center"}}>
-        <div style={{fontSize:11,color:GOLD,letterSpacing:".25em",textTransform:"uppercase",marginBottom:10,fontWeight:700}}>✦ Professional Massage & Spa ✦</div>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(28px,7vw,48px)",color:WH,margin:"0 0 10px",lineHeight:1.15}}>MASSAGE TZ</h1>
-        <p style={{color:"rgba(255,255,255,.7)",fontSize:15,maxWidth:440,margin:"0 auto 20px",lineHeight:1.7}}>
-          Professional massage at our studio or we come to you
-        </p>
-        {/* How we serve — compact inline */}
-        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:22}}>
-          {[["🏢","In-House","Visit our studio"],["🏨","Outcall","We come to you"]].map(([ic,t,s])=>(
-            <div key={t} onClick={()=>navTo("book",1)}
-              style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,.1)",
-                borderRadius:10,padding:"10px 16px",cursor:"pointer",border:"1px solid rgba(255,255,255,.2)",
-                transition:"background .2s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.18)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}>
-              <span style={{fontSize:22}}>{ic}</span>
-              <div style={{textAlign:"left"}}>
-                <div style={{color:WH,fontWeight:700,fontSize:14}}>{t}</div>
-                <div style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{s}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <button onClick={()=>navTo("book",1)}
-          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
-            padding:"12px 32px",fontSize:15,cursor:"pointer",fontWeight:700,
-            fontFamily:"'Playfair Display',serif"}}>
-          Book Appointment →
-        </button>
-      </div>
-
-      {/* ── THERAPISTS — immediately visible ── */}
-      {therapists.filter(t=>t.active).length>0&&(
-        <div style={{padding:"32px 16px 40px",maxWidth:1000,margin:"0 auto"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
-            <div>
-              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BK,margin:"0 0 4px"}}>Our Therapists</h2>
-              <p style={{color:G6,fontSize:13,margin:0}}>Tap a card to view profile & book</p>
-            </div>
-            <button onClick={()=>navTo("book",1)}
-              style={{background:"none",border:`1px solid ${PL}`,color:PL,borderRadius:8,
-                padding:"7px 16px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              Book Now →
-            </button>
-          </div>
-          <TherapistGrid therapists={therapists} onBook={(thId)=>{ if(thId) setBD(d=>({...d,therapistId:thId})); navTo("book",1); }}/>
-        </div>
-      )}
-
-      {/* ── FOOTER CTA ── */}
-      <div style={{background:BK,padding:"32px 20px",textAlign:"center"}}>
-        <button onClick={()=>navTo("book",1)}
-          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
-            padding:"12px 28px",fontSize:15,cursor:"pointer",fontWeight:700,
-            fontFamily:"'Playfair Display',serif"}}>
-          Book a Session →
-        </button>
-        <div style={{marginTop:14,fontSize:12,color:G6}}>
-          <button onClick={()=>setModal("login")} style={{background:"none",border:"none",color:G4,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Staff Login</button>
-        </div>
-      </div>
-    </div>
-  );
+  // Landing, CustomerPortal, AdminPortal are defined OUTSIDE App() below
 
 
   // ── BOOKING PORTAL (6 steps) ──
 
-  // ── CUSTOMER PORTAL ──
-  const CustomerPortal = ()=>(
-    <div style={{minHeight:"100vh",background:G1}}>
-      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
-      <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
-        {[["appts","My Appointments","📋"],["newappt","Book Session","💆"],["profile","My Profile","👤"]].map(([id,label,icon])=>(
-          <button key={id} onClick={()=>{ if(id==="newappt"){setBD(initBD);resetBdText();navTo("book",1);}else setCustTab(id); }}
-            style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:custTab===id?PL:G6,borderBottom:`3px solid ${custTab===id?PL:"transparent"}`,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:0}}>
-            {icon} {label}
-          </button>
-        ))}
-      </div>
-      <div style={{maxWidth:720,margin:"0 auto",padding:"16px 12px 40px"}}>
-        {custTab==="appts"&&<CustApptsTab customer={customer} appts={custAppts} loading={custLoading} onRefresh={()=>loadCustAppts(customer.id)} onBook={()=>{setBD(initBD);resetBdText();navTo("book",1);}} therapists={therapists}/>}
-        {custTab==="profile"&&<CustProfileTab customer={customer} setCustomer={setCustomer} pop={pop}/>}
-      </div>
-    </div>
-  );
+  // CustomerPortal defined outside App()
 
   // ── ADMIN PORTAL ──
   const ADMIN_TABS = [
@@ -466,87 +379,13 @@ export default function App(){
     ["offers","Offers","🏷️"],["expenses","Expenses","💸"],["reports","Reports","📈"],
     ["packages","Packages","🎁"],["payments","Payments","💳"],["commission","Commission","💵"],["staff","Staff","👥"]
   ];
+  // AdminPortal defined outside App()
 
-  const AdminPortal = ()=>{
-    const [menuOpen,setMenuOpen]=useState(false);
-    const isDesktop = typeof window!=="undefined" && window.innerWidth >= 900;
-    const SIDEBAR_W = 210;
-    return(
-      <div style={{minHeight:"100vh",background:G1,display:"flex",flexDirection:"column"}}>
-        <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
-        <div style={{display:"flex",flex:1,position:"relative"}}>
-          {/* Desktop sidebar */}
-          {isDesktop&&(
-            <div style={{width:SIDEBAR_W,flexShrink:0,background:BK,minHeight:"100%",position:"sticky",top:0,height:"100vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:2,padding:"12px 0"}}>
-              {ADMIN_TABS.map(([id,label,icon])=>(
-                <button key={id} onClick={()=>setATab(id)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"11px 20px",border:"none",background:aTab===id?"rgba(123,63,110,.3)":"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:aTab===id?PL:G4,fontFamily:"inherit",textAlign:"left",borderLeft:`3px solid ${aTab===id?PL:"transparent"}`,transition:"all .15s"}}>
-                  <span style={{fontSize:16}}>{icon}</span>{label}
-                </button>
-              ))}
-              <div style={{flex:1}}/>
-              <button onClick={logout} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 20px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:ER,fontFamily:"inherit",textAlign:"left"}}>
-                <span>🚪</span>Logout
-              </button>
-            </div>
-          )}
-
-          {/* Mobile: hamburger + overlay drawer */}
-          {!isDesktop&&(
-            <>
-              <div style={{position:"fixed",top:62,left:0,right:0,background:BK,zIndex:50,display:"flex",alignItems:"center",padding:"0 14px",height:46,gap:12}}>
-                <button onClick={()=>setMenuOpen(v=>!v)}
-                  style={{background:"none",border:`1px solid rgba(255,255,255,.2)`,color:WH,borderRadius:7,padding:"5px 11px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700}}>
-                  ☰ Menu
-                </button>
-                <span style={{color:GOLD,fontSize:13,fontWeight:700}}>{ADMIN_TABS.find(t=>t[0]===aTab)?.[1]||"Dashboard"}</span>
-              </div>
-              {menuOpen&&(
-                <>
-                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:100}} onClick={()=>setMenuOpen(false)}/>
-                  <div style={{position:"fixed",top:108,left:0,bottom:0,width:240,background:BK,zIndex:101,overflowY:"auto",padding:"8px 0",display:"flex",flexDirection:"column"}}>
-                    {ADMIN_TABS.map(([id,label,icon])=>(
-                      <button key={id} onClick={()=>{setATab(id);setMenuOpen(false);}}
-                        style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",border:"none",background:aTab===id?"rgba(123,63,110,.3)":"transparent",cursor:"pointer",fontSize:14,fontWeight:700,color:aTab===id?PL:G4,fontFamily:"inherit",textAlign:"left",borderLeft:`3px solid ${aTab===id?PL:"transparent"}`}}>
-                        <span style={{fontSize:18}}>{icon}</span>{label}
-                      </button>
-                    ))}
-                    <div style={{flex:1}}/>
-                    <button onClick={logout} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",border:"none",background:"transparent",cursor:"pointer",fontSize:14,fontWeight:700,color:ER,fontFamily:"inherit",textAlign:"left"}}>
-                      <span>🚪</span>Logout
-                    </button>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {/* Main content */}
-          <div style={{flex:1,padding:isDesktop?"28px 28px 60px":`${46+16}px 14px 60px`,paddingTop:isDesktop?"24px":"70px",maxWidth:isDesktop?900:"100%",overflowX:"hidden"}}>
-            {loading&&<div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
-            {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop}/>}
-            {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user} offers={offers}/>}
-            {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user}/>}
-            {!loading&&aTab==="therapists"&&<TherapistsTab therapists={therapists} setTherapists={setTherapists} pop={pop}/>}
-            {!loading&&aTab==="rooms"&&<RoomsTab rooms={rooms} setRooms={setRooms} pop={pop}/>}
-            {!loading&&aTab==="services"&&<ServicesTab services={services} setServices={setServices} pricing={pricing} setPricing={setPricing} rooms={rooms} pop={pop}/>}
-            {!loading&&aTab==="offers"&&<OffersTab offers={offers} setOffers={setOffers} pop={pop}/>}
-            {!loading&&aTab==="expenses"&&<ExpensesTab expenses={expenses} setExpenses={setExpenses} pop={pop} user={user}/>}
-            {!loading&&aTab==="reports"&&<ReportsTab appts={appts} reception={reception} expenses={expenses} therapists={therapists} services={services} payMethods={payMethods}/>}
-            {!loading&&aTab==="packages"&&<PackagesTab packages={packages} setPackages={setPackages} services={services} rooms={rooms} pop={pop}/>}
-            {!loading&&aTab==="payments"&&<PaymentsTab payMethods={payMethods} setPayMethods={setPayMethods} pop={pop}/>}
-            {!loading&&aTab==="commission"&&<CommissionTab therapists={therapists} setTherapists={setTherapists} staff={staff} setStaff={setStaff} user={user} pop={pop}/>}
-            {!loading&&aTab==="staff"&&user?.role==="Admin"&&<StaffTab staff={staff} setStaff={setStaff} pop={pop} currentUser={user}/>}
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // ── ROOT RENDER ──
   return(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",minHeight:"100vh",background:G1}}>
-      {view==="land"      &&<Landing/>}
+      {view==="land"&&<Landing navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} therapists={therapists} setBD={setBD} setBdName={()=>{}} initBD={initBD} resetBdText={resetBdText}/>}
       {view==="book"&&<BookingPortal
         therapists={therapists} rooms={rooms} services={services} pricing={pricing}
         offers={offers} payMethods={payMethods} customer={customer} packages={packages}
@@ -562,8 +401,8 @@ export default function App(){
         confirmBooking={confirmBooking} initBD={initBD} resetBdText={resetBdText}
         modal={modal} setModal={setModal}
       />}
-      {view==="customer"  &&customer&&<CustomerPortal/>}
-      {view==="admin"     &&user&&<AdminPortal/>}
+      {view==="customer"&&customer&&<CustomerPortal navTo={navTo} customer={customer} setCustomer={setCustomer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} custTab={custTab} setCustTab={setCustTab} custAppts={custAppts} custLoading={custLoading} loadCustAppts={loadCustAppts} therapists={therapists} setBD={setBD} initBD={initBD} resetBdText={resetBdText} pop={pop}/>}
+      {view==="admin"&&user&&<AdminPortal navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} aTab={aTab} setATab={setATab} loading={loading} logout={logout} appts={appts} setAppts={setAppts} reception={reception} setReception={setReception} therapists={therapists} setTherapists={setTherapists} rooms={rooms} setRooms={setRooms} services={services} setServices={setServices} pricing={pricing} setPricing={setPricing} offers={offers} setOffers={setOffers} expenses={expenses} setExpenses={setExpenses} payMethods={payMethods} setPayMethods={setPayMethods} packages={packages} setPackages={setPackages} staff={staff} setStaff={setStaff} pop={pop} ADMIN_TABS={ADMIN_TABS}/>}
       {view==="payment_complete"&&<PaymentCompletePage customer={customer} navTo={navTo} pop={pop}/>}
       {view==="therapist" &&therapistUser&&<TherapistPortal therapistUser={therapistUser} setTherapistUser={setTherapistUser} therapistLogout={therapistLogout} pricing={pricing} services={services} rooms={rooms} pop={pop}/>}
       {/* Modals */}
@@ -2688,6 +2527,143 @@ return (
   </nav>
 );
 }
+
+function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,therapists,setBD,initBD,resetBdText}){
+  return(
+    <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser}
+        therapistLogout={therapistLogout} custLogout={custLogout}
+        setCustModal={setCustModal} setModal={setModal}/>
+      <div style={{background:`linear-gradient(150deg,${BK} 0%,${PLD} 60%,${PL} 100%)`,padding:"36px 20px 28px",textAlign:"center"}}>
+        <div style={{fontSize:11,color:GOLD,letterSpacing:".25em",textTransform:"uppercase",marginBottom:10,fontWeight:700}}>✦ Professional Massage & Spa ✦</div>
+        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(28px,7vw,48px)",color:WH,margin:"0 0 10px",lineHeight:1.15}}>MASSAGE TZ</h1>
+        <p style={{color:"rgba(255,255,255,.7)",fontSize:15,maxWidth:440,margin:"0 auto 20px",lineHeight:1.7}}>Professional massage at our studio or we come to you</p>
+        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:22}}>
+          {[["🏢","In-House","Visit our studio"],["🏨","Outcall","We come to you"]].map(([ic,t,s])=>(
+            <div key={t} onClick={()=>navTo("book",1)}
+              style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,.1)",borderRadius:10,padding:"10px 16px",cursor:"pointer",border:"1px solid rgba(255,255,255,.2)",transition:"background .2s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.18)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}>
+              <span style={{fontSize:22}}>{ic}</span>
+              <div style={{textAlign:"left"}}>
+                <div style={{color:WH,fontWeight:700,fontSize:14}}>{t}</div>
+                <div style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{s}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>navTo("book",1)} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 32px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
+          Book Appointment →
+        </button>
+      </div>
+      {therapists.filter(t=>t.active).length>0&&(
+        <div style={{padding:"32px 16px 40px",maxWidth:1000,margin:"0 auto"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+            <div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BK,margin:"0 0 4px"}}>Our Therapists</h2>
+              <p style={{color:G6,fontSize:13,margin:0}}>Tap a card to view profile & book</p>
+            </div>
+            <button onClick={()=>navTo("book",1)} style={{background:"none",border:`1px solid ${PL}`,color:PL,borderRadius:8,padding:"7px 16px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Book Now →</button>
+          </div>
+          <TherapistGrid therapists={therapists} onBook={(thId)=>{ if(thId) setBD(d=>({...d,therapistId:thId})); navTo("book",1); }}/>
+        </div>
+      )}
+      <div style={{background:BK,padding:"32px 20px",textAlign:"center"}}>
+        <button onClick={()=>navTo("book",1)} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 28px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book a Session →</button>
+        <div style={{marginTop:14}}>
+          <button onClick={()=>setModal("login")} style={{background:"none",border:"none",color:G4,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Staff Login</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerPortal({navTo,customer,setCustomer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,custTab,setCustTab,custAppts,custLoading,loadCustAppts,therapists,setBD,initBD,resetBdText,pop}){
+  return(
+    <div style={{minHeight:"100vh",background:G1}}>
+      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
+      <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
+        {[["appts","My Appointments","📋"],["newappt","Book Session","💆"],["profile","My Profile","👤"]].map(([id,label,icon])=>(
+          <button key={id} onClick={()=>{ if(id==="newappt"){setBD(initBD);resetBdText();navTo("book",1);}else setCustTab(id); }}
+            style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:custTab===id?PL:G6,borderBottom:`3px solid ${custTab===id?PL:"transparent"}`,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:0}}>
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+      <div style={{maxWidth:720,margin:"0 auto",padding:"16px 12px 40px"}}>
+        {custTab==="appts"&&<CustApptsTab customer={customer} appts={custAppts} loading={custLoading} onRefresh={()=>loadCustAppts(customer.id)} onBook={()=>{setBD(initBD);resetBdText();navTo("book",1);}} therapists={therapists}/>}
+        {custTab==="profile"&&<CustProfileTab customer={customer} setCustomer={setCustomer} pop={pop}/>}
+      </div>
+    </div>
+  );
+}
+
+function AdminPortal({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,aTab,setATab,loading,logout,appts,setAppts,reception,setReception,therapists,setTherapists,rooms,setRooms,services,setServices,pricing,setPricing,offers,setOffers,expenses,setExpenses,payMethods,setPayMethods,packages,setPackages,staff,setStaff,pop,ADMIN_TABS}){
+  const [menuOpen,setMenuOpen] = useState(false);
+  const isDesktop = typeof window!=="undefined" && window.innerWidth >= 900;
+  const SIDEBAR_W = 210;
+  return(
+    <div style={{minHeight:"100vh",background:G1,display:"flex",flexDirection:"column"}}>
+      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
+      <div style={{display:"flex",flex:1,position:"relative"}}>
+        {isDesktop&&(
+          <div style={{width:SIDEBAR_W,flexShrink:0,background:BK,minHeight:"100%",position:"sticky",top:0,height:"100vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:2,padding:"12px 0"}}>
+            {ADMIN_TABS.map(([id,label,icon])=>(
+              <button key={id} onClick={()=>setATab(id)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"11px 20px",border:"none",background:aTab===id?"rgba(123,63,110,.3)":"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:aTab===id?PL:G4,fontFamily:"inherit",textAlign:"left",borderLeft:`3px solid ${aTab===id?PL:"transparent"}`,transition:"all .15s"}}>
+                <span style={{fontSize:16}}>{icon}</span>{label}
+              </button>
+            ))}
+            <div style={{flex:1}}/>
+            <button onClick={logout} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 20px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:ER,fontFamily:"inherit",textAlign:"left"}}>
+              <span>🚪</span>Logout
+            </button>
+          </div>
+        )}
+        {!isDesktop&&(
+          <>
+            <div style={{position:"fixed",top:62,left:0,right:0,background:BK,zIndex:50,display:"flex",alignItems:"center",padding:"0 14px",height:46,gap:12}}>
+              <button onClick={()=>setMenuOpen(v=>!v)} style={{background:"none",border:"1px solid rgba(255,255,255,.2)",color:WH,borderRadius:7,padding:"5px 11px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700}}>☰ Menu</button>
+              <span style={{color:GOLD,fontSize:13,fontWeight:700}}>{ADMIN_TABS.find(t=>t[0]===aTab)?.[1]||"Dashboard"}</span>
+            </div>
+            {menuOpen&&(
+              <>
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:100}} onClick={()=>setMenuOpen(false)}/>
+                <div style={{position:"fixed",top:108,left:0,bottom:0,width:240,background:BK,zIndex:101,overflowY:"auto",padding:"8px 0",display:"flex",flexDirection:"column"}}>
+                  {ADMIN_TABS.map(([id,label,icon])=>(
+                    <button key={id} onClick={()=>{setATab(id);setMenuOpen(false);}}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",border:"none",background:aTab===id?"rgba(123,63,110,.3)":"transparent",cursor:"pointer",fontSize:14,fontWeight:700,color:aTab===id?PL:G4,fontFamily:"inherit",textAlign:"left",borderLeft:`3px solid ${aTab===id?PL:"transparent"}`}}>
+                      <span style={{fontSize:18}}>{icon}</span>{label}
+                    </button>
+                  ))}
+                  <div style={{flex:1}}/>
+                  <button onClick={logout} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",border:"none",background:"transparent",cursor:"pointer",fontSize:14,fontWeight:700,color:ER,fontFamily:"inherit",textAlign:"left"}}><span>🚪</span>Logout</button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+        <div style={{flex:1,padding:isDesktop?"28px 28px 60px":`${46+16}px 14px 60px`,paddingTop:isDesktop?"24px":"70px",maxWidth:isDesktop?900:"100%",overflowX:"hidden"}}>
+          {loading&&<div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
+          {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop}/>}
+          {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user} offers={offers}/>}
+          {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user}/>}
+          {!loading&&aTab==="therapists"&&<TherapistsTab therapists={therapists} setTherapists={setTherapists} pop={pop}/>}
+          {!loading&&aTab==="rooms"&&<RoomsTab rooms={rooms} setRooms={setRooms} pop={pop}/>}
+          {!loading&&aTab==="services"&&<ServicesTab services={services} setServices={setServices} pricing={pricing} setPricing={setPricing} rooms={rooms} pop={pop}/>}
+          {!loading&&aTab==="offers"&&<OffersTab offers={offers} setOffers={setOffers} pop={pop}/>}
+          {!loading&&aTab==="expenses"&&<ExpensesTab expenses={expenses} setExpenses={setExpenses} pop={pop} user={user}/>}
+          {!loading&&aTab==="reports"&&<ReportsTab appts={appts} reception={reception} expenses={expenses} therapists={therapists} services={services} payMethods={payMethods}/>}
+          {!loading&&aTab==="packages"&&<PackagesTab packages={packages} setPackages={setPackages} services={services} rooms={rooms} pop={pop}/>}
+          {!loading&&aTab==="payments"&&<PaymentsTab payMethods={payMethods} setPayMethods={setPayMethods} pop={pop}/>}
+          {!loading&&aTab==="commission"&&<CommissionTab therapists={therapists} setTherapists={setTherapists} staff={staff} setStaff={setStaff} user={user} pop={pop}/>}
+          {!loading&&aTab==="staff"&&user?.role==="Admin"&&<StaffTab staff={staff} setStaff={setStaff} pop={pop} currentUser={user}/>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ── Step 2: Therapist picker — must be outside render to use hooks ──
 function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
