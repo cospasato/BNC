@@ -317,7 +317,7 @@ export default function App(){
             method:"POST", headers:{"Content-Type":"application/json"},
             body: JSON.stringify({
               appointment_id: created.id,
-              amount:         bTotal,
+              amount:         bD.serviceType==="outcall" ? Math.round(bTotal*(bD.advancePct||10)/100) : bTotal,
               customer_name:  cName,
               customer_email: cEmail,
               customer_phone: cPhone,
@@ -349,69 +349,71 @@ export default function App(){
   // ── LANDING PAGE ──
   const Landing = ()=>(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
-      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
+      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser}
+        therapistLogout={therapistLogout} custLogout={custLogout}
+        setCustModal={setCustModal} setModal={setModal}/>
 
-      {/* Hero */}
-      <div style={{background:`linear-gradient(150deg,${BK} 0%,${PLD} 60%,${PL} 100%)`,padding:"80px 20px 70px",textAlign:"center"}}>
-        <div style={{fontSize:11,color:GOLD,letterSpacing:".25em",textTransform:"uppercase",marginBottom:16,fontWeight:700}}>✦ Professional Spa & Massage ✦</div>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(36px,8vw,58px)",color:WH,margin:"0 0 18px",lineHeight:1.15}}>MASSAGE TZ</h1>
-        <p style={{color:"rgba(255,255,255,.75)",fontSize:17,maxWidth:500,margin:"0 auto 36px",lineHeight:1.8}}>
-          Professional massage & wellness services — at our studio or we come to you
+      {/* ── COMPACT HERO ── */}
+      <div style={{background:`linear-gradient(150deg,${BK} 0%,${PLD} 60%,${PL} 100%)`,
+        padding:"36px 20px 28px",textAlign:"center"}}>
+        <div style={{fontSize:11,color:GOLD,letterSpacing:".25em",textTransform:"uppercase",marginBottom:10,fontWeight:700}}>✦ Professional Massage & Spa ✦</div>
+        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(28px,7vw,48px)",color:WH,margin:"0 0 10px",lineHeight:1.15}}>MASSAGE TZ</h1>
+        <p style={{color:"rgba(255,255,255,.7)",fontSize:15,maxWidth:440,margin:"0 auto 20px",lineHeight:1.7}}>
+          Professional massage at our studio or we come to you
         </p>
-        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-          <button onClick={()=>navTo("book",1)}
-            style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"14px 36px",fontSize:16,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
-            Book Appointment
-          </button>
-        </div>
-      </div>
-
-      {/* How We Serve You — 2 cards only */}
-      <div style={{padding:"52px 20px",maxWidth:700,margin:"0 auto"}}>
-        <div style={{textAlign:"center",marginBottom:36}}>
-          <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:30,color:BK,margin:"0 0 10px"}}>How We Serve You</h2>
-          <p style={{color:G6,fontSize:15}}>Choose what works best for you</p>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
-          {[
-            ["🏢","In-House","At Our Studio","Visit our fully equipped spa studio and enjoy our full service menu in a relaxing environment"],
-            ["🏨","Outcall","We Come to You","Our therapist brings everything needed to your hotel room, home, or office"],
-          ].map(([ic,title,sub,desc])=>(
-            <div key={title} onClick={()=>navTo("book",1)}
-              style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"28px 22px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
-              onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 8px 30px rgba(123,63,110,.18)`;e.currentTarget.style.borderColor=PL;}}
-              onMouseLeave={e=>{e.currentTarget.style.boxShadow="";e.currentTarget.style.borderColor=G2;}}>
-              <div style={{fontSize:42,marginBottom:14}}>{ic}</div>
-              <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:5}}>{title}</div>
-              <div style={{fontSize:12,color:PL,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:".08em"}}>{sub}</div>
-              <div style={{fontSize:13,color:G6,lineHeight:1.7}}>{desc}</div>
+        {/* How we serve — compact inline */}
+        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:22}}>
+          {[["🏢","In-House","Visit our studio"],["🏨","Outcall","We come to you"]].map(([ic,t,s])=>(
+            <div key={t} onClick={()=>navTo("book",1)}
+              style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,.1)",
+                borderRadius:10,padding:"10px 16px",cursor:"pointer",border:"1px solid rgba(255,255,255,.2)",
+                transition:"background .2s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.18)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}>
+              <span style={{fontSize:22}}>{ic}</span>
+              <div style={{textAlign:"left"}}>
+                <div style={{color:WH,fontWeight:700,fontSize:14}}>{t}</div>
+                <div style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{s}</div>
+              </div>
             </div>
           ))}
         </div>
+        <button onClick={()=>navTo("book",1)}
+          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
+            padding:"12px 32px",fontSize:15,cursor:"pointer",fontWeight:700,
+            fontFamily:"'Playfair Display',serif"}}>
+          Book Appointment →
+        </button>
       </div>
 
-      {/* Therapists */}
-      {therapists.length>0&&(
-        <div style={{background:G1,padding:"52px 20px"}}>
-          <div style={{maxWidth:960,margin:"0 auto"}}>
-            <div style={{textAlign:"center",marginBottom:32}}>
-              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:30,color:BK,margin:"0 0 8px"}}>Our Therapists</h2>
-              <p style={{color:G6,fontSize:14}}>Click a therapist to view their profile and book</p>
+      {/* ── THERAPISTS — immediately visible ── */}
+      {therapists.filter(t=>t.active).length>0&&(
+        <div style={{padding:"32px 16px 40px",maxWidth:1000,margin:"0 auto"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+            <div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BK,margin:"0 0 4px"}}>Our Therapists</h2>
+              <p style={{color:G6,fontSize:13,margin:0}}>Tap a card to view profile & book</p>
             </div>
-            <TherapistGrid therapists={therapists} onBook={(thId)=>{ if(thId) setBD(d=>({...d,therapistId:thId})); navTo("book",1); }}/>
+            <button onClick={()=>navTo("book",1)}
+              style={{background:"none",border:`1px solid ${PL}`,color:PL,borderRadius:8,
+                padding:"7px 16px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Book Now →
+            </button>
           </div>
+          <TherapistGrid therapists={therapists} onBook={(thId)=>{ if(thId) setBD(d=>({...d,therapistId:thId})); navTo("book",1); }}/>
         </div>
       )}
 
-      {/* CTA */}
-      <div style={{background:BK,padding:"52px 20px",textAlign:"center"}}>
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:WH,margin:"0 0 16px"}}>Ready to relax?</h2>
+      {/* ── FOOTER CTA ── */}
+      <div style={{background:BK,padding:"32px 20px",textAlign:"center"}}>
         <button onClick={()=>navTo("book",1)}
-          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"13px 34px",fontSize:16,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
+          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
+            padding:"12px 28px",fontSize:15,cursor:"pointer",fontWeight:700,
+            fontFamily:"'Playfair Display',serif"}}>
           Book a Session →
         </button>
-        <div style={{marginTop:20,fontSize:12,color:G6}}>
-          <button onClick={()=>setModal("login")} style={{background:"none",border:"none",color:G6,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Staff Login</button>
+        <div style={{marginTop:14,fontSize:12,color:G6}}>
+          <button onClick={()=>setModal("login")} style={{background:"none",border:"none",color:G4,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Staff Login</button>
         </div>
       </div>
     </div>
@@ -2493,6 +2495,129 @@ return (
 );
 }
 
+// ── Step 2: Therapist picker — must be outside render to use hooks ──
+function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
+  const [viewTh,     setViewTh]     = useState(null);
+  const [thPhotoIdx, setThPhotoIdx] = useState(0);
+  return (
+  <div>
+    <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Therapist</h2>
+    <p style={{color:G6,fontSize:14,marginBottom:20}}>Select a therapist or let us assign one</p>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
+      {/* Any therapist option */}
+      <div onClick={()=>setBD(d=>({...d,therapistId:""}))}
+        style={{border:`2px solid ${!bD.therapistId?PL:G2}`,borderRadius:12,padding:"16px 12px",cursor:"pointer",background:!bD.therapistId?PLF:WH,textAlign:"center",transition:"all .15s"}}>
+        <div style={{width:60,height:60,borderRadius:"50%",background:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 10px"}}>🎲</div>
+        <div style={{fontWeight:700,fontSize:14,color:!bD.therapistId?PL:BK}}>Any Available</div>
+        <div style={{fontSize:11,color:G6,marginTop:4}}>We'll assign the best match</div>
+      </div>
+      {locTherapists.map(th=>{
+        const photos=[...(th.photos||[]),th.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+        const sel=bD.therapistId===th.id;
+        return(
+        <div key={th.id} style={{border:`2px solid ${sel?PL:G2}`,borderRadius:12,overflow:"hidden",background:sel?PLF:WH,transition:"all .15s",display:"flex",flexDirection:"column"}}>
+          <div onClick={()=>setBD(d=>({...d,therapistId:th.id}))} style={{cursor:"pointer"}}>
+            {photos[0]?(
+              <div style={{paddingTop:"85%",position:"relative",background:G1}}>
+                <img src={photos[0]} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+                {sel&&<div style={{position:"absolute",top:6,right:6,background:PL,color:WH,borderRadius:99,fontSize:10,fontWeight:700,padding:"2px 7px"}}>✓</div>}
+              </div>
+            ):(
+              <div style={{paddingTop:"85%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:WH,fontFamily:"'Playfair Display',serif"}}>{th.name?.[0]}</div>
+              </div>
+            )}
+          </div>
+          <div style={{padding:"8px 10px 10px",flex:1,display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{fontWeight:700,fontSize:13,color:BK}}>{th.name}</div>
+            {th.specialties?.slice(0,2).map((s,i)=><span key={i} style={{fontSize:10,color:G6,lineHeight:1.4}}>{s}</span>)}
+            <div style={{display:"flex",gap:5,marginTop:"auto"}}>
+              <button onClick={()=>setBD(d=>({...d,therapistId:th.id}))}
+                style={{flex:1,padding:"5px 0",fontSize:11,fontWeight:700,borderRadius:6,
+                  border:`1px solid ${sel?PL:G2}`,background:sel?PL:WH,color:sel?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
+                {sel?"✓ Selected":"Select"}
+              </button>
+              <button onClick={()=>{setViewTh(th);setThPhotoIdx(0);}}
+                style={{flex:1,padding:"5px 0",fontSize:11,fontWeight:700,borderRadius:6,
+                  border:`1px solid ${PL}`,background:PLF,color:PL,cursor:"pointer",fontFamily:"inherit"}}>
+                View
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })}
+      {locTherapists.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1"}}>No therapists available.</div>}
+    </div>
+    <div style={{display:"flex",gap:10}}>
+      <Btn v="ghost" onClick={()=>goStep(1)}>← Back</Btn>
+      <Btn onClick={()=>goStep(bD.serviceType==="outcall"?4:3)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+    </div>
+
+    {/* Therapist profile popup */}
+    {viewTh&&(()=>{
+      const vPhotos=[...(viewTh.photos||[]),viewTh.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+      const avColor={available:OK,outcall_only:WA,unavailable:ER};
+      const avLabel={available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"};
+      return(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"16px 12px",overflowY:"auto"}}
+        onClick={e=>e.target===e.currentTarget&&setViewTh(null)}>
+        <div style={{background:WH,borderRadius:20,width:"100%",maxWidth:520,boxShadow:"0 20px 60px rgba(0,0,0,.3)",overflow:"hidden"}}>
+          <div style={{paddingTop:"70%",position:"relative",background:vPhotos[0]?BK:`linear-gradient(135deg,${PLD},${PL})`}}>
+            {vPhotos.length>0
+              ? vPhotos.map((src,i)=>(
+                  <img key={i} src={src} alt={viewTh.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top",opacity:i===thPhotoIdx?1:0,transition:"opacity .3s"}}/>
+                ))
+              : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:72,color:"rgba(255,255,255,.3)",fontFamily:"'Playfair Display',serif"}}>{viewTh.name[0]}</div>
+            }
+            <div style={{position:"absolute",bottom:0,left:0,right:0,height:"45%",background:"linear-gradient(to top,rgba(0,0,0,.75),transparent)",pointerEvents:"none"}}/>
+            <button onClick={()=>setViewTh(null)} style={{position:"absolute",top:12,right:12,width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>×</button>
+            {vPhotos.length>1&&(
+              <>
+                <button onClick={()=>setThPhotoIdx(i=>(i-1+vPhotos.length)%vPhotos.length)} style={{position:"absolute",left:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                <button onClick={()=>setThPhotoIdx(i=>(i+1)%vPhotos.length)} style={{position:"absolute",right:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                <div style={{position:"absolute",bottom:54,left:0,right:0,display:"flex",gap:4,justifyContent:"center"}}>
+                  {vPhotos.map((_,i)=><div key={i} onClick={()=>setThPhotoIdx(i)} style={{width:i===thPhotoIdx?14:5,height:5,borderRadius:99,background:i===thPhotoIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",transition:"all .2s",cursor:"pointer"}}/>)}
+                </div>
+              </>
+            )}
+            <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 18px"}}>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:WH,margin:"0 0 4px"}}>{viewTh.name}</h2>
+              {viewTh.specialties?.length>0&&<div style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{viewTh.specialties.join(" · ")}</div>}
+            </div>
+          </div>
+          {vPhotos.length>1&&(
+            <div style={{display:"flex",gap:6,padding:"8px 12px",background:G1,overflowX:"auto"}}>
+              {vPhotos.map((src,i)=>(
+                <img key={i} src={src} onClick={()=>setThPhotoIdx(i)} alt="" style={{width:56,height:44,objectFit:"cover",objectPosition:"top",borderRadius:6,cursor:"pointer",flexShrink:0,border:`2px solid ${i===thPhotoIdx?PL:"transparent"}`,opacity:i===thPhotoIdx?1:.6,transition:"all .15s"}}/>
+              ))}
+            </div>
+          )}
+          <div style={{padding:"18px 20px 24px"}}>
+            <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+              {viewTh.availability&&<span style={{background:`${avColor[viewTh.availability]||G4}18`,color:avColor[viewTh.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{avLabel[viewTh.availability]||viewTh.availability}</span>}
+              <span style={{background:OKB,color:OK,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
+              {viewTh.outcall&&<span style={{background:PLF,color:PL,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏠 Outcall</span>}
+            </div>
+            {viewTh.bio&&<p style={{fontSize:14,color:G6,lineHeight:1.8,marginBottom:16}}>{viewTh.bio}</p>}
+            {viewTh.phone&&<div style={{fontSize:13,color:G6,marginBottom:16}}>📞 {viewTh.phone}</div>}
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setViewTh(null)} style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${G2}`,background:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:G6}}>Close</button>
+              <button onClick={()=>{setBD(d=>({...d,therapistId:viewTh.id}));setViewTh(null);}}
+                style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:bD.therapistId===viewTh.id?OK:PL,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                {bD.therapistId===viewTh.id?"✓ Selected":"Select & Book"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      );
+    })()}
+  </div>
+  );
+}
+
+
 function BookingPortal({therapists,rooms,services,pricing,offers,payMethods,customer,
 bD,setBD,bStep,setBStep,bBase,bDisc,bTotal,bRoomId,
 getPrice,goStep,navTo,pop,custModal,setCustModal,
@@ -2577,148 +2702,15 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
         )}
 
         {/* Step 2 — Therapist */}
-        {bStep===2&&(()=>{
-          const [viewTh, setViewTh] = useState(null);
-          const [thPhotoIdx, setThPhotoIdx] = useState(0);
-          return(
-          <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Therapist</h2>
-            <p style={{color:G6,fontSize:14,marginBottom:20}}>Select a therapist or let us assign one</p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
-              {/* Any therapist option */}
-              <div onClick={()=>setBD(d=>({...d,therapistId:""}))}
-                style={{border:`2px solid ${!bD.therapistId?PL:G2}`,borderRadius:12,padding:"16px 12px",cursor:"pointer",background:!bD.therapistId?PLF:WH,textAlign:"center",transition:"all .15s"}}>
-                <div style={{width:60,height:60,borderRadius:"50%",background:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 10px"}}>🎲</div>
-                <div style={{fontWeight:700,fontSize:14,color:!bD.therapistId?PL:BK}}>Any Available</div>
-                <div style={{fontSize:11,color:G6,marginTop:4}}>We'll assign the best match</div>
-              </div>
-              {locTherapists.map(th=>{
-                const photos=[...(th.photos||[]),th.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
-                const sel=bD.therapistId===th.id;
-                return(
-                <div key={th.id} style={{border:`2px solid ${sel?PL:G2}`,borderRadius:12,overflow:"hidden",background:sel?PLF:WH,transition:"all .15s",display:"flex",flexDirection:"column"}}>
-                  {/* Photo — click to select */}
-                  <div onClick={()=>setBD(d=>({...d,therapistId:th.id}))} style={{cursor:"pointer"}}>
-                    {photos[0]?(
-                      <div style={{paddingTop:"85%",position:"relative",background:G1}}>
-                        <img src={photos[0]} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
-                        {sel&&<div style={{position:"absolute",top:6,right:6,background:PL,color:WH,borderRadius:99,fontSize:10,fontWeight:700,padding:"2px 7px"}}>✓</div>}
-                      </div>
-                    ):(
-                      <div style={{paddingTop:"85%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
-                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:WH,fontFamily:"'Playfair Display',serif"}}>{th.name?.[0]}</div>
-                      </div>
-                    )}
-                  </div>
-                  <div style={{padding:"8px 10px 10px",flex:1,display:"flex",flexDirection:"column",gap:6}}>
-                    <div style={{fontWeight:700,fontSize:13,color:BK}}>{th.name}</div>
-                    {th.specialties?.slice(0,2).map((s,i)=><span key={i} style={{fontSize:10,color:G6,lineHeight:1.4}}>{s}</span>)}
-                    <div style={{display:"flex",gap:5,marginTop:"auto"}}>
-                      <button onClick={()=>setBD(d=>({...d,therapistId:th.id}))}
-                        style={{flex:1,padding:"5px 0",fontSize:11,fontWeight:700,borderRadius:6,
-                          border:`1px solid ${sel?PL:G2}`,background:sel?PL:WH,
-                          color:sel?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
-                        {sel?"✓ Selected":"Select"}
-                      </button>
-                      <button onClick={()=>{setViewTh(th);setThPhotoIdx(0);}}
-                        style={{flex:1,padding:"5px 0",fontSize:11,fontWeight:700,borderRadius:6,
-                          border:`1px solid ${PL}`,background:PLF,
-                          color:PL,cursor:"pointer",fontFamily:"inherit"}}>
-                        View
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                );
-              })}
-              {locTherapists.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1"}}>No {bD.serviceType==="outcall"?"outcall-available ":""}therapists found.</div>}
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <Btn v="ghost" onClick={()=>goStep(1)}>← Back</Btn>
-              <Btn onClick={()=>goStep(bD.serviceType==="outcall"?4:3)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-            </div>
+        {bStep===2&&(
+          <TherapistPickerStep
+            locTherapists={locTherapists}
+            bD={bD} setBD={setBD}
+            goStep={goStep}
+          />
+        )}
 
-            {/* Therapist profile popup */}
-            {viewTh&&(()=>{
-              const vPhotos=[...(viewTh.photos||[]),viewTh.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
-              const avColor={available:OK,outcall_only:WA,unavailable:ER};
-              const avLabel={available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"};
-              return(
-              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"16px 12px",overflowY:"auto"}}
-                onClick={e=>e.target===e.currentTarget&&setViewTh(null)}>
-                <div style={{background:WH,borderRadius:20,width:"100%",maxWidth:520,boxShadow:"0 20px 60px rgba(0,0,0,.3)",overflow:"hidden"}}>
-                  {/* Photo gallery */}
-                  <div style={{paddingTop:"70%",position:"relative",background:vPhotos[0]?BK:`linear-gradient(135deg,${PLD},${PL})`}}>
-                    {vPhotos.length>0
-                      ? vPhotos.map((src,i)=>(
-                          <img key={i} src={src} alt={viewTh.name}
-                            style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top",opacity:i===thPhotoIdx?1:0,transition:"opacity .3s"}}/>
-                        ))
-                      : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:72,color:"rgba(255,255,255,.3)",fontFamily:"'Playfair Display',serif"}}>{viewTh.name[0]}</div>
-                    }
-                    {/* Gradient overlay */}
-                    <div style={{position:"absolute",bottom:0,left:0,right:0,height:"45%",background:"linear-gradient(to top,rgba(0,0,0,.75),transparent)",pointerEvents:"none"}}/>
-                    {/* Close */}
-                    <button onClick={()=>setViewTh(null)}
-                      style={{position:"absolute",top:12,right:12,width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>×</button>
-                    {/* Arrows */}
-                    {vPhotos.length>1&&(
-                      <>
-                        <button onClick={()=>setThPhotoIdx(i=>(i-1+vPhotos.length)%vPhotos.length)}
-                          style={{position:"absolute",left:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-                        <button onClick={()=>setThPhotoIdx(i=>(i+1)%vPhotos.length)}
-                          style={{position:"absolute",right:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
-                        <div style={{position:"absolute",bottom:54,left:0,right:0,display:"flex",gap:4,justifyContent:"center"}}>
-                          {vPhotos.map((_,i)=><div key={i} onClick={()=>setThPhotoIdx(i)} style={{width:i===thPhotoIdx?14:5,height:5,borderRadius:99,background:i===thPhotoIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",transition:"all .2s",cursor:"pointer"}}/>)}
-                        </div>
-                      </>
-                    )}
-                    {/* Name overlay */}
-                    <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 18px"}}>
-                      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:WH,margin:"0 0 4px"}}>{viewTh.name}</h2>
-                      {viewTh.specialties?.length>0&&<div style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{viewTh.specialties.join(" · ")}</div>}
-                    </div>
-                  </div>
-                  {/* Thumbnails */}
-                  {vPhotos.length>1&&(
-                    <div style={{display:"flex",gap:6,padding:"8px 12px",background:G1,overflowX:"auto"}}>
-                      {vPhotos.map((src,i)=>(
-                        <img key={i} src={src} onClick={()=>setThPhotoIdx(i)} alt=""
-                          style={{width:56,height:44,objectFit:"cover",objectPosition:"top",borderRadius:6,cursor:"pointer",flexShrink:0,border:`2px solid ${i===thPhotoIdx?PL:"transparent"}`,opacity:i===thPhotoIdx?1:.6,transition:"all .15s"}}/>
-                      ))}
-                    </div>
-                  )}
-                  {/* Details */}
-                  <div style={{padding:"18px 20px 24px"}}>
-                    <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
-                      {viewTh.availability&&<span style={{background:`${avColor[viewTh.availability]||G4}18`,color:avColor[viewTh.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{avLabel[viewTh.availability]||viewTh.availability}</span>}
-                      <span style={{background:OKB,color:OK,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
-                      {viewTh.outcall&&<span style={{background:PLF,color:PL,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏠 Outcall</span>}
-                    </div>
-                    {viewTh.bio&&<p style={{fontSize:14,color:G6,lineHeight:1.8,marginBottom:16}}>{viewTh.bio}</p>}
-                    {viewTh.phone&&<div style={{fontSize:13,color:G6,marginBottom:16}}>📞 {viewTh.phone}</div>}
-                    <div style={{display:"flex",gap:10}}>
-                      <button onClick={()=>setViewTh(null)}
-                        style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${G2}`,background:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:G6}}>
-                        Close
-                      </button>
-                      <button onClick={()=>{setBD(d=>({...d,therapistId:viewTh.id}));setViewTh(null);}}
-                        style={{flex:2,padding:"11px",borderRadius:9,border:"none",
-                          background:bD.therapistId===viewTh.id?OK:PL,
-                          color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        {bD.therapistId===viewTh.id?"✓ Selected — Continue":"Select & Book"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              );
-            })()}
-          </div>
-          );
-        })()}
-
-        {/* Step 3 — Room (inhouse only) */}
+                {/* Step 3 — Room (inhouse only) */}
         {bStep===3&&(
           <div>
             {bD.serviceType==="outcall" ? (
@@ -2883,6 +2875,39 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                 </div>
               </div>
             </Card>
+            {/* Outcall advance payment selector */}
+            {customer&&bD.serviceType==="outcall"&&(
+              <Card style={{border:`1px solid ${WA}40`,marginBottom:0}}>
+                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:4}}>🏠 Advance Payment</div>
+                <div style={{fontSize:12,color:G6,marginBottom:12}}>Select how much to pay in advance (min 10%)</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:12}}>
+                  {[10,25,50,75,100].map(pct=>(
+                    <button key={pct} onClick={()=>setBD(d=>({...d,advancePct:pct}))}
+                      style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${(bD.advancePct||10)===pct?PL:G2}`,
+                        background:(bD.advancePct||10)===pct?PL:WH,
+                        color:(bD.advancePct||10)===pct?WH:G6}}>
+                      {pct===100?"Full amount":pct+"%"}
+                    </button>
+                  ))}
+                </div>
+                <div style={{background:G1,borderRadius:8,padding:"10px 14px",fontSize:13}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                    <span style={{color:G6}}>Total</span><span style={{fontWeight:700}}>{fmt(bTotal)}</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15,color:PL}}>
+                    <span>Pay now ({bD.advancePct||10}%)</span>
+                    <span>{fmt(Math.round(bTotal*(bD.advancePct||10)/100))}</span>
+                  </div>
+                  {(bD.advancePct||10)<100&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:G4,marginTop:3}}>
+                      <span>Remaining on arrival</span><span>{fmt(bTotal-Math.round(bTotal*(bD.advancePct||10)/100))}</span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
             {/* Payment method selection */}
             {customer&&(
               <Card>
