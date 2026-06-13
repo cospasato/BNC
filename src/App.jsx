@@ -2577,7 +2577,10 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
         )}
 
         {/* Step 2 — Therapist */}
-        {bStep===2&&(
+        {bStep===2&&(()=>{
+          const [viewTh, setViewTh] = useState(null);
+          const [thPhotoIdx, setThPhotoIdx] = useState(0);
+          return(
           <div>
             <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Therapist</h2>
             <p style={{color:G6,fontSize:14,marginBottom:20}}>Select a therapist or let us assign one</p>
@@ -2589,32 +2592,131 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                 <div style={{fontWeight:700,fontSize:14,color:!bD.therapistId?PL:BK}}>Any Available</div>
                 <div style={{fontSize:11,color:G6,marginTop:4}}>We'll assign the best match</div>
               </div>
-              {locTherapists.map(th=>(
-                <div key={th.id} onClick={()=>setBD(d=>({...d,therapistId:th.id}))}
-                  style={{border:`2px solid ${bD.therapistId===th.id?PL:G2}`,borderRadius:12,overflow:"hidden",cursor:"pointer",background:bD.therapistId===th.id?PLF:WH,transition:"all .15s"}}>
-                  {th.photo?(
-                    <div style={{paddingTop:"85%",position:"relative",background:G1}}>
-                      <img src={th.photo} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+              {locTherapists.map(th=>{
+                const photos=[...(th.photos||[]),th.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+                const sel=bD.therapistId===th.id;
+                return(
+                <div key={th.id} style={{border:`2px solid ${sel?PL:G2}`,borderRadius:12,overflow:"hidden",background:sel?PLF:WH,transition:"all .15s",display:"flex",flexDirection:"column"}}>
+                  {/* Photo — click to select */}
+                  <div onClick={()=>setBD(d=>({...d,therapistId:th.id}))} style={{cursor:"pointer"}}>
+                    {photos[0]?(
+                      <div style={{paddingTop:"85%",position:"relative",background:G1}}>
+                        <img src={photos[0]} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+                        {sel&&<div style={{position:"absolute",top:6,right:6,background:PL,color:WH,borderRadius:99,fontSize:10,fontWeight:700,padding:"2px 7px"}}>✓</div>}
+                      </div>
+                    ):(
+                      <div style={{paddingTop:"85%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
+                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:WH,fontFamily:"'Playfair Display',serif"}}>{th.name?.[0]}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{padding:"8px 10px 10px",flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                    <div style={{fontWeight:700,fontSize:13,color:BK}}>{th.name}</div>
+                    {th.specialties?.slice(0,2).map((s,i)=><span key={i} style={{fontSize:10,color:G6,lineHeight:1.4}}>{s}</span>)}
+                    <div style={{display:"flex",gap:5,marginTop:"auto"}}>
+                      <button onClick={()=>setBD(d=>({...d,therapistId:th.id}))}
+                        style={{flex:1,padding:"5px 0",fontSize:11,fontWeight:700,borderRadius:6,
+                          border:`1px solid ${sel?PL:G2}`,background:sel?PL:WH,
+                          color:sel?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
+                        {sel?"✓ Selected":"Select"}
+                      </button>
+                      <button onClick={()=>{setViewTh(th);setThPhotoIdx(0);}}
+                        style={{flex:1,padding:"5px 0",fontSize:11,fontWeight:700,borderRadius:6,
+                          border:`1px solid ${PL}`,background:PLF,
+                          color:PL,cursor:"pointer",fontFamily:"inherit"}}>
+                        View
+                      </button>
                     </div>
-                  ):(
-                    <div style={{paddingTop:"85%",position:"relative",background:`linear-gradient(135deg,${PLD},${PL})`}}>
-                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:WH,fontFamily:"'Playfair Display',serif"}}>{th.name?.[0]}</div>
-                    </div>
-                  )}
-                  <div style={{padding:"10px 10px 12px"}}>
-                    <div style={{fontWeight:700,fontSize:13,color:BK,marginBottom:3}}>{th.name}</div>
-                    {th.specialties?.slice(0,2).map((s,i)=><span key={i} style={{fontSize:10,color:G6,display:"block",lineHeight:1.4}}>{s}</span>)}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {locTherapists.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1"}}>No {bD.serviceType==="outcall"?"outcall-available ":""}therapists found.</div>}
             </div>
             <div style={{display:"flex",gap:10}}>
               <Btn v="ghost" onClick={()=>goStep(1)}>← Back</Btn>
               <Btn onClick={()=>goStep(bD.serviceType==="outcall"?4:3)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
             </div>
+
+            {/* Therapist profile popup */}
+            {viewTh&&(()=>{
+              const vPhotos=[...(viewTh.photos||[]),viewTh.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+              const avColor={available:OK,outcall_only:WA,unavailable:ER};
+              const avLabel={available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"};
+              return(
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"16px 12px",overflowY:"auto"}}
+                onClick={e=>e.target===e.currentTarget&&setViewTh(null)}>
+                <div style={{background:WH,borderRadius:20,width:"100%",maxWidth:520,boxShadow:"0 20px 60px rgba(0,0,0,.3)",overflow:"hidden"}}>
+                  {/* Photo gallery */}
+                  <div style={{paddingTop:"70%",position:"relative",background:vPhotos[0]?BK:`linear-gradient(135deg,${PLD},${PL})`}}>
+                    {vPhotos.length>0
+                      ? vPhotos.map((src,i)=>(
+                          <img key={i} src={src} alt={viewTh.name}
+                            style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top",opacity:i===thPhotoIdx?1:0,transition:"opacity .3s"}}/>
+                        ))
+                      : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:72,color:"rgba(255,255,255,.3)",fontFamily:"'Playfair Display',serif"}}>{viewTh.name[0]}</div>
+                    }
+                    {/* Gradient overlay */}
+                    <div style={{position:"absolute",bottom:0,left:0,right:0,height:"45%",background:"linear-gradient(to top,rgba(0,0,0,.75),transparent)",pointerEvents:"none"}}/>
+                    {/* Close */}
+                    <button onClick={()=>setViewTh(null)}
+                      style={{position:"absolute",top:12,right:12,width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>×</button>
+                    {/* Arrows */}
+                    {vPhotos.length>1&&(
+                      <>
+                        <button onClick={()=>setThPhotoIdx(i=>(i-1+vPhotos.length)%vPhotos.length)}
+                          style={{position:"absolute",left:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                        <button onClick={()=>setThPhotoIdx(i=>(i+1)%vPhotos.length)}
+                          style={{position:"absolute",right:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                        <div style={{position:"absolute",bottom:54,left:0,right:0,display:"flex",gap:4,justifyContent:"center"}}>
+                          {vPhotos.map((_,i)=><div key={i} onClick={()=>setThPhotoIdx(i)} style={{width:i===thPhotoIdx?14:5,height:5,borderRadius:99,background:i===thPhotoIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",transition:"all .2s",cursor:"pointer"}}/>)}
+                        </div>
+                      </>
+                    )}
+                    {/* Name overlay */}
+                    <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 18px"}}>
+                      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:WH,margin:"0 0 4px"}}>{viewTh.name}</h2>
+                      {viewTh.specialties?.length>0&&<div style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{viewTh.specialties.join(" · ")}</div>}
+                    </div>
+                  </div>
+                  {/* Thumbnails */}
+                  {vPhotos.length>1&&(
+                    <div style={{display:"flex",gap:6,padding:"8px 12px",background:G1,overflowX:"auto"}}>
+                      {vPhotos.map((src,i)=>(
+                        <img key={i} src={src} onClick={()=>setThPhotoIdx(i)} alt=""
+                          style={{width:56,height:44,objectFit:"cover",objectPosition:"top",borderRadius:6,cursor:"pointer",flexShrink:0,border:`2px solid ${i===thPhotoIdx?PL:"transparent"}`,opacity:i===thPhotoIdx?1:.6,transition:"all .15s"}}/>
+                      ))}
+                    </div>
+                  )}
+                  {/* Details */}
+                  <div style={{padding:"18px 20px 24px"}}>
+                    <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+                      {viewTh.availability&&<span style={{background:`${avColor[viewTh.availability]||G4}18`,color:avColor[viewTh.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{avLabel[viewTh.availability]||viewTh.availability}</span>}
+                      <span style={{background:OKB,color:OK,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
+                      {viewTh.outcall&&<span style={{background:PLF,color:PL,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏠 Outcall</span>}
+                    </div>
+                    {viewTh.bio&&<p style={{fontSize:14,color:G6,lineHeight:1.8,marginBottom:16}}>{viewTh.bio}</p>}
+                    {viewTh.phone&&<div style={{fontSize:13,color:G6,marginBottom:16}}>📞 {viewTh.phone}</div>}
+                    <div style={{display:"flex",gap:10}}>
+                      <button onClick={()=>setViewTh(null)}
+                        style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${G2}`,background:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:G6}}>
+                        Close
+                      </button>
+                      <button onClick={()=>{setBD(d=>({...d,therapistId:viewTh.id}));setViewTh(null);}}
+                        style={{flex:2,padding:"11px",borderRadius:9,border:"none",
+                          background:bD.therapistId===viewTh.id?OK:PL,
+                          color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {bD.therapistId===viewTh.id?"✓ Selected — Continue":"Select & Book"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              );
+            })()}
           </div>
-        )}
+          );
+        })()}
 
         {/* Step 3 — Room (inhouse only) */}
         {bStep===3&&(
@@ -2642,28 +2744,53 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
               <div>
                 <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>Choose Room</h2>
                 <p style={{color:G6,fontSize:14,marginBottom:20}}>Select the room for your session</p>
-                <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,260px),1fr))",gap:14,marginBottom:20}}>
                   {rooms.length===0&&(
-                    <div style={{textAlign:"center",padding:"30px 20px",color:G4,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>
-                      No rooms available at the moment
+                    <div style={{textAlign:"center",padding:"30px 20px",color:G4,background:WH,borderRadius:12,border:`1px solid ${G2}`,gridColumn:"1/-1"}}>
+                      No rooms available
                     </div>
                   )}
-                  {rooms.map(rm=>(
+                  {rooms.map((rm,ri)=>{
+                    const sel=bD.roomId===rm.id;
+                    const COLORS=["#7B3F6E","#1565C0","#2E7D32","#E65100","#6A1B9A","#00695C","#AD1457","#4527A0"];
+                    const col=COLORS[ri%COLORS.length];
+                    return(
                     <div key={rm.id} onClick={()=>setBD(d=>({...d,roomId:rm.id}))}
-                      style={{background:bD.roomId===rm.id?PLF:WH,borderRadius:12,border:`2px solid ${bD.roomId===rm.id?PL:G2}`,cursor:"pointer",transition:"all .15s"}}>
-                      <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:bD.roomId===rm.id?PL:BK,marginBottom:rm.amenities?.length>0?6:0}}>
-                            {rm.name}
+                      style={{borderRadius:14,border:`3px solid ${sel?PL:G2}`,cursor:"pointer",
+                        overflow:"hidden",transition:"all .15s",
+                        boxShadow:sel?`0 4px 20px ${PL}40`:"0 1px 6px rgba(0,0,0,.08)"}}>
+                      {/* Room visual — color gradient with initial */}
+                      <div style={{paddingTop:"55%",position:"relative",background:`linear-gradient(135deg,${col}CC,${col})`}}>
+                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                          fontSize:52,color:"rgba(255,255,255,.25)",fontFamily:"'Playfair Display',serif",fontWeight:900,userSelect:"none"}}>
+                          {rm.name[0]}
+                        </div>
+                        {sel&&(
+                          <div style={{position:"absolute",top:8,right:8,background:WH,color:PL,
+                            padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>✓ Selected</div>
+                        )}
+                      </div>
+                      {/* Info */}
+                      <div style={{padding:"12px 14px 14px",background:sel?PLF:WH}}>
+                        <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",
+                          color:sel?PL:BK,marginBottom:4}}>{rm.name}</div>
+                        {rm.description&&(
+                          <div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{rm.description}</div>
+                        )}
+                        {rm.amenities?.length>0&&(
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                            {rm.amenities.map((a,i)=>(
+                              <span key={i} style={{background:sel?`${PL}15`:G1,color:sel?PL:G6,
+                                fontSize:10,padding:"2px 8px",borderRadius:99,fontWeight:600}}>
+                                {a}
+                              </span>
+                            ))}
                           </div>
-
-                        </div>
-                        <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${bD.roomId===rm.id?PL:G2}`,background:bD.roomId===rm.id?PL:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          {bD.roomId===rm.id&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
-                        </div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
