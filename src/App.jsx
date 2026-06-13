@@ -2864,7 +2864,7 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
         {/* Step 1 — Date, Time, Service Type + Package option */}
         {bStep===1&&(
           <div>
-            {/* Booking mode toggle — only show if packages exist */}
+            {/* Mode toggle — only when packages exist */}
             {packages&&packages.length>0&&(
               <div style={{display:"flex",gap:0,marginBottom:22,background:G1,borderRadius:10,padding:4}}>
                 <button onClick={()=>setBD(d=>({...d,bookingMode:"standard"}))}
@@ -2883,8 +2883,8 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
               </div>
             )}
 
-            {/* PACKAGE MODE */}
-            {bD.bookingMode==="package"&&packages&&packages.length>0?(
+            {/* ── PACKAGE MODE ── */}
+            {bD.bookingMode==="package"&&packages&&packages.length>0&&(
               <div>
                 <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,marginBottom:6,color:BK}}>Choose a Package</h2>
                 <p style={{color:G6,fontSize:13,marginBottom:16}}>Curated spa experiences — everything included</p>
@@ -2927,44 +2927,50 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                     </button>
                   ))}
                 </div>
-                {bD.serviceType==="outcall"&&<Inp label="Your Address *" value={bD.outcallAddr||""} onChange={e=>setBD(d=>({...d,outcallAddr:e.target.value}))} placeholder="Street, area, landmark…"/>}
+                {bD.serviceType==="outcall"&&(
+                  <Inp label="Your Address *" value={bD.outcallAddr||""} onChange={e=>setBD(d=>({...d,outcallAddr:e.target.value}))} placeholder="Street, area, landmark…"/>
+                )}
                 <Btn onClick={()=>goStep(5)} disabled={!bD.packageId||!bD.date||!bD.time||(bD.serviceType==="outcall"&&!bD.outcallAddr)} style={{width:"100%",justifyContent:"center"}}>
                   Review & Confirm →
                 </Btn>
               </div>
-            ):(
-            <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>When & How?</h2>
-            <p style={{color:G6,fontSize:14,marginBottom:24}}>Choose your date, time, and service type</p>
-            <Card>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Inp label="Date" type="date" value={bD.date} min={td()} onChange={e=>setBD(d=>({...d,date:e.target.value}))}/>
-                <Inp label="Time" type="time" value={bD.time} onChange={e=>setBD(d=>({...d,time:e.target.value}))}/>
-              </div>
-              <div style={{marginBottom:14}}>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {[["inhouse","🏢","In-House","Visit our spa studio"],["outcall","🏠","Outcall","We come to you (home/hotel)"]].map(([val,ic,label,sub])=>(
-                    <div key={val} onClick={()=>setBD(d=>({...d,serviceType:val,roomId:val==="outcall"?"":d.roomId}))}
-                      style={{border:`2px solid ${bD.serviceType===val?PL:G2}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",background:bD.serviceType===val?PLF:WH,transition:"all .15s"}}>
-                      <div style={{fontSize:24,marginBottom:6}}>{ic}</div>
-                      <div style={{fontWeight:700,fontSize:14,color:bD.serviceType===val?PL:BK}}>{label}</div>
-                      <div style={{fontSize:12,color:G6,marginTop:3}}>{sub}</div>
+            )}
+
+            {/* ── STANDARD MODE ── */}
+            {bD.bookingMode!=="package"&&(
+              <div>
+                <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>When & How?</h2>
+                <p style={{color:G6,fontSize:14,marginBottom:24}}>Choose your date, time, and service type</p>
+                <Card>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    <Inp label="Date" type="date" value={bD.date} min={td()} onChange={e=>setBD(d=>({...d,date:e.target.value}))}/>
+                    <Inp label="Time" type="time" value={bD.time} onChange={e=>setBD(d=>({...d,time:e.target.value}))}/>
+                  </div>
+                  <div style={{marginBottom:14}}>
+                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      {[["inhouse","🏢","In-House","Visit our spa studio"],["outcall","🏠","Outcall","We come to you (home/hotel)"]].map(([val,ic,label,sub])=>(
+                        <div key={val} onClick={()=>setBD(d=>({...d,serviceType:val,roomId:val==="outcall"?"":d.roomId}))}
+                          style={{border:`2px solid ${bD.serviceType===val?PL:G2}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",background:bD.serviceType===val?PLF:WH,transition:"all .15s"}}>
+                          <div style={{fontSize:24,marginBottom:6}}>{ic}</div>
+                          <div style={{fontWeight:700,fontSize:14,color:bD.serviceType===val?PL:BK}}>{label}</div>
+                          <div style={{fontSize:12,color:G6,marginTop:3}}>{sub}</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                  {bD.serviceType==="outcall"&&(
+                    <Inp label="Your Address / Hotel Name & Room" value={bD.outcallAddr} onChange={e=>setBD(d=>({...d,outcallAddr:e.target.value}))} placeholder="e.g. Serena Hotel, Room 312 or 15 Masaki Street"/>
+                  )}
+                </Card>
+                <div style={{display:"flex",gap:10,marginTop:6}}>
+                  <Btn v="ghost" onClick={()=>navTo("land")}>← Back</Btn>
+                  <Btn onClick={()=>goStep(2)} disabled={!bD.date||!bD.time||(bD.serviceType==="outcall"&&!bD.outcallAddr)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
                 </div>
               </div>
-              {bD.serviceType==="outcall"&&(
-                <Inp label="Your Address / Hotel Name & Room" value={bD.outcallAddr} onChange={e=>setBD(d=>({...d,outcallAddr:e.target.value}))} placeholder="e.g. Serena Hotel, Room 312 or 15 Masaki Street"/>
-              )}
-            </Card>
-            <div style={{display:"flex",gap:10,marginTop:6}}>
-              <Btn v="ghost" onClick={()=>navTo("land")}>← Back</Btn>
-              <Btn onClick={()=>goStep(2)} disabled={!bD.date||!bD.time||(bD.serviceType==="outcall"&&!bD.outcallAddr)} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
-            </div>
+            )}
           </div>
         )}
-
         {/* Step 2 — Therapist */}
         {bStep===2&&(
           <TherapistPickerStep
