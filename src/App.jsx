@@ -583,11 +583,36 @@ function CustApptsTab({customer,appts,loading,onRefresh,onBook,therapists}){
     </div>
   );
 
+  const [paying, setPaying] = useState(null); // appt id being paid
+
+  const initiatePayment = async(a)=>{
+    setPaying(a.id);
+    try{
+      const res = await fetch("/api/pesapal?action=create",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          appointment_id: a.id,
+          amount:         Number(a.total_amount)-Number(a.paid_amount),
+          customer_name:  customer.name,
+          customer_email: customer.email||"",
+          customer_phone: customer.phone||"",
+          description:    Array.isArray(a.services)?a.services.map(s=>s.name).join(", "):"Massage TZ",
+        })
+      });
+      const data = await res.json();
+      if(data.redirect_url) window.location.href = data.redirect_url;
+      else alert("Payment error: "+(data.error||"Could not initiate payment"));
+    }catch(e){ alert("Could not connect to payment gateway"); }
+    setPaying(null);
+  };
+
   const ApptCard=({a})=>{
     const th=therapists.find(t=>t.id===a.therapist_id);
     const svcs=Array.isArray(a.services)?a.services:[];
+    const bal=Number(a.total_amount)-Number(a.paid_amount);
+    const canPay=bal>0 && !["cancelled","noShow"].includes(a.status);
     return(
-      <div style={{background:WH,border:`1px solid ${G2}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
+      <div style={{background:WH,border:`1px solid ${canPay&&a.paid_amount===0?WA:G2}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
         <div style={{padding:"14px 16px"}}>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:10}}>
             <div>
@@ -600,8 +625,25 @@ function CustApptsTab({customer,appts,loading,onRefresh,onBook,therapists}){
             <span>📅 {fmtDate(a.appt_date)} at {fmtTime(a.appt_time)}</span>
             <span style={{fontWeight:700,color:PL}}>{fmt(a.total_amount)}</span>
           </div>
-          <div style={{display:"flex",gap:8}}>
+          {/* Payment summary */}
+          {a.total_amount>0&&(
+            <div style={{display:"flex",gap:12,marginBottom:10,fontSize:13,padding:"8px 12px",background:canPay?WAB:OKB,borderRadius:8}}>
+              <span style={{color:G6}}>Paid: <strong style={{color:OK}}>{fmt(a.paid_amount)}</strong></span>
+              {canPay&&<span style={{color:G6}}>Balance: <strong style={{color:ER}}>{fmt(bal)}</strong></span>}
+              {!canPay&&a.paid_amount>=a.total_amount&&<span style={{color:OK,fontWeight:700}}>✓ Fully paid</span>}
+            </div>
+          )}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <button onClick={()=>setSel(a.id)} style={{padding:"7px 14px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:WH,cursor:"pointer",color:G6,fontFamily:"inherit",fontWeight:600}}>Details</button>
+            {canPay&&(
+              <button onClick={()=>initiatePayment(a)} disabled={paying===a.id}
+                style={{padding:"7px 16px",fontSize:12,borderRadius:7,border:"none",
+                  background:`linear-gradient(135deg,#1565C0,#1976D2)`,color:WH,
+                  cursor:paying===a.id?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,
+                  opacity:paying===a.id?.7:1,display:"flex",alignItems:"center",gap:6}}>
+                {paying===a.id?"Processing…":"💳 Pay Now"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -2831,33 +2873,86 @@ function BookingDetailsForm({ bdName, setBdName, bdPhone, setBdPhone, bdEmail, s
 
 function TherapistCard({th, onClick}) {
   const photos = [...new Set([...(th.photos||[]),th.photo].filter(Boolean))];
-  const mainPhoto = photos[0];
+  const [idx, setIdx] = useState(0);
+  const touchStartX = useRef(null);
+
+  const prev = (e)=>{ e.stopPropagation(); setIdx(i=>(i-1+photos.length)%photos.length); };
+  const next = (e)=>{ e.stopPropagation(); setIdx(i=>(i+1)%photos.length); };
+
+  const onTouchStart = (e)=>{ touchStartX.current = e.touches[0].clientX; };
+  const onTouchEnd   = (e)=>{
+    if(touchStartX.current===null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if(Math.abs(diff)>40){
+      if(diff>0) setIdx(i=>(i+1)%photos.length);
+      else       setIdx(i=>(i-1+photos.length)%photos.length);
+    }
+    touchStartX.current = null;
+  };
+
+  const mainPhoto = photos[idx];
   return (
     <div
       onClick={onClick}
       style={{width:260,flexShrink:0,borderRadius:16,overflow:"hidden",cursor:"pointer",
-        background:WH,boxShadow:"0 2px 12px rgba(0,0,0,.08)",transition:"all .2s"}}
+        background:WH,boxShadow:"0 2px 12px rgba(0,0,0,.08)",transition:"box-shadow .2s,transform .2s"}}
       onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="0 12px 36px rgba(123,63,110,.25)";}}
       onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.08)";}}>
-      <div style={{paddingTop:"130%",position:"relative",background:mainPhoto?G1:`linear-gradient(160deg,${PLD},${PL})`}}>
-        {mainPhoto
-          ? <img src={mainPhoto} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
-          : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:64,color:"rgba(255,255,255,.4)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
+      <div style={{paddingTop:"130%",position:"relative",background:mainPhoto?G1:`linear-gradient(160deg,${PLD},${PL})`}}
+        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {/* Photo with fade transition */}
+        {photos.length>0
+          ? photos.map((src,i)=>(
+              <img key={i} src={src} alt={th.name}
+                style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
+                  objectPosition:"top",opacity:i===idx?1:0,transition:"opacity .35s ease"}}/>
+            ))
+          : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:64,color:"rgba(255,255,255,.4)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>
+              {th.name?.[0]}
+            </div>
         }
-        <div style={{position:"absolute",bottom:0,left:0,right:0,height:"50%",background:"linear-gradient(to top,rgba(0,0,0,.75),transparent)",pointerEvents:"none"}}/>
-        <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 16px"}}>
-          <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:WH,marginBottom:3,textShadow:"0 1px 4px rgba(0,0,0,.5)"}}>{th.name}</div>
-          {th.specialties?.length>0&&<div style={{fontSize:12,color:"rgba(255,255,255,.8)"}}>{th.specialties.slice(0,2).join(" · ")}</div>}
-        </div>
+        {/* Gradient */}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,height:"50%",
+          background:"linear-gradient(to top,rgba(0,0,0,.75),transparent)",pointerEvents:"none"}}/>
+        {/* Prev / Next arrows — only when multiple photos */}
         {photos.length>1&&(
-          <div style={{position:"absolute",top:10,right:10,background:"rgba(0,0,0,.5)",color:WH,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:99,backdropFilter:"blur(4px)"}}>
-            📷 {photos.length}
-          </div>
+          <>
+            <button onClick={prev}
+              style={{position:"absolute",left:8,top:"42%",transform:"translateY(-50%)",
+                width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,.45)",
+                border:"none",color:WH,fontSize:16,cursor:"pointer",display:"flex",
+                alignItems:"center",justifyContent:"center",zIndex:2}}>‹</button>
+            <button onClick={next}
+              style={{position:"absolute",right:8,top:"42%",transform:"translateY(-50%)",
+                width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,.45)",
+                border:"none",color:WH,fontSize:16,cursor:"pointer",display:"flex",
+                alignItems:"center",justifyContent:"center",zIndex:2}}>›</button>
+            {/* Dot indicators */}
+            <div style={{position:"absolute",bottom:52,left:0,right:0,
+              display:"flex",gap:4,justifyContent:"center",zIndex:2}}>
+              {photos.map((_,i)=>(
+                <div key={i} onClick={e=>{e.stopPropagation();setIdx(i);}}
+                  style={{width:i===idx?16:5,height:5,borderRadius:99,
+                    background:i===idx?"rgba(255,255,255,1)":"rgba(255,255,255,.45)",
+                    transition:"all .25s",cursor:"pointer"}}/>
+              ))}
+            </div>
+          </>
         )}
+        {/* Name overlay */}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 16px",zIndex:2}}>
+          <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",
+            color:WH,marginBottom:3,textShadow:"0 1px 4px rgba(0,0,0,.5)"}}>{th.name}</div>
+          {th.specialties?.length>0&&(
+            <div style={{fontSize:12,color:"rgba(255,255,255,.8)"}}>{th.specialties.slice(0,2).join(" · ")}</div>
+          )}
+        </div>
       </div>
       <div style={{padding:"10px 14px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         <span style={{background:OKB,color:OK,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏢 Incall</span>
         {th.outcall&&<span style={{background:PLF,color:PL,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏠 Outcall</span>}
+        {photos.length>1&&<span style={{marginLeft:"auto",fontSize:11,color:G4}}>{idx+1}/{photos.length}</span>}
       </div>
     </div>
   );
