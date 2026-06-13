@@ -131,6 +131,7 @@ export default function App(){
   const [expenses,   setExpenses]   = useState([]);
   const [payMethods, setPayMethods] = useState(["Cash","M-Pesa","Tigo Pesa","Airtel Money","Halopesa","Bank Transfer","Card"]);
   const [loading,    setLoading]    = useState(false);
+  const [packages,   setPackages]   = useState([]);
 
   // ── Customer data ──
   const [custAppts, setCustAppts]   = useState([]);
@@ -169,14 +170,16 @@ export default function App(){
   // ── Load data ──
   const loadPublic = useCallback(async()=>{
     const safe = async (fn, fallback) => { try{ return await fn(); }catch{ return fallback; } };
-    const [th,rm,sv] = await Promise.all([
+    const [th,rm,sv,pk] = await Promise.all([
       safe(api.getTherapists,[]),
       safe(api.getRooms,[]),
       safe(api.getServices,{services:[],pricing:[]}),
+      safe(api.getPackages,[]),
     ]);
     if(Array.isArray(th)) setTherapists(th.filter(t=>t.active));
     if(Array.isArray(rm)) setRooms(rm.filter(r=>r.active));
     if(sv?.services){ setServices(sv.services.filter(s=>s.active)); setPricing(sv.pricing||[]); }
+    if(Array.isArray(pk)) setPackages(pk);
   },[]);
 
   const loadAdmin = useCallback(async()=>{
@@ -185,7 +188,7 @@ export default function App(){
       try{ return await fn(); }
       catch(e){ console.warn(`[loadAdmin] ${label} failed:`, e.message); return fallback; }
     };
-    const [th,rm,sv,of,ap,rc,st,ex,pm] = await Promise.all([
+    const [th,rm,sv,of,ap,rc,st,ex,pm,pk] = await Promise.all([
       safe("therapists",    api.getTherapists),
       safe("rooms",         api.getRooms),
       safe("services",      api.getServices, {services:[],pricing:[]}),
@@ -195,6 +198,7 @@ export default function App(){
       safe("staff",         api.getStaff),
       safe("expenses",      api.getExpenses),
       safe("payMethods",    api.getPayMethods),
+      safe("packages",      api.getPackages),
     ]);
     if(Array.isArray(th))           setTherapists(th);
     if(Array.isArray(rm))           setRooms(rm);
@@ -205,6 +209,7 @@ export default function App(){
     if(Array.isArray(st))           setStaff(st);
     if(Array.isArray(ex))           setExpenses(ex);
     if(Array.isArray(pm)&&pm.length){ const names=pm.map(m=>m.name||m).filter(Boolean); if(names.length) setPayMethods(names); }
+    if(Array.isArray(pk)) setPackages(pk);
     setLoading(false);
   },[]);
 
