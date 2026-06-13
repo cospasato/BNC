@@ -145,7 +145,17 @@ export default function App(){
   const pop = (msg,type="ok")=>setToast({msg,type});
 
   // Booking wizard
-  const initBD = {date:td(),time:"10:00",serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:""};
+  const defaultTime = ()=>{
+    const now = new Date();
+    const mins = now.getMinutes();
+    let h = now.getHours();
+    let m;
+    if(mins < 30) { m = 0; h = h + 1; }  // e.g. 10:29 → 11:00
+    else          { m = 30; h = h + 1; }  // e.g. 10:34 → 11:30
+    if(h >= 24) h = 0;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  };
+  const initBD = {date:td(),time:defaultTime(),serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:"",bookingMode:"standard",packageId:"",advancePct:10};
   // Separate stable state for text inputs (prevents focus-loss on re-render)
   const [bdName,  setBdName]  = useState("");
   const [bdPhone, setBdPhone] = useState("");
@@ -290,6 +300,8 @@ export default function App(){
 
   const confirmBooking = async()=>{
     if(!customer){ setPendingBook(true); setCustModal("login"); return; }
+    // For package bookings, pull package details
+    const selPkg = bD.bookingMode==="package" ? packages.find(p=>p.id===bD.packageId) : null;
     const cName  = bdName.trim()  || customer.name  || "";
     const cPhone = bdPhone.trim() || customer.phone || "";
     const cEmail = bdEmail.trim() || customer.email || "";
@@ -304,9 +316,15 @@ export default function App(){
         therapist_id: bD.therapistId||null, room_id: bD.roomId||null,
         service_type: bD.serviceType, outcall_address: bD.outcallAddr||"",
         appt_date: bD.date, appt_time: bD.time, duration_min: 60,
-        services: bD.services, base_amount: bBase, discount: bD.disc||0,
-        discount_type: bD.discT||"pct", total_amount: bTotal, paid_amount: 0,
-        payment_method: bD.method||"Cash", notes: cNotes, status:"pending"
+        services: selPkg ? selPkg.services : bD.services,
+        base_amount: selPkg ? selPkg.price : bBase,
+        discount: selPkg ? 0 : (bD.disc||0),
+        discount_type: bD.discT||"pct",
+        total_amount: selPkg ? selPkg.price : bTotal,
+        paid_amount: 0,
+        payment_method: bD.method||"Cash",
+        notes: (selPkg ? `Package: ${selPkg.name}. ` : "") + cNotes,
+        status:"pending"
       });
       setAppts(p=>[...p,created]);
 
@@ -446,7 +464,7 @@ export default function App(){
     ["dash","Dashboard","📊"],["appts","Appointments","📋"],["reception","Reception Log","🚪"],
     ["therapists","Therapists","💆"],["rooms","Rooms","🛁"],["services","Services & Pricing","📋"],
     ["offers","Offers","🏷️"],["expenses","Expenses","💸"],["reports","Reports","📈"],
-    ["payments","Payments","💳"],["commission","Commission","💵"],["staff","Staff","👥"]
+    ["packages","Packages","🎁"],["payments","Payments","💳"],["commission","Commission","💵"],["staff","Staff","👥"]
   ];
 
   const AdminPortal = ()=>{
@@ -515,6 +533,7 @@ export default function App(){
             {!loading&&aTab==="offers"&&<OffersTab offers={offers} setOffers={setOffers} pop={pop}/>}
             {!loading&&aTab==="expenses"&&<ExpensesTab expenses={expenses} setExpenses={setExpenses} pop={pop} user={user}/>}
             {!loading&&aTab==="reports"&&<ReportsTab appts={appts} reception={reception} expenses={expenses} therapists={therapists} services={services} payMethods={payMethods}/>}
+            {!loading&&aTab==="packages"&&<PackagesTab packages={packages} setPackages={setPackages} services={services} rooms={rooms} pop={pop}/>}
             {!loading&&aTab==="payments"&&<PaymentsTab payMethods={payMethods} setPayMethods={setPayMethods} pop={pop}/>}
             {!loading&&aTab==="commission"&&<CommissionTab therapists={therapists} setTherapists={setTherapists} staff={staff} setStaff={setStaff} user={user} pop={pop}/>}
             {!loading&&aTab==="staff"&&user?.role==="Admin"&&<StaffTab staff={staff} setStaff={setStaff} pop={pop} currentUser={user}/>}
@@ -530,7 +549,7 @@ export default function App(){
       {view==="land"      &&<Landing/>}
       {view==="book"&&<BookingPortal
         therapists={therapists} rooms={rooms} services={services} pricing={pricing}
-        offers={offers} payMethods={payMethods} customer={customer}
+        offers={offers} payMethods={payMethods} customer={customer} packages={packages}
         bD={bD} setBD={setBD} bStep={bStep} setBStep={setBStep}
         bBase={bBase} bDisc={bDisc} bTotal={bTotal} bRoomId={bRoomId}
         getPrice={getPrice} goStep={goStep} navTo={navTo} pop={pop}
@@ -1405,32 +1424,45 @@ function TherapistsTab({therapists,setTherapists,pop}){
 }
 
 function RoomsTab({rooms,setRooms,pop}){
-  const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",description:"",amenities:""});
+  const [modal,setModal]     = useState(false);
+  const [uploading,setUploading] = useState(false);
+  const [form,setForm]       = useState({id:null,name:"",description:"",amenities:"",photos:[]});
 
   const open=(r)=>{
-    if(r) setForm({id:r.id,name:r.name,description:r.description||"",amenities:(r.amenities||[]).join(", ")});
-    else  setForm({id:null,name:"",description:"",amenities:""});
+    if(r) setForm({id:r.id,name:r.name,description:r.description||"",amenities:(r.amenities||[]).join(", "),photos:r.photos||[]});
+    else  setForm({id:null,name:"",description:"",amenities:"",photos:[]});
     setModal(true);
   };
+
+  const addPhotos=async(e)=>{
+    const files=Array.from(e.target.files||[]);
+    if(!files.length) return;
+    setUploading(true);
+    const compressed=await Promise.all(files.map(f=>compressPhoto(f)));
+    setForm(f=>({...f,photos:[...f.photos,...compressed].slice(0,6)}));
+    setUploading(false);
+    e.target.value="";
+  };
+  const removePhoto=(i)=>setForm(f=>({...f,photos:f.photos.filter((_,idx)=>idx!==i)}));
+
   const save=async()=>{
     if(!form.name) return;
-    const amen = typeof form.amenities==="string"
-      ? form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
-      : (form.amenities||[]);
-    const payload={name:form.name,description:form.description||"",amenities:amen};
+    const amen=typeof form.amenities==="string"
+      ?form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
+      :(form.amenities||[]);
+    const payload={name:form.name,description:form.description||"",amenities:amen,photos:form.photos||[]};
     try{
-      if(form.id){ const u=await api.updateRoom(form.id,payload); setRooms(p=>p.map(r=>r.id===form.id?u:r)); pop("Room updated"); }
-      else{ const u=await api.createRoom(payload); setRooms(p=>[...p,u]); pop("Room added"); }
+      if(form.id){const u=await api.updateRoom(form.id,payload);setRooms(p=>p.map(r=>r.id===form.id?u:r));pop("Room updated");}
+      else{const u=await api.createRoom(payload);setRooms(p=>[...p,u]);pop("Room added");}
       setModal(false);
     }catch(e){pop(e.message,"err");}
   };
   const del=async(r)=>{
     if(!window.confirm(`Delete ${r.name}?`)) return;
-    try{ await api.deleteRoom(r.id); setRooms(p=>p.filter(x=>x.id!==r.id)); pop("Deleted"); }catch(e){pop(e.message,"err");}
+    try{await api.deleteRoom(r.id);setRooms(p=>p.filter(x=>x.id!==r.id));pop("Deleted");}catch(e){pop(e.message,"err");}
   };
   const toggle=async(r)=>{
-    try{ const u=await api.updateRoom(r.id,{active:!r.active}); setRooms(p=>p.map(x=>x.id===r.id?{...x,...u}:x)); pop(u.active?"Activated":"Deactivated"); }catch(e){pop(e.message,"err");}
+    try{const u=await api.updateRoom(r.id,{active:!r.active});setRooms(p=>p.map(x=>x.id===r.id?{...x,...u}:x));pop(u.active?"Activated":"Deactivated");}catch(e){pop(e.message,"err");}
   };
 
   return(
@@ -1439,28 +1471,64 @@ function RoomsTab({rooms,setRooms,pop}){
         <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Treatment Rooms</h2>
         <Btn onClick={()=>open(null)}>+ Add Room</Btn>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
-        {rooms.map(r=>(
-          <Card key={r.id} style={{opacity:r.active?1:.65,borderTop:`3px solid ${PL}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK}}>{r.name}</div>
-              <span style={{background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+        {rooms.map(r=>{
+          const photos=r.photos||[];
+          return(
+          <Card key={r.id} style={{opacity:r.active?1:.65,padding:0,overflow:"hidden"}}>
+            {/* Room photo or color block */}
+            <div style={{paddingTop:"55%",position:"relative",background:photos[0]?G1:`linear-gradient(135deg,#7B3F6E,#5C2E52)`}}>
+              {photos[0]
+                ?<img src={photos[0]} alt={r.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                :<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:"rgba(255,255,255,.25)",fontFamily:"'Playfair Display',serif",fontWeight:900}}>{r.name[0]}</div>
+              }
+              {photos.length>1&&<div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.5)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>📷 {photos.length}</div>}
+              <span style={{position:"absolute",top:8,right:8,background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 8px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
             </div>
-            {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
-            {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).slice(0,6).map((a,i)=><span key={i} style={{background:G1,fontSize:11,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
-            <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>open(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
-              <button onClick={()=>toggle(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${r.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:r.active?WA:OK,fontWeight:700}}>{r.active?"Disable":"Enable"}</button>
-              <button onClick={()=>del(r)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
+            <div style={{padding:"12px 14px 14px"}}>
+              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{r.name}</div>
+              {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
+              {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).slice(0,5).map((a,i)=><span key={i} style={{background:G1,fontSize:10,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>open(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
+                <button onClick={()=>toggle(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${r.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:r.active?WA:OK,fontWeight:700}}>{r.active?"Disable":"Enable"}</button>
+                <button onClick={()=>del(r)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
+              </div>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
       {modal&&(
         <Modal title={form.id?"Edit Room":"Add Room"} onClose={()=>setModal(false)}>
-          <Inp label="Room Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Room 1, Lotus Room, Blue Suite…"/>
+          <Inp label="Room Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Lotus Room, Room 1…"/>
           <Inp label="Description (optional)" value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Peaceful room with soft lighting…"/>
-          <Inp label="Amenities (comma separated, optional)" value={form.amenities||""} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Air conditioning, Music, Private shower…"/>
+          <Inp label="Amenities (comma separated)" value={form.amenities||""} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Air conditioning, Music, Private shower…"/>
+          {/* Photos */}
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>
+              Room Photos ({form.photos.length}/6)
+            </label>
+            {form.photos.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:7,marginBottom:10}}>
+                {form.photos.map((src,i)=>(
+                  <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",border:`2px solid ${i===0?PL:G2}`}}>
+                    <div style={{paddingTop:"75%",position:"relative"}}>
+                      <img src={src} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                    </div>
+                    {i===0&&<div style={{position:"absolute",top:2,left:2,background:PL,color:WH,fontSize:8,fontWeight:700,padding:"1px 4px",borderRadius:99}}>MAIN</div>}
+                    <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:2,right:2,width:18,height:18,borderRadius:"50%",background:"rgba(200,0,0,.85)",color:WH,border:"none",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {form.photos.length<6&&(
+              <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",border:`2px dashed ${G2}`,borderRadius:8,cursor:"pointer",fontSize:13,color:G6}}>
+                📷 {uploading?"Uploading…":"Add Photos"}
+                <input type="file" accept="image/*" multiple onChange={addPhotos} style={{display:"none"}} disabled={uploading}/>
+              </label>
+            )}
+          </div>
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
             <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Room"}</Btn>
@@ -2305,6 +2373,132 @@ function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) 
   );
 }
 
+function PackagesTab({packages,setPackages,services,rooms,pop}){
+  const [modal,setModal] = useState(false);
+  const [form,setForm]   = useState({id:null,name:"",description:"",room_id:"",services:[],masseuses:1,amenities:"",price:"",duration_min:60});
+
+  const open=(pkg)=>{
+    if(pkg) setForm({...pkg,amenities:(pkg.amenities||[]).join(", "),services:pkg.services||[]});
+    else    setForm({id:null,name:"",description:"",room_id:"",services:[],masseuses:1,amenities:"",price:"",duration_min:60});
+    setModal(true);
+  };
+
+  const toggleSvc=(sv)=>{
+    setForm(f=>{
+      const ex=f.services.find(s=>s.id===sv.id);
+      if(ex) return{...f,services:f.services.filter(s=>s.id!==sv.id)};
+      return{...f,services:[...f.services,{id:sv.id,name:sv.name,duration_min:sv.duration_min}]};
+    });
+  };
+
+  const save=async()=>{
+    if(!form.name||!form.price) return pop("Name and price required","err");
+    const amen=typeof form.amenities==="string"?form.amenities.split(",").map(s=>s.trim()).filter(Boolean):(form.amenities||[]);
+    const payload={name:form.name,description:form.description||"",room_id:form.room_id||null,
+      services:form.services,masseuses:Number(form.masseuses)||1,amenities:amen,
+      price:Number(form.price),duration_min:Number(form.duration_min)||60};
+    try{
+      if(form.id){const u=await api.updatePackage(form.id,payload);setPackages(p=>p.map(x=>x.id===form.id?u:x));pop("Package updated");}
+      else{const u=await api.createPackage(payload);setPackages(p=>[...p,u]);pop("Package created");}
+      setModal(false);
+    }catch(e){pop(e.message,"err");}
+  };
+
+  const del=async(pkg)=>{
+    if(!window.confirm(`Delete "${pkg.name}"?`)) return;
+    try{await api.deletePackage(pkg.id);setPackages(p=>p.filter(x=>x.id!==pkg.id));pop("Deleted");}catch(e){pop(e.message,"err");}
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>🎁 Packages</h2>
+        <Btn onClick={()=>open(null)}>+ Add Package</Btn>
+      </div>
+      {packages.length===0&&<div style={{textAlign:"center",padding:40,color:G4}}>No packages yet. Create your first package deal.</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+        {packages.map(pkg=>(
+          <Card key={pkg.id}>
+            <div style={{fontWeight:700,fontSize:16,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{pkg.name}</div>
+            {pkg.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{pkg.description}</div>}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,fontSize:12}}>
+              <span style={{background:PLF,color:PL,padding:"3px 9px",borderRadius:99,fontWeight:700}}>{fmt(pkg.price)}</span>
+              <span style={{background:G1,color:G6,padding:"3px 9px",borderRadius:99}}>⏱ {pkg.duration_min} min</span>
+              <span style={{background:G1,color:G6,padding:"3px 9px",borderRadius:99}}>💆 {pkg.masseuses} masseuse{pkg.masseuses>1?"s":""}</span>
+              {pkg.room_name&&<span style={{background:G1,color:G6,padding:"3px 9px",borderRadius:99}}>🛏 {pkg.room_name}</span>}
+            </div>
+            {(pkg.services||[]).length>0&&(
+              <div style={{fontSize:12,color:G6,marginBottom:8}}>{pkg.services.map(s=>s.name).join(" + ")}</div>
+            )}
+            {(pkg.amenities||[]).length>0&&(
+              <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
+                {pkg.amenities.map((a,i)=><span key={i} style={{background:G1,fontSize:10,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}
+              </div>
+            )}
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>open(pkg)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
+              <button onClick={()=>del(pkg)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑 Delete</button>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {modal&&(
+        <Modal title={form.id?"Edit Package":"New Package"} onClose={()=>setModal(false)}>
+          <Inp label="Package Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Couples Bliss, VIP Retreat…"/>
+          <Txa label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={2} placeholder="What's included, mood, experience…"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Inp label="Total Price (TZS) *" type="number" value={form.price} onChange={e=>setForm(f=>({...f,price:e.target.value}))} placeholder="150000"/>
+            <Inp label="Duration (minutes)" type="number" value={form.duration_min} onChange={e=>setForm(f=>({...f,duration_min:e.target.value}))} placeholder="90"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Number of Masseuses</label>
+              <div style={{display:"flex",gap:6"}}>
+                {[1,2,3,4].map(n=>(
+                  <button key={n} onClick={()=>setForm(f=>({...f,masseuses:n}))}
+                    style={{flex:1,padding:"8px 4px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      border:`2px solid ${form.masseuses===n?PL:G2}`,background:form.masseuses===n?PLF:WH,color:form.masseuses===n?PL:G6}}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Sel label="Room" value={form.room_id||""} onChange={e=>setForm(f=>({...f,room_id:e.target.value}))}>
+              <option value="">No specific room</option>
+              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+            </Sel>
+          </div>
+          <Inp label="Included Amenities (comma separated)" value={form.amenities} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Champagne, Rose petals, Hot towels…"/>
+          {/* Services selector */}
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>
+              Services Included ({form.services.length} selected)
+            </label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:180,overflowY:"auto",padding:4}}>
+              {services.filter(s=>s.active).map(sv=>{
+                const sel=form.services.find(s=>s.id===sv.id);
+                return(
+                  <button key={sv.id} onClick={()=>toggleSvc(sv)}
+                    style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G6}}>
+                    {sel?"✓ ":""}{sv.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn onClick={save} disabled={!form.name||!form.price} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Create Package"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
 function StaffTab({staff,setStaff,pop,currentUser}){
   const [modal,setModal]=useState(false);
   const [form,setForm]=useState({id:null,name:"",email:"",phone:"",role:"Receptionist",pin:""});
@@ -2618,7 +2812,7 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
 }
 
 
-function BookingPortal({therapists,rooms,services,pricing,offers,payMethods,customer,
+function BookingPortal({therapists,rooms,services,pricing,offers,payMethods,customer,packages,
 bD,setBD,bStep,setBStep,bBase,bDisc,bTotal,bRoomId,
 getPrice,goStep,navTo,pop,custModal,setCustModal,
 pendingBook,setPendingBook,custLogin,custRegister,setAppts,
@@ -2667,9 +2861,79 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
           </div>
         )}
 
-        {/* Step 1 — Date, Time, Service Type */}
+        {/* Step 1 — Date, Time, Service Type + Package option */}
         {bStep===1&&(
           <div>
+            {/* Booking mode toggle — only show if packages exist */}
+            {packages&&packages.length>0&&(
+              <div style={{display:"flex",gap:0,marginBottom:22,background:G1,borderRadius:10,padding:4}}>
+                <button onClick={()=>setBD(d=>({...d,bookingMode:"standard"}))}
+                  style={{flex:1,padding:"9px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",
+                    background:bD.bookingMode!=="package"?WH:"transparent",
+                    color:bD.bookingMode!=="package"?BK:G6,
+                    boxShadow:bD.bookingMode!=="package"?"0 1px 4px rgba(0,0,0,.1)":"none",transition:"all .2s"}}>
+                  💆 Individual
+                </button>
+                <button onClick={()=>setBD(d=>({...d,bookingMode:"package"}))}
+                  style={{flex:1,padding:"9px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",
+                    background:bD.bookingMode==="package"?PL:"transparent",
+                    color:bD.bookingMode==="package"?WH:G6,transition:"all .2s"}}>
+                  🎁 Package
+                </button>
+              </div>
+            )}
+
+            {/* PACKAGE MODE */}
+            {bD.bookingMode==="package"&&packages&&packages.length>0?(
+              <div>
+                <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,marginBottom:6,color:BK}}>Choose a Package</h2>
+                <p style={{color:G6,fontSize:13,marginBottom:16}}>Curated spa experiences — everything included</p>
+                <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>
+                  {packages.map(pkg=>{
+                    const sel=bD.packageId===pkg.id;
+                    return(
+                      <div key={pkg.id} onClick={()=>setBD(d=>({...d,packageId:pkg.id,roomId:pkg.room_id||d.roomId,services:pkg.services||[]}))}
+                        style={{border:`2px solid ${sel?PL:G2}`,borderRadius:14,padding:"14px 16px",cursor:"pointer",background:sel?PLF:WH,transition:"all .15s"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:8}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:sel?PL:BK,marginBottom:3}}>{pkg.name}</div>
+                            {pkg.description&&<div style={{fontSize:12,color:G6,lineHeight:1.6}}>{pkg.description}</div>}
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontWeight:700,fontSize:17,color:PL}}>{fmt(pkg.price)}</div>
+                            <div style={{fontSize:11,color:G4}}>{pkg.duration_min} min</div>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                          <span style={{background:G1,color:G6,padding:"2px 8px",borderRadius:99,fontSize:11}}>💆 {pkg.masseuses} masseuse{pkg.masseuses>1?"s":""}</span>
+                          {pkg.room_name&&<span style={{background:G1,color:G6,padding:"2px 8px",borderRadius:99,fontSize:11}}>🛏 {pkg.room_name}</span>}
+                          {(pkg.services||[]).map((s,i)=><span key={i} style={{background:G1,color:G6,padding:"2px 8px",borderRadius:99,fontSize:11}}>{s.name}</span>)}
+                          {(pkg.amenities||[]).map((a,i)=><span key={i} style={{background:sel?`${PL}15`:G1,color:sel?PL:G4,padding:"2px 8px",borderRadius:99,fontSize:10}}>{a}</span>)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                  <Inp label="Date *" type="date" value={bD.date} min={td()} onChange={e=>setBD(d=>({...d,date:e.target.value}))}/>
+                  <Inp label="Time *" type="time" value={bD.time} onChange={e=>setBD(d=>({...d,time:e.target.value}))}/>
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:14}}>
+                  {[["inhouse","🏢 At Studio"],["outcall","🏠 Outcall"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setBD(d=>({...d,serviceType:v}))}
+                      style={{flex:1,padding:"9px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${bD.serviceType===v?PL:G2}`,background:bD.serviceType===v?PLF:WH,color:bD.serviceType===v?PL:G6}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                {bD.serviceType==="outcall"&&<Inp label="Your Address *" value={bD.outcallAddr||""} onChange={e=>setBD(d=>({...d,outcallAddr:e.target.value}))} placeholder="Street, area, landmark…"/>}
+                <Btn onClick={()=>goStep(5)} disabled={!bD.packageId||!bD.date||!bD.time||(bD.serviceType==="outcall"&&!bD.outcallAddr)} style={{width:"100%",justifyContent:"center"}}>
+                  Review & Confirm →
+                </Btn>
+              </div>
+            ):(
+            <div>
             <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:6,color:BK}}>When & How?</h2>
             <p style={{color:G6,fontSize:14,marginBottom:24}}>Choose your date, time, and service type</p>
             <Card>

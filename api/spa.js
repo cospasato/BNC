@@ -604,6 +604,62 @@ module.exports = async function handler(req, res) {
       }
     }
 
+        // ── PACKAGES ─────────────────────────────────────────────
+    if (resource === 'packages') {
+      await sql`CREATE TABLE IF NOT EXISTS packages (
+        id           TEXT PRIMARY KEY DEFAULT 'PKG' || upper(substr(md5(random()::text), 1, 6)),
+        name         TEXT NOT NULL,
+        description  TEXT NOT NULL DEFAULT '',
+        room_id      TEXT REFERENCES rooms(id) ON DELETE SET NULL,
+        services     JSONB NOT NULL DEFAULT '[]',
+        masseuses    INTEGER NOT NULL DEFAULT 1,
+        amenities    TEXT[] NOT NULL DEFAULT '{}',
+        price        BIGINT NOT NULL DEFAULT 0,
+        duration_min INTEGER NOT NULL DEFAULT 60,
+        active       BOOLEAN NOT NULL DEFAULT true,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`.catch(()=>{});
+
+      if (req.method === 'GET') {
+        const rows = await sql`
+          SELECT p.*, r.name AS room_name FROM packages p
+          LEFT JOIN rooms r ON r.id = p.room_id
+          WHERE p.active = true ORDER BY p.created_at DESC`;
+        return res.status(200).json(rows);
+      }
+      if (req.method === 'POST') {
+        const { name, description, room_id, services, masseuses, amenities, price, duration_min } = req.body || {};
+        if (!name || !price) return res.status(400).json({ error: 'name and price required' });
+        const rows = await sql`
+          INSERT INTO packages (name, description, room_id, services, masseuses, amenities, price, duration_min)
+          VALUES (${name}, ${description||''}, ${room_id||null}, ${JSON.stringify(services||[])},
+                  ${masseuses||1}, ${amenities||[]}, ${price}, ${duration_min||60})
+          RETURNING *`;
+        return res.status(201).json(rows[0]);
+      }
+      if (req.method === 'PUT' && id) {
+        const { name, description, room_id, services, masseuses, amenities, price, duration_min, active } = req.body || {};
+        const rows = await sql`
+          UPDATE packages SET
+            name         = COALESCE(${name         ?? null}, name),
+            description  = COALESCE(${description  ?? null}, description),
+            room_id      = COALESCE(${room_id      ?? null}, room_id),
+            services     = COALESCE(${services ? JSON.stringify(services) : null}, services),
+            masseuses    = COALESCE(${masseuses    ?? null}, masseuses),
+            amenities    = COALESCE(${amenities    ?? null}, amenities),
+            price        = COALESCE(${price        ?? null}, price),
+            duration_min = COALESCE(${duration_min ?? null}, duration_min),
+            active       = COALESCE(${active       ?? null}, active)
+          WHERE id = ${id} RETURNING *`;
+        if (!rows.length) return res.status(404).json({ error: 'Not found' });
+        return res.status(200).json(rows[0]);
+      }
+      if (req.method === 'DELETE' && id) {
+        await sql`UPDATE packages SET active = false WHERE id = ${id}`;
+        return res.status(200).json({ success: true });
+      }
+    }
+
         return res.status(400).json({ error: `Unknown resource: ${resource}` });
 
   } catch (err) {
