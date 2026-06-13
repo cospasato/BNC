@@ -660,6 +660,41 @@ module.exports = async function handler(req, res) {
       }
     }
 
+        // ── FINES / PENALTIES ─────────────────────────────────────
+    if (resource === 'fines') {
+      await sql`CREATE TABLE IF NOT EXISTS fines (
+        id             TEXT PRIMARY KEY DEFAULT 'FN' || upper(substr(md5(random()::text), 1, 6)),
+        recipient_id   TEXT NOT NULL,
+        recipient_type TEXT NOT NULL DEFAULT 'therapist',
+        recipient_name TEXT NOT NULL,
+        amount         BIGINT NOT NULL,
+        notes          TEXT,
+        created_by     TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`.catch(()=>{});
+
+      if (req.method === 'GET') {
+        const { recipient_id } = req.query;
+        const rows = recipient_id
+          ? await sql`SELECT * FROM fines WHERE recipient_id=${recipient_id} ORDER BY created_at DESC`
+          : await sql`SELECT * FROM fines ORDER BY created_at DESC LIMIT 500`;
+        return res.status(200).json(rows);
+      }
+      if (req.method === 'POST') {
+        const { recipient_id, recipient_type, recipient_name, amount, notes, created_by } = req.body || {};
+        if (!recipient_id || !amount) return res.status(400).json({ error: 'recipient_id and amount required' });
+        const rows = await sql`
+          INSERT INTO fines (recipient_id, recipient_type, recipient_name, amount, notes, created_by)
+          VALUES (${recipient_id}, ${recipient_type||'therapist'}, ${recipient_name||''}, ${amount}, ${notes||null}, ${created_by||null})
+          RETURNING *`;
+        return res.status(201).json(rows[0]);
+      }
+      if (req.method === 'DELETE' && id) {
+        await sql`DELETE FROM fines WHERE id=${id}`;
+        return res.status(200).json({ success: true });
+      }
+    }
+
         return res.status(400).json({ error: `Unknown resource: ${resource}` });
 
   } catch (err) {

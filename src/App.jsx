@@ -1888,10 +1888,14 @@ function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) 
   const [dateTo,   setDateTo]   = useState(()=>new Date().toISOString().split("T")[0]);
   const [report,   setReport]   = useState(null);
   const [loadingR, setLoadingR] = useState(false);
-  const [payouts,  setPayouts]  = useState([]);
-  const [payoutModal, setPayoutModal] = useState(null); // {id, name, type, earned, already_paid}
+  const [payouts,    setPayouts]    = useState([]);
+  const [fines,      setFines]      = useState([]);
+  const [payoutModal, setPayoutModal] = useState(null);
+  const [fineModal,   setFineModal]   = useState(null); // {id, name, type}
   const [payoutAmt,   setPayoutAmt]   = useState("");
   const [payoutNote,  setPayoutNote]  = useState("");
+  const [fineAmt,     setFineAmt]     = useState("");
+  const [fineNote,    setFineNote]    = useState("");
   const [savingPct, setSavingPct] = useState({});
 
   // Local editable commission % state — initialized from props
@@ -1920,7 +1924,34 @@ function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) 
   };
 
   const loadPayouts = async()=>{
-    try{ const p=await api.getPayouts(); setPayouts(p); } catch{}
+    try{
+      const [p, f] = await Promise.all([api.getPayouts(), api.getFines()]);
+      setPayouts(Array.isArray(p)?p:[]);
+      setFines(Array.isArray(f)?f:[]);
+    } catch(e){ console.warn("loadPayouts:", e.message); }
+  };
+
+  const recordFine = async()=>{
+    if(!fineModal||!fineAmt) return;
+    try{
+      const f = await api.createFine({
+        recipient_id:   fineModal.id,
+        recipient_type: fineModal.type,
+        recipient_name: fineModal.name,
+        amount:         Number(fineAmt),
+        notes:          fineNote||null,
+        created_by:     user?.id||null,
+      });
+      setFines(prev=>[f,...prev]);
+      setFineModal(null); setFineAmt(""); setFineNote("");
+      pop(`Fine recorded for ${fineModal.name} ✓`);
+    }catch(e){ pop(e.message,"err"); }
+  };
+
+  const deleteFine = async(id,name)=>{
+    if(!window.confirm(`Remove fine for ${name}?`)) return;
+    try{ await api.deleteFine(id); setFines(f=>f.filter(x=>x.id!==id)); pop("Fine removed"); }
+    catch(e){ pop(e.message,"err"); }
   };
 
   useEffect(()=>{ loadReport(); loadPayouts(); },[]);
@@ -1972,10 +2003,15 @@ function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) 
     catch(e){ pop(e.message,"err"); }
   };
 
-  // Calculate already paid per recipient in current period
+  // Calculate already paid per recipient (all time, not period-filtered — shows true balance)
   const alreadyPaid = (recipientId)=>
-    payouts.filter(p=>p.recipient_id===recipientId && p.period_from===dateFrom && p.period_to===dateTo)
+    payouts.filter(p=>p.recipient_id===recipientId)
            .reduce((s,p)=>s+Number(p.amount),0);
+
+  // Calculate fines per recipient in current period
+  const totalFines = (recipientId)=>
+    fines.filter(f=>f.recipient_id===recipientId)
+         .reduce((s,f)=>s+Number(f.amount),0);
 
   const presets=[
     ["This Month",()=>{const d=new Date();setDateFrom(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01");setDateTo(new Date().toISOString().split("T")[0]);}],
@@ -2090,32 +2126,67 @@ function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) 
                 <div style={{marginBottom:16}}>
                   <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>💆 Therapists</div>
                   {report.therapist_commissions.map(t=>{
+                    const earned = t.commission_amount;
+                    const fined  = totalFines(t.therapist_id);
+                    const net    = Math.max(0, earned - fined);
                     const paid   = alreadyPaid(t.therapist_id);
-                    const unpaid = Math.max(0, t.commission_amount - paid);
+                    const unpaid = Math.max(0, net - paid);
                     return(
-                      <div key={t.therapist_id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:WH,borderRadius:10,border:`1px solid ${G2}`,marginBottom:8,flexWrap:"wrap"}}>
-                        <div style={{flex:1,minWidth:160}}>
-                          <div style={{fontWeight:700,fontSize:14}}>{t.name}</div>
-                          <div style={{fontSize:12,color:G6,marginTop:2}}>Revenue: {fmt(t.revenue)} · Rate: {t.commission_pct||0}%</div>
+                      <div key={t.therapist_id} style={{background:WH,borderRadius:10,border:`1px solid ${G2}`,marginBottom:8,overflow:"hidden"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",flexWrap:"wrap"}}>
+                          <div style={{flex:1,minWidth:160}}>
+                            <div style={{fontWeight:700,fontSize:14}}>{t.name}</div>
+                            <div style={{fontSize:12,color:G6,marginTop:2}}>Revenue: {fmt(t.revenue)} · Rate: {t.commission_pct||0}%</div>
+                          </div>
+                          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+                            <div style={{textAlign:"center"}}>
+                              <div style={{fontSize:10,color:G6,marginBottom:2}}>EARNED</div>
+                              <div style={{fontWeight:700,fontSize:15,color:PL}}>{fmt(earned)}</div>
+                            </div>
+                            {fined>0&&<div style={{textAlign:"center"}}>
+                              <div style={{fontSize:10,color:ER,marginBottom:2}}>FINES</div>
+                              <div style={{fontWeight:700,fontSize:15,color:ER}}>−{fmt(fined)}</div>
+                            </div>}
+                            <div style={{textAlign:"center",background:fined>0?G1:"none",borderRadius:6,padding:fined>0?"4px 8px":0}}>
+                              <div style={{fontSize:10,color:G6,marginBottom:2}}>NET</div>
+                              <div style={{fontWeight:700,fontSize:15,color:BK}}>{fmt(net)}</div>
+                            </div>
+                            <div style={{textAlign:"center"}}>
+                              <div style={{fontSize:10,color:G6,marginBottom:2}}>PAID OUT</div>
+                              <div style={{fontWeight:700,fontSize:15,color:OK}}>{fmt(paid)}</div>
+                            </div>
+                            <div style={{textAlign:"center"}}>
+                              <div style={{fontSize:10,color:unpaid>0?ER:G4,marginBottom:2}}>REMAINING</div>
+                              <div style={{fontWeight:700,fontSize:15,color:unpaid>0?ER:G4}}>{fmt(unpaid)}</div>
+                            </div>
+                            <div style={{display:"flex",gap:6}}>
+                              <button onClick={()=>{setFineModal({id:t.therapist_id,name:t.name,type:"therapist"});setFineAmt("");setFineNote("");}}
+                                style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${ER}`,background:ERB,color:ER,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                ⚠️ Fine
+                              </button>
+                              <button onClick={()=>{setPayoutModal({id:t.therapist_id,name:t.name,type:"therapist",earned,fined,net,paid});setPayoutAmt(String(unpaid>0?unpaid:""));setPayoutNote("");}}
+                                disabled={unpaid<=0}
+                                style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${unpaid>0?OK:G2}`,background:unpaid>0?OKB:G1,color:unpaid>0?OK:G4,fontSize:12,fontWeight:700,cursor:unpaid>0?"pointer":"not-allowed",fontFamily:"inherit"}}>
+                                💵 Pay
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
-                          <div style={{textAlign:"center"}}>
-                            <div style={{fontSize:10,color:G6,marginBottom:2}}>EARNED</div>
-                            <div style={{fontWeight:700,fontSize:16,color:PL}}>{fmt(t.commission_amount)}</div>
+                        {/* Fines list for this therapist */}
+                        {fines.filter(f=>f.recipient_id===t.therapist_id).length>0&&(
+                          <div style={{background:ERB,padding:"8px 14px",borderTop:`1px solid ${ER}20`}}>
+                            <div style={{fontSize:11,fontWeight:700,color:ER,marginBottom:5}}>Active Fines</div>
+                            {fines.filter(f=>f.recipient_id===t.therapist_id).map(f=>(
+                              <div key={f.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,marginBottom:3}}>
+                                <span style={{color:G6}}>{f.notes||"Fine"} · {fmtDate(f.created_at)}</span>
+                                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                                  <span style={{fontWeight:700,color:ER}}>−{fmt(f.amount)}</span>
+                                  <button onClick={()=>deleteFine(f.id,t.name)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,padding:0}}>×</button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                          <div style={{textAlign:"center"}}>
-                            <div style={{fontSize:10,color:G6,marginBottom:2}}>PAID OUT</div>
-                            <div style={{fontWeight:700,fontSize:16,color:OK}}>{fmt(paid)}</div>
-                          </div>
-                          <div style={{textAlign:"center"}}>
-                            <div style={{fontSize:10,color:G6,marginBottom:2}}>REMAINING</div>
-                            <div style={{fontWeight:700,fontSize:16,color:unpaid>0?ER:OK}}>{fmt(unpaid)}</div>
-                          </div>
-                          <button onClick={()=>{setPayoutModal({id:t.therapist_id,name:t.name,type:"therapist",earned:t.commission_amount,paid});setPayoutAmt(String(unpaid>0?unpaid:""));setPayoutNote("");}}
-                            style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${OK}`,background:OKB,color:OK,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                            💵 Pay Out
-                          </button>
-                        </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2190,14 +2261,29 @@ function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) 
       </Card>
 
       {/* Payout modal */}
+      {fineModal&&(
+        <Modal title={`Record Fine — ${fineModal.name}`} onClose={()=>setFineModal(null)}>
+          <div style={{background:ERB,borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,color:ER}}>
+            ⚠️ This fine will be deducted from {fineModal.name}'s commission earnings.
+          </div>
+          <Inp label="Fine Amount (TZS) *" type="number" value={fineAmt} onChange={e=>setFineAmt(e.target.value)} placeholder="e.g. 20000"/>
+          <Inp label="Reason *" value={fineNote} onChange={e=>setFineNote(e.target.value)} placeholder="e.g. Late arrival, No show, Damaged equipment…"/>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setFineModal(null)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn onClick={recordFine} disabled={!fineAmt||!fineNote} style={{flex:1,justifyContent:"center",background:ER}}>Record Fine</Btn>
+          </div>
+        </Modal>
+      )}
+
       {payoutModal&&(
         <Modal title={`Pay Out — ${payoutModal.name}`} onClose={()=>setPayoutModal(null)}>
           <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-            {[["Period", `${dateFrom} → ${dateTo}`],
-              ["Commission Earned", fmt(payoutModal.earned)],
-              ["Already Paid",      fmt(payoutModal.paid)],
-              ["Remaining",         fmt(Math.max(0,payoutModal.earned-payoutModal.paid))],
-            ].map(([k,v])=>(
+            {[["Commission Earned", fmt(payoutModal.earned)],
+              payoutModal.fined>0&&["Fines / Deductions", `−${fmt(payoutModal.fined)}`],
+              payoutModal.fined>0&&["Net Payable",        fmt(payoutModal.net)],
+              ["Already Paid Out",  fmt(payoutModal.paid)],
+              ["Remaining Balance", fmt(Math.max(0,(payoutModal.net||payoutModal.earned)-payoutModal.paid))],
+            ].filter(Boolean).map(([k,v])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:13,borderBottom:`1px solid ${G2}`}}>
                 <span style={{color:G6}}>{k}</span><strong>{v}</strong>
               </div>

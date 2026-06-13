@@ -84,6 +84,10 @@ export const api = {
 
   // Commission
   getCommission:  (df,dt) => g(`resource=commission${df?'&date_from='+df:''}${dt?'&date_to='+dt:''}`),
+  // Fines
+  getFines:      (rid)  => g(`resource=fines${rid?'&recipient_id='+rid:''}`),
+  createFine:    b      => p('resource=fines', b),
+  deleteFine:    id     => d(`resource=fines&id=${id}`),
   // Packages
   getPackages:    ()      => g('resource=packages'),
   createPackage:  b       => p('resource=packages', b),
