@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "./api.js";
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────────────────────
@@ -3166,15 +3166,78 @@ function BookingDetailsForm({ bdName, setBdName, bdPhone, setBdPhone, bdEmail, s
 }
 
 
+function TherapistCard({th, onClick}) {
+  const photos = [...new Set([...(th.photos||[]),th.photo].filter(Boolean))];
+  const mainPhoto = photos[0];
+  return (
+    <div
+      onClick={onClick}
+      style={{width:260,flexShrink:0,borderRadius:16,overflow:"hidden",cursor:"pointer",
+        background:WH,boxShadow:"0 2px 12px rgba(0,0,0,.08)",transition:"all .2s"}}
+      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="0 12px 36px rgba(123,63,110,.25)";}}
+      onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.08)";}}>
+      <div style={{paddingTop:"130%",position:"relative",background:mainPhoto?G1:`linear-gradient(160deg,${PLD},${PL})`}}>
+        {mainPhoto
+          ? <img src={mainPhoto} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+          : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:64,color:"rgba(255,255,255,.4)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
+        }
+        <div style={{position:"absolute",bottom:0,left:0,right:0,height:"50%",background:"linear-gradient(to top,rgba(0,0,0,.75),transparent)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 16px"}}>
+          <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:WH,marginBottom:3,textShadow:"0 1px 4px rgba(0,0,0,.5)"}}>{th.name}</div>
+          {th.specialties?.length>0&&<div style={{fontSize:12,color:"rgba(255,255,255,.8)"}}>{th.specialties.slice(0,2).join(" · ")}</div>}
+        </div>
+        {photos.length>1&&(
+          <div style={{position:"absolute",top:10,right:10,background:"rgba(0,0,0,.5)",color:WH,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:99,backdropFilter:"blur(4px)"}}>
+            📷 {photos.length}
+          </div>
+        )}
+      </div>
+      <div style={{padding:"10px 14px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{background:OKB,color:OK,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏢 Incall</span>
+        {th.outcall&&<span style={{background:PLF,color:PL,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏠 Outcall</span>}
+      </div>
+    </div>
+  );
+}
+
 function TherapistGrid({therapists,onBook}){
-  const [filter,setFilter] = useState("all");
-  const [selTh,  setSelTh] = useState(null);
+  const [filter,  setFilter]  = useState("all");
+  const [selTh,   setSelTh]   = useState(null);
+  const [paused,  setPaused]  = useState(false);
+  const trackRef = useRef(null);
+  const animRef  = useRef(null);
+  const posRef   = useRef(0);
+  const SPEED    = 0.5; // px per frame
 
   const shown = filter==="incall"
     ? therapists.filter(t=>t.active)
     : filter==="outcall"
     ? therapists.filter(t=>t.outcall&&t.active)
     : therapists.filter(t=>t.active);
+
+  // Duplicate list for infinite scroll illusion
+  const items = shown.length > 0 ? [...shown, ...shown, ...shown] : [];
+
+  useEffect(()=>{
+    const track = trackRef.current;
+    if(!track || shown.length===0) return;
+
+    const CARD_W   = 260 + 16; // card width + gap
+    const halfLen  = shown.length * CARD_W;
+
+    const step = ()=>{
+      if(!paused){
+        posRef.current += SPEED;
+        // Reset to start of second set seamlessly
+        if(posRef.current >= halfLen) posRef.current -= halfLen;
+        track.style.transform = `translateX(-${posRef.current}px)`;
+      }
+      animRef.current = requestAnimationFrame(step);
+    };
+
+    animRef.current = requestAnimationFrame(step);
+    return ()=>cancelAnimationFrame(animRef.current);
+  },[shown.length, paused]);
 
   if(selTh) return (
     <TherapistPage th={selTh} onBack={()=>setSelTh(null)} onBook={(id)=>{setSelTh(null);onBook(id);}}/>
@@ -3185,58 +3248,55 @@ function TherapistGrid({therapists,onBook}){
       {/* Filter chips */}
       <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:28,flexWrap:"wrap"}}>
         {[["all","All Therapists"],["incall","In-House"],["outcall","Outcall Available"]].map(([f,l])=>(
-          <button key={f} onClick={()=>setFilter(f)}
-            style={{padding:"7px 16px",borderRadius:99,fontSize:13,fontWeight:700,border:`2px solid ${filter===f?PL:G2}`,background:filter===f?PL:WH,color:filter===f?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
+          <button key={f} onClick={()=>{setFilter(f);posRef.current=0;}}
+            style={{padding:"7px 16px",borderRadius:99,fontSize:13,fontWeight:700,
+              border:`2px solid ${filter===f?PL:G2}`,background:filter===f?PL:WH,
+              color:filter===f?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
             {l}
           </button>
         ))}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:20}}>
-        {shown.map(th=>{
-          const photos = [...new Set([...(th.photos||[]),th.photo].filter(Boolean))];
-          const mainPhoto = photos[0];
-          return(
-            <div key={th.id}
-              onClick={()=>setSelTh(th)}
-              style={{background:WH,borderRadius:16,overflow:"hidden",cursor:"pointer",transition:"all .2s",boxShadow:"0 2px 12px rgba(0,0,0,.08)"}}
-              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="0 12px 36px rgba(123,63,110,.22)";}}
-              onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.08)";}}>
-              {/* Photo — tall portrait ratio */}
-              <div style={{paddingTop:"120%",position:"relative",background:mainPhoto?G1:`linear-gradient(160deg,${PLD},${PL})`}}>
-                {mainPhoto
-                  ? <img src={mainPhoto} alt={th.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
-                  : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:60,color:"rgba(255,255,255,.5)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>{th.name?.[0]}</div>
-                }
-                {/* Gradient overlay at bottom */}
-                <div style={{position:"absolute",bottom:0,left:0,right:0,height:"45%",background:"linear-gradient(to top,rgba(0,0,0,.7),transparent)",pointerEvents:"none"}}/>
-                {/* Name overlaid on photo */}
-                <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 16px"}}>
-                  <div style={{fontWeight:700,fontSize:17,fontFamily:"'Playfair Display',serif",color:WH,marginBottom:3,textShadow:"0 1px 4px rgba(0,0,0,.4)"}}>{th.name}</div>
-                  {th.specialties?.length>0&&(
-                    <div style={{fontSize:12,color:"rgba(255,255,255,.8)"}}>{th.specialties.slice(0,2).join(" · ")}</div>
-                  )}
-                </div>
-                {/* Photo count badge */}
-                {photos.length>1&&(
-                  <div style={{position:"absolute",top:10,right:10,background:"rgba(0,0,0,.5)",color:WH,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:99,backdropFilter:"blur(4px)"}}>
-                    📷 {photos.length}
-                  </div>
-                )}
-              </div>
-              {/* Badges */}
-              <div style={{padding:"10px 14px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                <span style={{background:OKB,color:OK,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏢 Incall</span>
-                {th.outcall&&<span style={{background:PLF,color:PL,padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏠 Outcall</span>}
-                <span style={{marginLeft:"auto",fontSize:11,color:G4,fontWeight:600}}>Tap for details →</span>
-              </div>
+
+      {shown.length===0 && (
+        <div style={{textAlign:"center",color:G4,fontSize:14,padding:40}}>No therapists found</div>
+      )}
+
+      {shown.length>0 && (
+        <div style={{position:"relative"}}>
+          {/* Fade edges */}
+          <div style={{position:"absolute",top:0,left:0,bottom:0,width:60,
+            background:"linear-gradient(to right,rgba(241,241,247,1),transparent)",
+            zIndex:2,pointerEvents:"none"}}/>
+          <div style={{position:"absolute",top:0,right:0,bottom:0,width:60,
+            background:"linear-gradient(to left,rgba(241,241,247,1),transparent)",
+            zIndex:2,pointerEvents:"none"}}/>
+
+          {/* Scrolling track */}
+          <div style={{overflow:"hidden",width:"100%"}}
+            onMouseEnter={()=>setPaused(true)}
+            onMouseLeave={()=>setPaused(false)}
+            onTouchStart={()=>setPaused(true)}
+            onTouchEnd={()=>setPaused(false)}>
+            <div ref={trackRef}
+              style={{display:"flex",gap:16,width:"max-content",willChange:"transform"}}>
+              {items.map((th,i)=>(
+                <TherapistCard key={`${th.id}-${i}`} th={th} onClick={()=>setSelTh(th)}/>
+              ))}
             </div>
-          );
-        })}
-        {shown.length===0&&<div style={{color:G4,fontSize:14,padding:20,gridColumn:"1/-1",textAlign:"center"}}>No therapists found</div>}
-      </div>
-      <div style={{textAlign:"center",marginTop:32}}>
+          </div>
+
+          {/* Pause hint */}
+          <div style={{textAlign:"center",marginTop:12,fontSize:12,color:G4}}>
+            Hover to pause · Tap a therapist to view profile
+          </div>
+        </div>
+      )}
+
+      <div style={{textAlign:"center",marginTop:28}}>
         <button onClick={()=>onBook(null)}
-          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
+          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
+            padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,
+            fontFamily:"'Playfair Display',serif"}}>
           Book a Session →
         </button>
       </div>
