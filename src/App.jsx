@@ -2894,7 +2894,7 @@ function TherapistCard({th, onClick}) {
   return (
     <div
       onClick={onClick}
-      style={{width:260,flexShrink:0,borderRadius:16,overflow:"hidden",cursor:"pointer",
+      style={{width:"100%",borderRadius:16,overflow:"hidden",cursor:"pointer",
         background:WH,boxShadow:"0 2px 12px rgba(0,0,0,.08)",transition:"box-shadow .2s,transform .2s"}}
       onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="0 12px 36px rgba(123,63,110,.25)";}}
       onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.08)";}}>
@@ -2959,43 +2959,14 @@ function TherapistCard({th, onClick}) {
 }
 
 function TherapistGrid({therapists,onBook}){
-  const [filter,  setFilter]  = useState("all");
-  const [selTh,   setSelTh]   = useState(null);
-  const [paused,  setPaused]  = useState(false);
-  const trackRef = useRef(null);
-  const animRef  = useRef(null);
-  const posRef   = useRef(0);
-  const SPEED    = 0.5; // px per frame
+  const [filter, setFilter] = useState("all");
+  const [selTh,  setSelTh]  = useState(null);
 
   const shown = filter==="incall"
     ? therapists.filter(t=>t.active)
     : filter==="outcall"
     ? therapists.filter(t=>t.outcall&&t.active)
     : therapists.filter(t=>t.active);
-
-  // Duplicate list for infinite scroll illusion
-  const items = shown.length > 0 ? [...shown, ...shown, ...shown] : [];
-
-  useEffect(()=>{
-    const track = trackRef.current;
-    if(!track || shown.length===0) return;
-
-    const CARD_W   = 260 + 16; // card width + gap
-    const halfLen  = shown.length * CARD_W;
-
-    const step = ()=>{
-      if(!paused){
-        posRef.current += SPEED;
-        // Reset to start of second set seamlessly
-        if(posRef.current >= halfLen) posRef.current -= halfLen;
-        track.style.transform = `translateX(-${posRef.current}px)`;
-      }
-      animRef.current = requestAnimationFrame(step);
-    };
-
-    animRef.current = requestAnimationFrame(step);
-    return ()=>cancelAnimationFrame(animRef.current);
-  },[shown.length, paused]);
 
   if(selTh) return (
     <TherapistPage th={selTh} onBack={()=>setSelTh(null)} onBook={(id)=>{setSelTh(null);onBook(id);}}/>
@@ -3004,10 +2975,10 @@ function TherapistGrid({therapists,onBook}){
   return(
     <div>
       {/* Filter chips */}
-      <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:28,flexWrap:"wrap"}}>
-        {[["all","All Therapists"],["incall","In-House"],["outcall","Outcall Available"]].map(([f,l])=>(
-          <button key={f} onClick={()=>{setFilter(f);posRef.current=0;}}
-            style={{padding:"7px 16px",borderRadius:99,fontSize:13,fontWeight:700,
+      <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:24,flexWrap:"wrap"}}>
+        {[["all","All"],["incall","In-House"],["outcall","Outcall"]].map(([f,l])=>(
+          <button key={f} onClick={()=>setFilter(f)}
+            style={{padding:"7px 18px",borderRadius:99,fontSize:13,fontWeight:700,
               border:`2px solid ${filter===f?PL:G2}`,background:filter===f?PL:WH,
               color:filter===f?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
             {l}
@@ -3015,52 +2986,35 @@ function TherapistGrid({therapists,onBook}){
         ))}
       </div>
 
-      {shown.length===0 && (
+      {shown.length===0&&(
         <div style={{textAlign:"center",color:G4,fontSize:14,padding:40}}>No therapists found</div>
       )}
 
-      {shown.length>0 && (
-        <div style={{position:"relative"}}>
-          {/* Fade edges */}
-          <div style={{position:"absolute",top:0,left:0,bottom:0,width:60,
-            background:"linear-gradient(to right,rgba(241,241,247,1),transparent)",
-            zIndex:2,pointerEvents:"none"}}/>
-          <div style={{position:"absolute",top:0,right:0,bottom:0,width:60,
-            background:"linear-gradient(to left,rgba(241,241,247,1),transparent)",
-            zIndex:2,pointerEvents:"none"}}/>
+      {/* Responsive grid: 1 col mobile, 2 col tablet, 3 col desktop */}
+      <div style={{
+        display:"grid",
+        gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,280px),1fr))",
+        gap:16,
+      }}>
+        {shown.map(th=>(
+          <TherapistCard key={th.id} th={th} onClick={()=>setSelTh(th)}/>
+        ))}
+      </div>
 
-          {/* Scrolling track */}
-          <div style={{overflow:"hidden",width:"100%"}}
-            onMouseEnter={()=>setPaused(true)}
-            onMouseLeave={()=>setPaused(false)}
-            onTouchStart={()=>setPaused(true)}
-            onTouchEnd={()=>setPaused(false)}>
-            <div ref={trackRef}
-              style={{display:"flex",gap:16,width:"max-content",willChange:"transform"}}>
-              {items.map((th,i)=>(
-                <TherapistCard key={`${th.id}-${i}`} th={th} onClick={()=>setSelTh(th)}/>
-              ))}
-            </div>
-          </div>
-
-          {/* Pause hint */}
-          <div style={{textAlign:"center",marginTop:12,fontSize:12,color:G4}}>
-            Hover to pause · Tap a therapist to view profile
-          </div>
+      {shown.length>0&&(
+        <div style={{textAlign:"center",marginTop:28}}>
+          <button onClick={()=>onBook(null)}
+            style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
+              padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,
+              fontFamily:"'Playfair Display',serif"}}>
+            Book a Session →
+          </button>
         </div>
       )}
-
-      <div style={{textAlign:"center",marginTop:28}}>
-        <button onClick={()=>onBook(null)}
-          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
-            padding:"12px 34px",fontSize:15,cursor:"pointer",fontWeight:700,
-            fontFamily:"'Playfair Display',serif"}}>
-          Book a Session →
-        </button>
-      </div>
     </div>
   );
 }
+
 
 function TherapistPage({th, onBack, onBook}) {
   const [photoIdx, setPhotoIdx] = useState(0);
