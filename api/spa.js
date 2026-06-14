@@ -44,7 +44,8 @@ module.exports = async function handler(req, res) {
         return res.status(201).json(rows[0]);
       }
       if (req.method === 'PUT' && id) {
-        const { name, phone, email, bio, photo, photos, specialties, outcall, active, pin, availability, commission_pct } = req.body || {};
+        const { name, phone, email, bio, photo, photos, specialties, outcall, active, pin, availability, commission_pct, unavailable_until } = req.body || {};
+        const payload = { unavailable_until: unavailable_until ?? null };
         let rows;
         try {
           if (pin) {
@@ -74,9 +75,10 @@ module.exports = async function handler(req, res) {
               photos       = COALESCE(${photos       ?? null}, photos),
               specialties  = COALESCE(${specialties  ?? null}, specialties),
               outcall      = COALESCE(${outcall      ?? null}, outcall),
-              availability  = COALESCE(${availability  ?? null}, availability),
-              commission_pct= COALESCE(${commission_pct ?? null}, commission_pct),
-              active        = COALESCE(${active        ?? null}, active)
+              availability      = COALESCE(${availability       ?? null}, availability),
+              unavailable_until = COALESCE(${payload.unavailable_until ?? null}, unavailable_until),
+              commission_pct    = COALESCE(${commission_pct          ?? null}, commission_pct),
+              active            = COALESCE(${active                   ?? null}, active)
               WHERE id = ${id} RETURNING *`;
           }
         } catch(e) {
@@ -628,12 +630,12 @@ module.exports = async function handler(req, res) {
         return res.status(200).json(rows);
       }
       if (req.method === 'POST') {
-        const { name, description, room_id, services, masseuses, amenities, price, duration_min } = req.body || {};
+        const { name, description, room_id, services, masseuses, amenities, price, duration_min, service_type } = req.body || {};
         if (!name || !price) return res.status(400).json({ error: 'name and price required' });
         const rows = await sql`
-          INSERT INTO packages (name, description, room_id, services, masseuses, amenities, price, duration_min)
+          INSERT INTO packages (name, description, room_id, services, masseuses, amenities, price, duration_min, service_type)
           VALUES (${name}, ${description||''}, ${room_id||null}, ${JSON.stringify(services||[])},
-                  ${masseuses||1}, ${amenities||[]}, ${price}, ${duration_min||60})
+                  ${masseuses||1}, ${amenities||[]}, ${price}, ${duration_min||60}, ${service_type||'both'})
           RETURNING *`;
         return res.status(201).json(rows[0]);
       }

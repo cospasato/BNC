@@ -2327,7 +2327,8 @@ function PackagesTab({packages,setPackages,services,rooms,pop}){
     const amen=typeof form.amenities==="string"?form.amenities.split(",").map(s=>s.trim()).filter(Boolean):(form.amenities||[]);
     const payload={name:form.name,description:form.description||"",room_id:form.room_id||null,
       services:form.services,masseuses:Number(form.masseuses)||1,amenities:amen,
-      price:Number(form.price),duration_min:Number(form.duration_min)||60};
+      price:Number(form.price),duration_min:Number(form.duration_min)||60,
+      service_type:form.service_type||"both"};
     try{
       if(form.id){const u=await api.updatePackage(form.id,payload);setPackages(p=>p.map(x=>x.id===form.id?u:x));pop("Package updated");}
       else{const u=await api.createPackage(payload);setPackages(p=>[...p,u]);pop("Package created");}
@@ -2399,6 +2400,20 @@ function PackagesTab({packages,setPackages,services,rooms,pop}){
               <option value="">No specific room</option>
               {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
             </Sel>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Available For</label>
+            <div style={{display:"flex",gap:8}}>
+              {[["inhouse","🏢 In-House Only"],["both","🏢 In-House + 🏠 Outcall"],["outcall","🏠 Outcall Only"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setForm(f=>({...f,service_type:v}))}
+                  style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${(form.service_type||"both")===v?PL:G2}`,
+                    background:(form.service_type||"both")===v?PLF:WH,
+                    color:(form.service_type||"both")===v?PL:G6}}>
+                  {l}
+                </button>
+              ))}
+            </div>
           </div>
           <Inp label="Included Amenities (comma separated)" value={form.amenities} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Champagne, Rose petals, Hot towels…"/>
           {/* Services selector */}
@@ -2957,7 +2972,11 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                 <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,marginBottom:6,color:BK}}>Choose a Package</h2>
                 <p style={{color:G6,fontSize:13,marginBottom:16}}>Curated spa experiences — everything included</p>
                 <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>
-                  {packages.map(pkg=>{
+                  {(packages||[]).filter(pkg=>{
+                    const st=pkg.service_type||"both";
+                    if(bD.serviceType==="outcall") return st==="outcall"||st==="both";
+                    return st==="inhouse"||st==="both";
+                  }).map(pkg=>{
                     const sel=bD.packageId===pkg.id;
                     return(
                       <div key={pkg.id} onClick={()=>setBD(d=>({...d,packageId:pkg.id,roomId:pkg.room_id||d.roomId,services:pkg.services||[]}))}
@@ -3018,7 +3037,7 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                     <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                       {[["inhouse","🏢","In-House","Visit our spa studio"],["outcall","🏠","Outcall","We come to you (home/hotel)"]].map(([val,ic,label,sub])=>(
-                        <div key={val} onClick={()=>setBD(d=>({...d,serviceType:val,roomId:val==="outcall"?"":d.roomId}))}
+                        <div key={val} onClick={()=>setBD(d=>({...d,serviceType:val,roomId:val==="outcall"?"":d.roomId,method:val==="outcall"?"PesaPal":d.method}))}
                           style={{border:`2px solid ${bD.serviceType===val?PL:G2}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",background:bD.serviceType===val?PLF:WH,transition:"all .15s"}}>
                           <div style={{fontSize:24,marginBottom:6}}>{ic}</div>
                           <div style={{fontWeight:700,fontSize:14,color:bD.serviceType===val?PL:BK}}>{label}</div>
@@ -3049,7 +3068,10 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
         )}
 
                 {/* Step 3 — Room (inhouse only) */}
-        {bStep===3&&(
+        {bStep===3&&(()=>{
+          const [viewRoom, setViewRoom] = useState(null);
+          const [vRoomIdx, setVRoomIdx] = useState(0);
+          return(
           <div>
             {bD.serviceType==="outcall" ? (
               /* Outcall — no room needed, just show info and continue */
@@ -3089,12 +3111,15 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                       style={{borderRadius:14,border:`3px solid ${sel?PL:G2}`,cursor:"pointer",
                         overflow:"hidden",transition:"all .15s",
                         boxShadow:sel?`0 4px 20px ${PL}40`:"0 1px 6px rgba(0,0,0,.08)"}}>
-                      {/* Room visual — color gradient with initial */}
-                      <div style={{paddingTop:"55%",position:"relative",background:`linear-gradient(135deg,${col}CC,${col})`}}>
-                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-                          fontSize:52,color:"rgba(255,255,255,.25)",fontFamily:"'Playfair Display',serif",fontWeight:900,userSelect:"none"}}>
-                          {rm.name[0]}
-                        </div>
+                      {/* Room photo or color gradient */}
+                      <div style={{paddingTop:"55%",position:"relative",background:(rm.photos||[])[0]?G1:`linear-gradient(135deg,${col}CC,${col})`}}>
+                        {(rm.photos||[])[0]
+                          ?<img src={rm.photos[0]} alt={rm.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                          :<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                            fontSize:52,color:"rgba(255,255,255,.25)",fontFamily:"'Playfair Display',serif",fontWeight:900,userSelect:"none"}}>
+                            {rm.name[0]}
+                          </div>
+                        }
                         {sel&&(
                           <div style={{position:"absolute",top:8,right:8,background:WH,color:PL,
                             padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>✓ Selected</div>
@@ -3264,17 +3289,26 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                   </div>
                 </div>
 
-                {/* Pay on arrival */}
-                <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Or pay on arrival</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-                  {(payMethods.length?payMethods:["Cash"]).map(pm=>(
-                    <button key={pm} onClick={()=>setBD(d=>({...d,method:pm}))}
-                      style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                        border:`2px solid ${bD.method===pm?PL:G2}`,background:bD.method===pm?PLF:WH,color:bD.method===pm?PL:G6}}>
-                      {pm}
-                    </button>
-                  ))}
-                </div>
+                {/* Pay on arrival — in-house only */}
+                {bD.serviceType!=="outcall"&&(
+                  <>
+                    <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Or pay on arrival</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                      {(payMethods.length?payMethods:["Cash"]).map(pm=>(
+                        <button key={pm} onClick={()=>setBD(d=>({...d,method:pm}))}
+                          style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                            border:`2px solid ${bD.method===pm?PL:G2}`,background:bD.method===pm?PLF:WH,color:bD.method===pm?PL:G6}}>
+                          {pm}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {bD.serviceType==="outcall"&&(
+                  <div style={{background:WAB,borderRadius:8,padding:"10px 12px",fontSize:12,color:WA,fontWeight:600}}>
+                    ⚠️ Outcall bookings require advance online payment via PesaPal only.
+                  </div>
+                )}
               </Card>
             )}
 
@@ -3946,7 +3980,7 @@ function TherapistCommissionTab({ therapistUser, data }) {
 
 // ── THERAPIST PORTAL ──────────────────────────────────────────────────────────
 function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pricing, services, rooms, pop }) {
-  const [tab, setTab] = useState("profile");
+  const [tab, setTab] = useState("status");
   const [data, setData] = useState(therapistUser);
   const [saving, setSaving] = useState(false);
 
@@ -3986,7 +4020,7 @@ function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pri
 
       {/* Tab bar */}
       <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
-        {[["profile","My Profile","👤"],["photos","My Photos","📷"],["status","Availability","🟢"],["commission","My Earnings","💵"],["pin","Change PIN","🔑"]].map(([id,label,icon])=>(
+        {[["status","Availability","🟢"],["profile","My Profile","👤"],["photos","My Photos","📷"],["commission","My Earnings","💵"],["pin","Change PIN","🔑"]].map(([id,label,icon])=>(
           <button key={id} onClick={()=>setTab(id)}
             style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:tab===id?PL:G6,borderBottom:`3px solid ${tab===id?PL:"transparent"}`,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
             {icon} {label}
@@ -4155,15 +4189,22 @@ function TherapistPhotosTab({ data, setData, therapistUser, setTherapistUser, po
 }
 
 function TherapistStatusTab({ data, setData, therapistUser, setTherapistUser, pop }) {
-  const [availability, setAvailability] = useState(data.availability||"available");
+  const [availability,    setAvailability]    = useState(data.availability||"available");
+  const [unavailableUntil,setUnavailableUntil]= useState(data.unavailable_until ? data.unavailable_until.slice(0,16) : "");
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
     setSaving(true);
     try {
-      const u = await api.updateTherapist(therapistUser.id, { availability });
+      const payload = { availability };
+      if((availability==="unavailable"||availability==="outcall_only") && unavailableUntil) {
+        payload.unavailable_until = unavailableUntil;
+      } else {
+        payload.unavailable_until = null;
+      }
+      const u = await api.updateTherapist(therapistUser.id, payload);
       setData(d=>({...d,...u}));
-      const updated = {...therapistUser,...u,availability};
+      const updated = {...therapistUser,...u};
       setTherapistUser(updated);
       try{localStorage.setItem("spa_therapist",JSON.stringify(updated));}catch{}
       pop("Status updated ✓");
@@ -4172,39 +4213,62 @@ function TherapistStatusTab({ data, setData, therapistUser, setTherapistUser, po
   };
 
   const OPTIONS = [
-    { value:"available",    icon:"🟢", label:"Available",      sub:"Accepting both in-house and outcall bookings", color:OK },
-    { value:"outcall_only", icon:"🟡", label:"Outcall Only",   sub:"Not at the office — available for home/hotel visits only", color:WA },
-    { value:"unavailable",  icon:"🔴", label:"Unavailable",    sub:"Off duty — not accepting any bookings right now", color:ER },
+    { value:"available",    icon:"🟢", label:"Available",    sub:"Accepting in-house and outcall bookings",  color:OK },
+    { value:"outcall_only", icon:"🟡", label:"Outcall Only", sub:"Available for home/hotel visits only",     color:WA },
+    { value:"unavailable",  icon:"🔴", label:"Unavailable",  sub:"Off duty — not accepting any bookings",    color:ER },
   ];
+  const chosen = OPTIONS.find(o=>o.value===availability);
 
   return (
     <div>
       <Card>
-        <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>🟢 My Availability Status</div>
-        <div style={{fontSize:13,color:G6,marginBottom:20}}>Update your current status so clients and reception know your availability in real time.</div>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>🟢 My Availability</div>
+        <div style={{fontSize:13,color:G6,marginBottom:18}}>Update your status so clients know when you're available.</div>
 
-        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>
           {OPTIONS.map(opt=>(
             <div key={opt.value} onClick={()=>setAvailability(opt.value)}
               style={{border:`2px solid ${availability===opt.value?opt.color:G2}`,background:availability===opt.value?opt.color+"12":WH,borderRadius:12,padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:14,transition:"all .15s"}}>
-              <span style={{fontSize:28,flexShrink:0}}>{opt.icon}</span>
+              <span style={{fontSize:26,flexShrink:0}}>{opt.icon}</span>
               <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:15,color:availability===opt.value?opt.color:BK}}>{opt.label}</div>
-                <div style={{fontSize:13,color:G6,marginTop:2}}>{opt.sub}</div>
+                <div style={{fontWeight:700,fontSize:14,color:availability===opt.value?opt.color:BK}}>{opt.label}</div>
+                <div style={{fontSize:12,color:G6,marginTop:2}}>{opt.sub}</div>
               </div>
-              <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${availability===opt.value?opt.color:G2}`,background:availability===opt.value?opt.color:"none",flexShrink:0}}/>
+              <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${availability===opt.value?opt.color:G2}`,background:availability===opt.value?opt.color:"none",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {availability===opt.value&&<div style={{width:7,height:7,borderRadius:"50%",background:WH}}/>}
+              </div>
             </div>
           ))}
         </div>
 
+        {/* Available until — show when not available */}
+        {(availability==="unavailable"||availability==="outcall_only")&&(
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>
+              Available Again From (optional)
+            </label>
+            <input type="datetime-local" value={unavailableUntil}
+              onChange={e=>setUnavailableUntil(e.target.value)}
+              min={new Date().toISOString().slice(0,16)}
+              style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            <div style={{fontSize:11,color:G4,marginTop:4}}>
+              Customers will see when you'll be available again
+            </div>
+          </div>
+        )}
+
         {/* Current status summary */}
-        <div style={{background:G1,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13}}>
-          <span style={{color:G6}}>Current status: </span>
-          <strong style={{color:OPTIONS.find(o=>o.value===data.availability)?.color||G6}}>{OPTIONS.find(o=>o.value===data.availability)?.label||data.availability}</strong>
-          {data.availability!==availability&&<span style={{color:WA}}> → Will change to: <strong>{OPTIONS.find(o=>o.value===availability)?.label}</strong></span>}
+        <div style={{background:G1,borderRadius:10,padding:"11px 14px",marginBottom:14,fontSize:13}}>
+          <span style={{color:G6}}>Current: </span>
+          <strong style={{color:OPTIONS.find(o=>o.value===data.availability)?.color||G6}}>
+            {OPTIONS.find(o=>o.value===data.availability)?.label||data.availability}
+          </strong>
+          {data.unavailable_until&&data.availability!=="available"&&(
+            <span style={{color:G4}}> · Available from {new Date(data.unavailable_until).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>
+          )}
         </div>
 
-        <Btn onClick={save} disabled={saving||availability===data.availability} style={{width:"100%",justifyContent:"center",background:OPTIONS.find(o=>o.value===availability)?.color||PL}}>
+        <Btn onClick={save} disabled={saving} style={{width:"100%",justifyContent:"center",background:chosen?.color||PL}}>
           {saving?"Saving…":"Update Status"}
         </Btn>
       </Card>
