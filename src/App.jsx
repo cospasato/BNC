@@ -156,7 +156,7 @@ export default function App(){
     if(h >= 24) h = 0;
     return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
   };
-  const initBD = {date:td(),time:defaultTime(),serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:"",bookingMode:"standard",packageId:"",advancePct:10};
+  const initBD = {date:td(),time:defaultTime(),serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:"",bookingMode:"standard",packageId:"",advancePct:10,guestMode:false};
   // Separate stable state for text inputs (prevents focus-loss on re-render)
   const [bdName,  setBdName]  = useState("");
   const [bdPhone, setBdPhone] = useState("");
@@ -297,26 +297,27 @@ export default function App(){
     return p2?Number(p2.price):0;
   };
   const bRoomId = bD.roomId||null;
-  const bBase = bD.services.reduce((s,sv)=>s+getPrice(sv.id,bRoomId,bD.serviceType),0);
-  const bDisc = bD.discT==="pct"?Math.round(bBase*bD.disc/100):Number(bD.disc);
-  const bTotal= Math.max(0,bBase-bDisc);
+  const bPkg   = bD.bookingMode==="package" ? packages.find(p=>p.id===bD.packageId) : null;
+  const bBase  = bPkg ? bPkg.price : bD.services.reduce((s,sv)=>s+getPrice(sv.id,bRoomId,bD.serviceType),0);
+  const bDisc  = bPkg ? 0 : (bD.discT==="pct"?Math.round(bBase*bD.disc/100):Number(bD.disc));
+  const bTotal = Math.max(0,bBase-bDisc);
 
   const [bookingLoading, setBookingLoading] = useState(false);
 
   const confirmBooking = async()=>{
-    if(!customer){ setPendingBook(true); setCustModal("login"); return; }
     // For package bookings, pull package details
     const selPkg = bD.bookingMode==="package" ? packages.find(p=>p.id===bD.packageId) : null;
-    const cName  = bdName.trim()  || customer.name  || "";
-    const cPhone = bdPhone.trim() || customer.phone || "";
-    const cEmail = bdEmail.trim() || customer.email || "";
+    const cName  = bdName.trim()  || customer?.name  || "";
+    const cPhone = bdPhone.trim() || customer?.phone || "";
+    const cEmail = bdEmail.trim() || customer?.email || "";
     const cNotes = bdNotes.trim();
     if(!cName||!cPhone)  return pop("Please enter your name and phone number","err");
     if(!bD.date||!bD.time) return pop("Please select a date and time","err");
     setBookingLoading(true);
     try{
+      const finalTotal = selPkg ? selPkg.price : bTotal;
       const created = await api.createAppt({
-        customer_id: customer.id, customer_name: cName,
+        customer_id: customer?.id||null, customer_name: cName,
         customer_phone: cPhone, customer_email: cEmail,
         therapist_id: bD.therapistId||null, room_id: bD.roomId||null,
         service_type: bD.serviceType, outcall_address: bD.outcallAddr||"",
@@ -325,7 +326,7 @@ export default function App(){
         base_amount: selPkg ? selPkg.price : bBase,
         discount: selPkg ? 0 : (bD.disc||0),
         discount_type: bD.discT||"pct",
-        total_amount: selPkg ? selPkg.price : bTotal,
+        total_amount: finalTotal,
         paid_amount: 0,
         payment_method: bD.method||"Cash",
         notes: (selPkg ? `Package: ${selPkg.name}. ` : "") + cNotes,
@@ -340,7 +341,7 @@ export default function App(){
             method:"POST", headers:{"Content-Type":"application/json"},
             body: JSON.stringify({
               appointment_id: created.id,
-              amount:         bD.serviceType==="outcall" ? Math.round(bTotal*(bD.advancePct||10)/100) : bTotal,
+              amount:         bD.serviceType==="outcall" ? Math.round(finalTotal*(bD.advancePct||10)/100) : finalTotal,
               customer_name:  cName,
               customer_email: cEmail,
               customer_phone: cPhone,
@@ -3277,22 +3278,52 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
               </Card>
             )}
 
-            {/* Auth gate — not logged in */}
+            {/* Account options for non-logged-in customers */}
             {!customer&&(
-              <Card style={{border:`2px solid ${PL}`}}>
-                <div style={{fontWeight:700,color:PL,fontSize:14,marginBottom:6}}>💆 Sign in to confirm your booking</div>
-                <div style={{fontSize:13,color:G6,marginBottom:14}}>Create a free account or sign in to confirm and track your appointment.</div>
-                <div style={{display:"flex",gap:10}}>
-                  <Btn onClick={()=>{setPendingBook(true);setCustModal("login");}} style={{flex:1,justifyContent:"center"}}>Sign In</Btn>
-                  <Btn v="out" onClick={()=>{setPendingBook(true);setCustModal("register");}} style={{flex:1,justifyContent:"center"}}>Create Account</Btn>
+              <Card style={{border:`1px solid ${G2}`}}>
+                <div style={{fontWeight:700,fontSize:14,color:BK,marginBottom:12}}>Continue as:</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {/* Guest option */}
+                  <div style={{border:`2px solid ${bD.guestMode?PL:G2}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",background:bD.guestMode?PLF:WH,transition:"all .15s"}}
+                    onClick={()=>setBD(d=>({...d,guestMode:true}))}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${bD.guestMode?PL:G2}`,background:bD.guestMode?PL:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {bD.guestMode&&<div style={{width:7,height:7,borderRadius:"50%",background:WH}}/>}
+                      </div>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13,color:bD.guestMode?PL:BK}}>Continue as Guest</div>
+                        <div style={{fontSize:11,color:G6}}>No account needed — just fill your name and phone</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Sign in option */}
+                  <div style={{border:`2px solid ${!bD.guestMode?PL:G2}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",background:!bD.guestMode?PLF:WH,transition:"all .15s"}}
+                    onClick={()=>setBD(d=>({...d,guestMode:false}))}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${!bD.guestMode?PL:G2}`,background:!bD.guestMode?PL:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {!bD.guestMode&&<div style={{width:7,height:7,borderRadius:"50%",background:WH}}/>}
+                      </div>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13,color:!bD.guestMode?PL:BK}}>Sign In / Create Account</div>
+                        <div style={{fontSize:11,color:G6}}>Track appointments, view history, pay online</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+                {/* Show login/register buttons when sign-in selected */}
+                {!bD.guestMode&&(
+                  <div style={{display:"flex",gap:10,marginTop:12}}>
+                    <Btn onClick={()=>{setPendingBook(true);setCustModal("login");}} style={{flex:1,justifyContent:"center"}}>Sign In</Btn>
+                    <Btn v="out" onClick={()=>{setPendingBook(true);setCustModal("register");}} style={{flex:1,justifyContent:"center"}}>Create Account</Btn>
+                  </div>
+                )}
               </Card>
             )}
 
             {/* Action buttons */}
             <div style={{display:"flex",gap:10,marginTop:6}}>
               <Btn v="ghost" onClick={()=>goStep(4)} style={{flex:"0 0 auto"}}>← Back</Btn>
-              {customer&&(
+              {(customer||bD.guestMode)&&(
                 <button onClick={confirmBooking} disabled={bookingLoading}
                   style={{flex:1,padding:"13px",border:"none",borderRadius:10,cursor:bookingLoading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,
                     background:bD.method==="PesaPal"?`linear-gradient(135deg,#1565C0,#1976D2)`:`linear-gradient(135deg,${PLD},${PL})`,
@@ -3311,6 +3342,16 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
         {/* Step 6 — Confirmed */}
         {bStep===6&&(
           <div style={{textAlign:"center",padding:"40px 20px"}}>
+            {bD.guestMode&&!customer&&(
+              <div style={{background:PLF,border:`1px solid ${PL}30`,borderRadius:10,padding:"12px 16px",marginBottom:20,fontSize:13,color:PL,textAlign:"left"}}>
+                <div style={{fontWeight:700,marginBottom:4}}>💡 Want to track your booking?</div>
+                Create a free account to view your appointments and pay online anytime.
+                <div style={{marginTop:10,display:"flex",gap:8}}>
+                  <button onClick={()=>{setCustModal("register");}} style={{padding:"7px 14px",borderRadius:7,border:"none",background:PL,color:WH,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Create Account</button>
+                  <button onClick={()=>{setCustModal("login");}} style={{padding:"7px 14px",borderRadius:7,border:`1px solid ${PL}`,background:WH,color:PL,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Sign In</button>
+                </div>
+              </div>
+            )}
             <div style={{fontSize:64,marginBottom:20}}>🎉</div>
             <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:BK,marginBottom:10}}>Booking Confirmed!</h2>
             <p style={{color:G6,fontSize:16,marginBottom:8}}>We'll confirm your appointment shortly.</p>
