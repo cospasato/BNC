@@ -3182,6 +3182,46 @@ function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,s
         </div>
       )}
 
+      {/* Contact / Info section */}
+      <div style={{background:"#111827",padding:"40px 20px"}}>
+        <div style={{maxWidth:800,margin:"0 auto",display:"flex",flexWrap:"wrap",gap:32,justifyContent:"space-between",alignItems:"flex-start"}}> 
+          {/* Brand */}
+          <div style={{flex:"1 1 220px"}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:WH,fontWeight:700,marginBottom:8}}>MASSAGE TZ</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,.5)",lineHeight:1.8}}>Professional massage & spa services.<br/>In-house studio or we come to you.</div>
+          </div>
+          {/* Contact */}
+          <div style={{flex:"1 1 200px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:".12em",marginBottom:14}}>Contact Us</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <a href="tel:+255786203903"
+                style={{display:"flex",alignItems:"center",gap:10,color:"rgba(255,255,255,.8)",textDecoration:"none",fontSize:14}}>
+                <span style={{fontSize:18}}>📞</span>
+                <span>+255 786 203 903</span>
+              </a>
+              <a href="https://wa.me/255786203903?text=Hello%20MASSAGE%20TZ%2C%20I%20would%20like%20to%20book%20a%20session."
+                target="_blank" rel="noopener noreferrer"
+                style={{display:"inline-flex",alignItems:"center",gap:10,background:"#25D366",color:WH,padding:"10px 20px",borderRadius:10,textDecoration:"none",fontSize:14,fontWeight:700,width:"fit-content"}}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Chat on WhatsApp
+              </a>
+            </div>
+          </div>
+          {/* Hours */}
+          <div style={{flex:"1 1 160px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:".12em",marginBottom:14}}>Hours</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,.6)",lineHeight:2}}>
+              <div>Mon – Sat: 9am – 9pm</div>
+              <div>Sunday: 10am – 7pm</div>
+              <div style={{marginTop:8,color:GOLD,fontSize:12}}>Outcall available anytime</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer CTA */}
       <div style={{background:BK,padding:"32px 20px",textAlign:"center"}}>
         <button onClick={()=>navTo("book",1)} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 28px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book a Session →</button>
         <div style={{marginTop:14}}>
