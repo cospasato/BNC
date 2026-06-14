@@ -3068,10 +3068,7 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
         )}
 
                 {/* Step 3 — Room (inhouse only) */}
-        {bStep===3&&(()=>{
-          const [viewRoom, setViewRoom] = useState(null);
-          const [vRoomIdx, setVRoomIdx] = useState(0);
-          return(
+        {bStep===3&&(
           <div>
             {bD.serviceType==="outcall" ? (
               /* Outcall — no room needed, just show info and continue */
@@ -3133,7 +3130,7 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                           <div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{rm.description}</div>
                         )}
                         {rm.amenities?.length>0&&(
-                          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
                             {rm.amenities.map((a,i)=>(
                               <span key={i} style={{background:sel?`${PL}15`:G1,color:sel?PL:G6,
                                 fontSize:10,padding:"2px 8px",borderRadius:99,fontWeight:600}}>
@@ -3141,6 +3138,12 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                               </span>
                             ))}
                           </div>
+                        )}
+                        {((rm.photos||[]).length>1||rm.description)&&(
+                          <button onClick={e=>{e.stopPropagation();setViewRoom(rm);setVRoomIdx(0);}}
+                            style={{fontSize:11,color:PL,fontWeight:700,background:"none",border:`1px solid ${PL}`,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>
+                            View Details
+                          </button>
                         )}
                       </div>
                     </div>
@@ -3150,6 +3153,54 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                 <div style={{display:"flex",gap:10}}>
                   <Btn v="ghost" onClick={()=>goStep(2)}>← Back</Btn>
                   <Btn onClick={()=>goStep(4)} disabled={!bD.roomId} style={{flex:1,justifyContent:"center"}}>Continue →</Btn>
+                </div>
+              </div>
+            )}
+
+            {/* Room detail popup */}
+            {viewRoom&&(
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"16px 12px",overflowY:"auto"}}
+                onClick={e=>e.target===e.currentTarget&&setViewRoom(null)}>
+                <div style={{background:WH,borderRadius:20,width:"100%",maxWidth:500,overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+                  {(viewRoom.photos||[]).length>0?(
+                    <div style={{paddingTop:"60%",position:"relative",background:G1}}>
+                      {viewRoom.photos.map((src,i)=>(
+                        <img key={i} src={src} alt={viewRoom.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:i===vRoomIdx?1:0,transition:"opacity .3s"}}/>
+                      ))}
+                      {viewRoom.photos.length>1&&(
+                        <>
+                          <button onClick={()=>setVRoomIdx(i=>(i-1+viewRoom.photos.length)%viewRoom.photos.length)} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                          <button onClick={()=>setVRoomIdx(i=>(i+1)%viewRoom.photos.length)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                          <div style={{position:"absolute",bottom:8,left:0,right:0,display:"flex",gap:4,justifyContent:"center"}}>
+                            {viewRoom.photos.map((_,i)=><div key={i} onClick={()=>setVRoomIdx(i)} style={{width:i===vRoomIdx?14:5,height:5,borderRadius:99,background:i===vRoomIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.45)",cursor:"pointer",transition:"all .2s"}}/>)}
+                          </div>
+                        </>
+                      )}
+                      <button onClick={()=>setViewRoom(null)} style={{position:"absolute",top:10,right:10,width:30,height:30,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    </div>
+                  ):(
+                    <div style={{height:80,background:`linear-gradient(135deg,${PLD},${PL})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:"rgba(255,255,255,.3)"}}>🛁
+                      <button onClick={()=>setViewRoom(null)} style={{position:"absolute",top:10,right:10,width:30,height:30,borderRadius:"50%",background:"rgba(0,0,0,.3)",border:"none",color:WH,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    </div>
+                  )}
+                  <div style={{padding:"18px 20px 24px"}}>
+                    <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:"0 0 8px",color:BK}}>{viewRoom.name}</h2>
+                    {viewRoom.description&&<p style={{fontSize:14,color:G6,lineHeight:1.7,marginBottom:14}}>{viewRoom.description}</p>}
+                    {(viewRoom.amenities||[]).length>0&&(
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Features & Amenities</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                          {viewRoom.amenities.map((a,i)=><span key={i} style={{background:PLF,color:PL,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600}}>{a}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{display:"flex",gap:10}}>
+                      <button onClick={()=>setViewRoom(null)} style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${G2}`,background:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:G6}}>Close</button>
+                      <button onClick={()=>{setBD(d=>({...d,roomId:viewRoom.id}));setViewRoom(null);}} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:bD.roomId===viewRoom.id?OK:PL,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {bD.roomId===viewRoom.id?"✓ Selected":"Select This Room"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -4312,4 +4363,6 @@ function TherapistPinTab({ data, therapistUser, pop }) {
       </Btn>
     </Card>
   );
-}
+}  const [viewRoom, setViewRoom] = useState(null);
+  const [vRoomIdx,  setVRoomIdx]  = useState(0);
+
