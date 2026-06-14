@@ -3214,7 +3214,7 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
               </div>
             </Card>
             {/* Outcall advance payment selector */}
-            {customer&&bD.serviceType==="outcall"&&(
+            {(customer||bD.guestMode)&&bD.serviceType==="outcall"&&(
               <Card style={{border:`1px solid ${WA}40`,marginBottom:0}}>
                 <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:4}}>🏠 Advance Payment</div>
                 <div style={{fontSize:12,color:G6,marginBottom:12}}>Select how much to pay in advance (min 10%)</div>
@@ -3247,7 +3247,7 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
             )}
 
             {/* Payment method selection */}
-            {customer&&(
+            {(customer||bD.guestMode)&&(
               <Card>
                 <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:14}}>💳 How would you like to pay?</div>
 
