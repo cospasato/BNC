@@ -846,7 +846,7 @@ export default function App(){
   // ── ROOT RENDER ──
   return(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",minHeight:"100vh",background:G1}}>
-      {view==="land"&&<Landing navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} therapists={therapists} setBD={setBD} setBdName={()=>{}} initBD={initBD} resetBdText={resetBdText}/> }
+      {view==="land"&&<Landing navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} therapists={therapists} rooms={rooms} setBD={setBD} setBdName={()=>{}} initBD={initBD} resetBdText={resetBdText}/> }
       {view==="book"&&<BookingPortal
         therapists={therapists} rooms={rooms} services={services} pricing={pricing}
         offers={offers} payMethods={payMethods} customer={customer} packages={packages}
@@ -3090,7 +3090,7 @@ return (
 );
 }
 
-function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,therapists,setBD,initBD,resetBdText}){
+function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,therapists,rooms,setBD,initBD,resetBdText}){
   return(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
       <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser}
@@ -3130,6 +3130,58 @@ function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,s
           <TherapistGrid therapists={therapists} onBook={(thId)=>{ if(thId) setBD(d=>({...d,therapistId:thId})); navTo("book",1); }}/>
         </div>
       )}
+      {(rooms||[]).filter(r=>r.active).length>0&&(
+        <div style={{background:G1,padding:"32px 16px 40px"}}>
+          <div style={{maxWidth:1000,margin:"0 auto"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+              <div>
+                <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BK,margin:"0 0 4px"}}>Our Treatment Rooms</h2>
+                <p style={{color:G6,fontSize:13,margin:0}}>Comfortable spaces designed for relaxation</p>
+              </div>
+              <button onClick={()=>navTo("book",1)} style={{background:"none",border:`1px solid ${PL}`,color:PL,borderRadius:8,padding:"7px 16px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Book Now →</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,280px),1fr))",gap:16}}>
+              {(rooms||[]).filter(r=>r.active).map((rm,ri)=>{
+                const COLORS=["#7B3F6E","#1565C0","#2E7D32","#E65100","#6A1B9A","#00695C","#AD1457","#4527A0"];
+                const col=COLORS[ri%COLORS.length];
+                const photo=(rm.photos||[])[0];
+                return(
+                  <div key={rm.id} onClick={()=>navTo("book",1)}
+                    style={{borderRadius:14,overflow:"hidden",background:WH,
+                      boxShadow:"0 2px 12px rgba(0,0,0,.08)",cursor:"pointer",transition:"transform .2s,box-shadow .2s"}}
+                    onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="0 12px 32px rgba(0,0,0,.15)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.08)";}}>
+                    {/* Photo or color */}
+                    <div style={{paddingTop:"60%",position:"relative",background:photo?G1:`linear-gradient(135deg,${col}CC,${col})`}}>
+                      {photo
+                        ?<img src={photo} alt={rm.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                        :<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,color:"rgba(255,255,255,.25)",fontFamily:"'Playfair Display',serif",fontWeight:900}}>{rm.name[0]}</div>
+                      }
+                      {(rm.photos||[]).length>1&&(
+                        <div style={{position:"absolute",bottom:8,right:8,background:"rgba(0,0,0,.5)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>📷 {rm.photos.length}</div>
+                      )}
+                    </div>
+                    {/* Info */}
+                    <div style={{padding:"14px 16px 16px"}}>
+                      <div style={{fontWeight:700,fontSize:16,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{rm.name}</div>
+                      {rm.description&&<div style={{fontSize:13,color:G6,lineHeight:1.6,marginBottom:8}}>{rm.description}</div>}
+                      {(rm.amenities||[]).length>0&&(
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                          {rm.amenities.slice(0,4).map((a,i)=>(
+                            <span key={i} style={{background:G1,color:G6,fontSize:11,padding:"2px 8px",borderRadius:99}}>{a}</span>
+                          ))}
+                          {rm.amenities.length>4&&<span style={{fontSize:11,color:G4}}>+{rm.amenities.length-4} more</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{background:BK,padding:"32px 20px",textAlign:"center"}}>
         <button onClick={()=>navTo("book",1)} style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,padding:"12px 28px",fontSize:15,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>Book a Session →</button>
         <div style={{marginTop:14}}>
