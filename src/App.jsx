@@ -568,7 +568,7 @@ function CustProfileTab({customer,setCustomer,pop}){
 // ── ADMIN TABS ────────────────────────────────────────────────────────────────
 
 
-function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods}){
+function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,services,pricing}){
   const today=td();
   const todayAppts=appts.filter(a=>(a.appt_date||"").slice(0,10)===today);
   const active=reception.filter(r=>r.status==="inProgress");
@@ -582,10 +582,13 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods})
   const [payMethod,setPayMethod]=useState((payMethods||[])[0]||"Cash");
   const [saving,setSaving]=useState(false);
 
-  const checkout=async(id,extra)=>{
+  const checkout=async(id,extra,newSvcs,newTotal)=>{
     setSaving(true);
     try{
-      const r=await api.updateReception(id,{out_time:new Date().toISOString(),status:"completed",add_payment:Number(extra)||0,payment_method:payMethod});
+      const payload={out_time:new Date().toISOString(),status:"completed",add_payment:Number(extra)||0,payment_method:payMethod};
+      if(newSvcs) payload.services=newSvcs;
+      if(newTotal) payload.total_amount=newTotal;
+      const r=await api.updateReception(id,payload);
       setReception(p=>p.map(x=>x.id===id?{...x,...r}:x));
       setCoModal(null);setPayAmt("");pop("Session ended ✓");
     }catch(e){pop(e.message,"err");}
@@ -732,40 +735,104 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods})
       )}
 
       {/* End session modal */}
-      {coModal&&(
-        <Modal title="End Session / Checkout" onClose={()=>{setCoModal(null);setPayAmt("");}}>
-          <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{coModal.customer_name}</div>
-            {[["Total",fmt(coModal.total_amount)],["Paid so far",fmt(coModal.paid_amount)],["Balance",fmt(coModal.bal)]].map(([k,v])=>(
+      {coModal&&(()=>{
+        const coSvcs = Array.isArray(coModal.services)?coModal.services:(typeof coModal.services==="string"?JSON.parse(coModal.services||"[]"):[]);
+        const coBase = coSvcs.reduce((s,sv)=>s+Number(sv.price||0),0);
+        const coTotal = coModal._newTotal||Number(coModal.total_amount||0);
+        const coPaid  = Number(coModal.paid_amount||0);
+        const coBal   = Math.max(0, coTotal - coPaid);
+        return(
+        <Modal title="End Session — Checkout" onClose={()=>{setCoModal(null);setPayAmt("");}}>
+          {/* Client summary */}
+          <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,borderRadius:12,padding:"14px 16px",marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:16,color:WH,marginBottom:2}}>{coModal.customer_name}</div>
+            {coModal.customer_phone&&<div style={{fontSize:13,color:"rgba(255,255,255,.6)"}}>{coModal.customer_phone}</div>}
+          </div>
+
+          {/* Add services */}
+          {services&&services.length>0&&(
+            <div style={{marginBottom:16}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>
+                ➕ Add Services
+              </label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:8}}>
+                {services.filter(s=>s.active).map(sv=>{
+                  const alreadyIn = coSvcs.find(s=>s.id===sv.id);
+                  const pr = pricing?(pricing.find(p=>p.service_id===sv.id&&p.service_type===(coModal.service_type||"inhouse"))?.price||0):0;
+                  return(
+                    <button key={sv.id}
+                      onClick={()=>{
+                        const newSvcs = alreadyIn
+                          ? coSvcs.filter(s=>s.id!==sv.id)
+                          : [...coSvcs,{id:sv.id,name:sv.name,price:Number(pr)}];
+                        const newTotal = newSvcs.reduce((s,s2)=>s+Number(s2.price||0),0);
+                        setCoModal(m=>({...m,services:newSvcs,_newTotal:newTotal}));
+                      }}
+                      style={{padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${alreadyIn?PL:G2}`,background:alreadyIn?PLF:WH,color:alreadyIn?PL:G6,
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                      <span>{sv.name}</span>
+                      {pr>0&&<span style={{fontSize:10,fontWeight:400,color:alreadyIn?PL:G4}}>{fmt(pr)}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Services list */}
+          {coSvcs.length>0&&(
+            <div style={{background:G1,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",marginBottom:6}}>Services</div>
+              {coSvcs.map((s,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
+                  <span>{s.name}</span><span style={{fontWeight:700}}>{fmt(s.price)}</span>
+                </div>
+              ))}
+              <div style={{borderTop:`1px solid ${G2}`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
+                <span>Total</span><span style={{color:PL}}>{fmt(coTotal)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Payment summary */}
+          <div style={{background:G1,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+            {[["Total",fmt(coTotal),BK],["Paid so far",fmt(coPaid),OK],["Balance Due",fmt(coBal),coBal>0?ER:G4]].map(([k,v,col])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
-                <span style={{color:G6}}>{k}</span><strong>{v}</strong>
+                <span style={{color:G6}}>{k}</span><strong style={{color:col}}>{v}</strong>
               </div>
             ))}
           </div>
-          {coModal.bal>0&&(
-            <>
-              <Inp label="Payment Amount" type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder={`Due: ${fmt(coModal.bal)}`}/>
-              <div style={{marginBottom:14}}>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase"}}>Method</label>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {(payMethods||["Cash"]).map(pm=>(
-                    <button key={pm} onClick={()=>setPayMethod(pm)}
-                      style={{padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                        border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>{pm}</button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+
+          {/* Payment amount — always shown */}
+          <Inp label={coBal>0?`Amount Paid Now (balance: ${fmt(coBal)})`:"Amount Paid Now"} type="number" value={payAmt}
+            onChange={e=>setPayAmt(e.target.value)} placeholder={coBal>0?fmt(coBal):"0"}/>
+
+          {/* Payment method — always shown */}
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Payment Method</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {(payMethods||["Cash"]).map(pm=>(
+                <button key={pm} onClick={()=>setPayMethod(pm)}
+                  style={{padding:"8px 14px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>
+                  {pm}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>{setCoModal(null);setPayAmt("");}} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <button onClick={()=>checkout(coModal.id,payAmt)} disabled={saving}
-              style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:ER,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            <button onClick={()=>checkout(coModal.id,payAmt,coSvcs,coTotal)} disabled={saving}
+              style={{flex:2,padding:"12px",borderRadius:9,border:"none",background:`linear-gradient(135deg,#dc2626,#ef4444)`,
+                color:WH,fontSize:14,fontWeight:700,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit",opacity:saving?.7:1}}>
               {saving?"Ending…":"🚪 End Session"}
             </button>
           </div>
         </Modal>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -958,10 +1025,13 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
     setSaving(false);
   };
 
-  const checkout=async(id,extra)=>{
+  const checkout=async(id,extra,newSvcs,newTotal)=>{
     setSaving(true);
     try{
-      const r=await api.updateReception(id,{out_time:new Date().toISOString(),status:"completed",add_payment:Number(extra)||0,payment_method:payMethod});
+      const payload={out_time:new Date().toISOString(),status:"completed",add_payment:Number(extra)||0,payment_method:payMethod};
+      if(newSvcs) payload.services=newSvcs;
+      if(newTotal) payload.total_amount=newTotal;
+      const r=await api.updateReception(id,payload);
       setReception(p=>p.map(x=>x.id===id?{...x,...r}:x));
       setCoModal(null);setPayAmt("");pop("Checked out ✓");
     }catch(e){pop(e.message||"Failed","err");}
@@ -1270,40 +1340,90 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
       })}
 
       {/* Checkout modal */}
-      {coModal&&(
-        <Modal title="Checkout" onClose={()=>{setCoModal(null);setPayAmt("");}}>
-          <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>{coModal.customer_name}</div>
-            {[["Total",fmt(coModal.total_amount)],["Paid",fmt(coModal.paid_amount)],["Balance Due",fmt(coModal.bal)]].map(([k,v])=>(
+      {coModal&&(()=>{
+        const coSvcs = Array.isArray(coModal.services)?coModal.services:(typeof coModal.services==="string"?JSON.parse(coModal.services||"[]"):[]);
+        const coTotal = coModal._newTotal||Number(coModal.total_amount||0);
+        const coPaid  = Number(coModal.paid_amount||0);
+        const coBal   = Math.max(0, coTotal - coPaid);
+        return(
+        <Modal title="End Session — Checkout" onClose={()=>{setCoModal(null);setPayAmt("");}}>
+          <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,borderRadius:12,padding:"14px 16px",marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:16,color:WH,marginBottom:2}}>{coModal.customer_name}</div>
+            {coModal.customer_phone&&<div style={{fontSize:13,color:"rgba(255,255,255,.6)"}}>{coModal.customer_phone}</div>}
+          </div>
+
+          {/* Add services */}
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>➕ Add / Remove Services</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+              {services.filter(s=>s.active).map(sv=>{
+                const alreadyIn=coSvcs.find(s=>s.id===sv.id);
+                const pr=pricing?(pricing.find(p=>p.service_id===sv.id&&p.service_type===(coModal.service_type||"inhouse"))?.price||0):0;
+                return(
+                  <button key={sv.id}
+                    onClick={()=>{
+                      const newSvcs=alreadyIn?coSvcs.filter(s=>s.id!==sv.id):[...coSvcs,{id:sv.id,name:sv.name,price:Number(pr)}];
+                      setCoModal(m=>({...m,services:newSvcs,_newTotal:newSvcs.reduce((s,s2)=>s+Number(s2.price||0),0)}));
+                    }}
+                    style={{padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      border:`2px solid ${alreadyIn?PL:G2}`,background:alreadyIn?PLF:WH,color:alreadyIn?PL:G6,
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                    <span>{sv.name}</span>
+                    {pr>0&&<span style={{fontSize:10,fontWeight:400,color:alreadyIn?PL:G4}}>{fmt(pr)}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Services + totals */}
+          {coSvcs.length>0&&(
+            <div style={{background:G1,borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+              {coSvcs.map((s,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
+                  <span>{s.name}</span><span style={{fontWeight:700}}>{fmt(s.price)}</span>
+                </div>
+              ))}
+              <div style={{borderTop:`1px solid ${G2}`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
+                <span>Total</span><span style={{color:PL}}>{fmt(coTotal)}</span>
+              </div>
+            </div>
+          )}
+          <div style={{background:G1,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+            {[["Paid so far",fmt(coPaid),OK],["Balance Due",fmt(coBal),coBal>0?ER:G4]].map(([k,v,col])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
-                <span style={{color:G6}}>{k}</span><strong style={{color:k==="Balance Due"&&coModal.bal>0?ER:BK}}>{v}</strong>
+                <span style={{color:G6}}>{k}</span><strong style={{color:col}}>{v}</strong>
               </div>
             ))}
           </div>
-          {coModal.bal>0&&(
-            <>
-              <Inp label={`Payment Amount (due: ${fmt(coModal.bal)})`} type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder="0"/>
-              <div style={{marginBottom:14}}>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase"}}>Method</label>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {(payMethods.length?payMethods:["Cash"]).map(pm=>(
-                    <button key={pm} onClick={()=>setPayMethod(pm)}
-                      style={{padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                        border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>{pm}</button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+
+          <Inp label={coBal>0?`Amount Paid Now (balance: ${fmt(coBal)})`:"Amount Paid Now"} type="number" value={payAmt}
+            onChange={e=>setPayAmt(e.target.value)} placeholder={coBal>0?fmt(coBal):"0"}/>
+
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Payment Method</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {(payMethods.length?payMethods:["Cash"]).map(pm=>(
+                <button key={pm} onClick={()=>setPayMethod(pm)}
+                  style={{padding:"8px 14px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>
+                  {pm}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>{setCoModal(null);setPayAmt("");}} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <button onClick={()=>checkout(coModal.id,payAmt)} disabled={saving}
-              style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:ER,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            <button onClick={()=>checkout(coModal.id,payAmt,coSvcs,coTotal)} disabled={saving}
+              style={{flex:2,padding:"12px",borderRadius:9,border:"none",background:`linear-gradient(135deg,#dc2626,#ef4444)`,
+                color:WH,fontSize:14,fontWeight:700,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit",opacity:saving?.7:1}}>
               {saving?"Ending…":"🚪 End Session"}
             </button>
           </div>
         </Modal>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -2786,7 +2906,7 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 function NavBar({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal}){
 const isMobile = typeof window!=="undefined" && window.innerWidth<640;
 return (
-  <nav style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",flexShrink:0}}>
+  <nav style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",flexShrink:0,position:"fixed",top:0,left:0,right:0,zIndex:200,boxShadow:"0 2px 12px rgba(0,0,0,.25)"}}>
     <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>navTo("land")}>
       <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
         <span style={{color:WH,fontWeight:900,fontSize:9,fontFamily:"'Playfair Display',serif",textAlign:"center",lineHeight:1.1,letterSpacing:".02em"}}>MTZ</span>
@@ -2826,7 +2946,7 @@ return (
 
 function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,therapists,setBD,initBD,resetBdText}){
   return(
-    <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+    <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",paddingTop:62}}>
       <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser}
         therapistLogout={therapistLogout} custLogout={custLogout}
         setCustModal={setCustModal} setModal={setModal}/>
@@ -2876,9 +2996,9 @@ function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,s
 
 function CustomerPortal({navTo,customer,setCustomer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,custTab,setCustTab,custAppts,custLoading,loadCustAppts,therapists,setBD,initBD,resetBdText,pop}){
   return(
-    <div style={{minHeight:"100vh",background:G1}}>
+    <div style={{minHeight:"100vh",background:G1,paddingTop:62}}>
       <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
-      <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
+      <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",position:"sticky",top:62,zIndex:100}}>
         {[["appts","My Appointments","📋"],["newappt","Book Session","💆"],["profile","My Profile","👤"]].map(([id,label,icon])=>(
           <button key={id} onClick={()=>{ if(id==="newappt"){setBD(initBD);resetBdText();navTo("book",1);}else setCustTab(id); }}
             style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:custTab===id?PL:G6,borderBottom:`3px solid ${custTab===id?PL:"transparent"}`,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:0}}>
@@ -2899,7 +3019,7 @@ function AdminPortal({navTo,customer,user,therapistUser,therapistLogout,custLogo
   const isDesktop = typeof window!=="undefined" && window.innerWidth >= 900;
   const SIDEBAR_W = 210;
   return(
-    <div style={{minHeight:"100vh",background:G1,display:"flex",flexDirection:"column"}}>
+    <div style={{minHeight:"100vh",background:G1,display:"flex",flexDirection:"column",paddingTop:62}}>
       <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
       <div style={{display:"flex",flex:1,position:"relative"}}>
         {isDesktop&&(
@@ -2941,7 +3061,7 @@ function AdminPortal({navTo,customer,user,therapistUser,therapistLogout,custLogo
         )}
         <div style={{flex:1,padding:isDesktop?"28px 28px 60px":`${46+16}px 14px 60px`,paddingTop:isDesktop?"24px":"70px",maxWidth:isDesktop?900:"100%",overflowX:"hidden"}}>
           {loading&&<div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
-          {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop} setReception={setReception} payMethods={payMethods}/>}
+          {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop} setReception={setReception} payMethods={payMethods} services={services} pricing={pricing}/>}
           {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user} offers={offers}/>}
           {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user}/>}
           {!loading&&aTab==="therapists"&&<TherapistsTab therapists={therapists} setTherapists={setTherapists} pop={pop}/>}
@@ -4169,9 +4289,9 @@ function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pri
   const avLabels = { available:"🟢 Available", outcall_only:"🟡 Outcall Only", unavailable:"🔴 Unavailable" };
 
   return (
-    <div style={{minHeight:"100vh",background:G1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:G1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",paddingTop:62}}>
       {/* Header */}
-      <div style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+      <div style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",position:"fixed",top:0,left:0,right:0,zIndex:200,boxShadow:"0 2px 12px rgba(0,0,0,.25)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <span style={{color:WH,fontWeight:900,fontSize:9,fontFamily:"'Playfair Display',serif",letterSpacing:".02em"}}>MTZ</span>
@@ -4189,7 +4309,7 @@ function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pri
       </div>
 
       {/* Tab bar */}
-      <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
+      <div style={{background:WH,borderBottom:`1px solid ${G2}`,display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",position:"sticky",top:62,zIndex:100}}>
         {[["profile","My Profile","👤"],["photos","My Photos","📷"],["status","Availability","🟢"],["commission","My Earnings","💵"],["pin","Change PIN","🔑"]].map(([id,label,icon])=>(
           <button key={id} onClick={()=>setTab(id)}
             style={{padding:"13px 18px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:700,color:tab===id?PL:G6,borderBottom:`3px solid ${tab===id?PL:"transparent"}`,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
