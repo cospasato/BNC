@@ -1309,6 +1309,785 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
 }
 
 
+function TherapistsTab({therapists,setTherapists,pop}){
+  const [modal,setModal]   = useState(false);
+  const [uploading,setUploading] = useState(false);
+  const [form,setForm]     = useState({
+    id:null,name:"",phone:"",email:"",bio:"",
+    photo:"",photos:[],specialties:"",
+    outcall:true,active:true,pin:"",availability:"available"
+  });
+
+  const open = (t) => {
+    if(t) setForm({...t, specialties:(t.specialties||[]).join(", "), pin:"", photos:t.photos||[], photo:t.photo||""});
+    else  setForm({id:null,name:"",phone:"",email:"",bio:"",photo:"",photos:[],specialties:"",outcall:true,active:true,pin:"",availability:"available"});
+    setModal(true);
+  };
+
+  const save = async() => {
+    if(!form.name) return;
+    const specs = typeof form.specialties==="string"
+      ? form.specialties.split(",").map(s=>s.trim()).filter(Boolean)
+      : (form.specialties||[]);
+    const payload = {
+      name:form.name, phone:form.phone||"", email:form.email||"",
+      bio:form.bio||"", photo:form.photos[0]||form.photo||null,
+      photos:form.photos||[], specialties:specs,
+      outcall:!!form.outcall, active:form.active!==false,
+      availability:form.availability||"available"
+    };
+    if(form.pin) payload.pin = form.pin;
+    try{
+      if(form.id){ const u=await api.updateTherapist(form.id,payload); setTherapists(p=>p.map(t=>t.id===form.id?u:t)); pop("Therapist updated"); }
+      else        { const u=await api.createTherapist(payload);         setTherapists(p=>[...p,u]);                    pop("Therapist added"); }
+      setModal(false);
+    }catch(e){ pop(e.message,"err"); }
+  };
+
+  const addPhotos = async(e) => {
+    const files = Array.from(e.target.files||[]);
+    if(!files.length) return;
+    setUploading(true);
+    const compressed = await Promise.all(files.map(f=>compressPhoto(f)));
+    setForm(f=>({ ...f, photos:[...f.photos,...compressed].slice(0,8) }));
+    setUploading(false);
+    e.target.value="";
+  };
+
+  const removePhoto = (i) => setForm(f=>({ ...f, photos:f.photos.filter((_,idx)=>idx!==i) }));
+  const moveFirst   = (i) => setForm(f=>{ const p=[...f.photos]; const [img]=p.splice(i,1); p.unshift(img); return {...f,photos:p}; });
+
+  const deactivate = async(t) => {
+    try{ const u=await api.updateTherapist(t.id,{active:!t.active}); setTherapists(p=>p.map(x=>x.id===t.id?{...x,...u}:x)); pop(u.active?"Activated":"Deactivated"); }catch(e){pop(e.message,"err");}
+  };
+  const del = async(t) => {
+    if(!window.confirm(`Delete ${t.name}?`)) return;
+    try{ await api.deleteTherapist(t.id); setTherapists(p=>p.filter(x=>x.id!==t.id)); pop("Deleted"); }catch(e){pop(e.message,"err");}
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Therapists</h2>
+        <Btn onClick={()=>open(null)}>+ Add Therapist</Btn>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14}}>
+        {therapists.map(t=>{
+          const mainPhoto = (t.photos||[])[0] || t.photo;
+          const photoCount = (t.photos||[]).length || (t.photo?1:0);
+          return(
+            <Card key={t.id} style={{padding:0,overflow:"hidden",opacity:t.active?1:.65}}>
+              <div style={{paddingTop:"75%",position:"relative",background:mainPhoto?G1:`linear-gradient(135deg,${PLD},${PL})`}}>
+                {mainPhoto
+                  ? <img src={mainPhoto} alt={t.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                  : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,color:WH,fontFamily:"'Playfair Display',serif"}}>{t.name?.[0]}</div>
+                }
+                {photoCount>1&&<div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.6)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>📷 {photoCount}</div>}
+              </div>
+              <div style={{padding:"12px 14px 14px"}}>
+                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{t.name}</div>
+                {(t.specialties||[]).length>0&&<div style={{fontSize:12,color:G6,marginBottom:6}}>{(t.specialties||[]).join(" · ")}</div>}
+                <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+                  {t.outcall&&<span style={{background:PLF,color:PL,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>Outcall ✓</span>}
+                  <span style={{background:t.active?OKB:G1,color:t.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{t.active?"Active":"Inactive"}</span>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>open(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
+                  <button onClick={()=>deactivate(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${t.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:t.active?WA:OK,fontWeight:700}}>{t.active?"Deactivate":"Activate"}</button>
+                  <button onClick={()=>del(t)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {modal&&(
+        <Modal title={form.id?"Edit Therapist":"Add Therapist"} onClose={()=>setModal(false)} wide>
+          <Inp label="Full Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Aisha Mwangi"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/>
+            <Inp label="Email (for login)" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="aisha@massagetz.com"/>
+          </div>
+          <Inp label="Specialties (comma separated)" value={form.specialties} onChange={e=>setForm(f=>({...f,specialties:e.target.value}))} placeholder="Swedish, Deep Tissue, Hot Stone"/>
+          <Txa label="Bio" value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} rows={2} placeholder="Short therapist bio…"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <Inp label={form.id?"New Login PIN (blank = keep)":"Login PIN (4–6 digits)"} type="password" value={form.pin||""} onChange={e=>setForm(f=>({...f,pin:e.target.value}))} placeholder={form.id?"Leave blank to keep…":"Set a PIN"} maxLength={6}/>
+            <Sel label="Availability" value={form.availability||"available"} onChange={e=>setForm(f=>({...f,availability:e.target.value}))}>
+              <option value="available">🟢 Available</option>
+              <option value="outcall_only">🟡 Outcall Only</option>
+              <option value="unavailable">🔴 Unavailable</option>
+            </Sel>
+          </div>
+          <div style={{display:"flex",gap:12,marginBottom:14}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
+              <input type="checkbox" checked={form.outcall} onChange={e=>setForm(f=>({...f,outcall:e.target.checked}))}/>
+              Accepts Outcall Requests
+            </label>
+          </div>
+
+          {/* ── MULTI-PHOTO UPLOAD ── */}
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>
+              Photos ({form.photos.length}/8) — First photo is the profile picture
+            </label>
+            {/* Photo grid */}
+            {form.photos.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:10}}>
+                {form.photos.map((src,i)=>(
+                  <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",border:`2px solid ${i===0?PL:G2}`}}>
+                    <div style={{paddingTop:"100%",position:"relative"}}>
+                      <img src={src} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                    </div>
+                    {i===0&&<div style={{position:"absolute",top:3,left:3,background:PL,color:WH,fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99}}>MAIN</div>}
+                    <div style={{position:"absolute",top:3,right:3,display:"flex",gap:3}}>
+                      {i>0&&(
+                        <button onClick={()=>moveFirst(i)} title="Set as main"
+                          style={{width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.6)",color:WH,border:"none",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>★</button>
+                      )}
+                      <button onClick={()=>removePhoto(i)}
+                        style={{width:20,height:20,borderRadius:"50%",background:"rgba(200,0,0,.8)",color:WH,border:"none",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Upload button */}
+            {form.photos.length<8&&(
+              <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",border:`2px dashed ${G2}`,borderRadius:8,cursor:"pointer",fontSize:13,color:G6,background:WH}}>
+                📷 {uploading?"Uploading…":"Add Photos (select multiple)"}
+                <input type="file" accept="image/*" multiple onChange={addPhotos} style={{display:"none"}} disabled={uploading}/>
+              </label>
+            )}
+            <div style={{fontSize:11,color:G4,marginTop:5}}>Click ★ to set any photo as the main profile picture. Up to 8 photos.</div>
+          </div>
+
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save Changes":"Add Therapist"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function RoomsTab({rooms,setRooms,pop}){
+  const [modal,setModal]     = useState(false);
+  const [uploading,setUploading] = useState(false);
+  const [form,setForm]       = useState({id:null,name:"",description:"",amenities:"",photos:[]});
+
+  const open=(r)=>{
+    if(r) setForm({id:r.id,name:r.name,description:r.description||"",amenities:(r.amenities||[]).join(", "),photos:r.photos||[]});
+    else  setForm({id:null,name:"",description:"",amenities:"",photos:[]});
+    setModal(true);
+  };
+
+  const addPhotos=async(e)=>{
+    const files=Array.from(e.target.files||[]);
+    if(!files.length) return;
+    setUploading(true);
+    const compressed=await Promise.all(files.map(f=>compressPhoto(f)));
+    setForm(f=>({...f,photos:[...f.photos,...compressed].slice(0,6)}));
+    setUploading(false);
+    e.target.value="";
+  };
+  const removePhoto=(i)=>setForm(f=>({...f,photos:f.photos.filter((_,idx)=>idx!==i)}));
+
+  const save=async()=>{
+    if(!form.name) return;
+    const amen=typeof form.amenities==="string"
+      ?form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
+      :(form.amenities||[]);
+    const payload={name:form.name,description:form.description||"",amenities:amen,photos:form.photos||[]};
+    try{
+      if(form.id){const u=await api.updateRoom(form.id,payload);setRooms(p=>p.map(r=>r.id===form.id?u:r));pop("Room updated");}
+      else{const u=await api.createRoom(payload);setRooms(p=>[...p,u]);pop("Room added");}
+      setModal(false);
+    }catch(e){pop(e.message,"err");}
+  };
+  const del=async(r)=>{
+    if(!window.confirm(`Delete ${r.name}?`)) return;
+    try{await api.deleteRoom(r.id);setRooms(p=>p.filter(x=>x.id!==r.id));pop("Deleted");}catch(e){pop(e.message,"err");}
+  };
+  const toggle=async(r)=>{
+    try{const u=await api.updateRoom(r.id,{active:!r.active});setRooms(p=>p.map(x=>x.id===r.id?{...x,...u}:x));pop(u.active?"Activated":"Deactivated");}catch(e){pop(e.message,"err");}
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Treatment Rooms</h2>
+        <Btn onClick={()=>open(null)}>+ Add Room</Btn>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+        {rooms.map(r=>{
+          const photos=r.photos||[];
+          return(
+          <Card key={r.id} style={{opacity:r.active?1:.65,padding:0,overflow:"hidden"}}>
+            {/* Room photo or color block */}
+            <div style={{paddingTop:"55%",position:"relative",background:photos[0]?G1:`linear-gradient(135deg,#7B3F6E,#5C2E52)`}}>
+              {photos[0]
+                ?<img src={photos[0]} alt={r.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                :<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:"rgba(255,255,255,.25)",fontFamily:"'Playfair Display',serif",fontWeight:900}}>{r.name[0]}</div>
+              }
+              {photos.length>1&&<div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.5)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>📷 {photos.length}</div>}
+              <span style={{position:"absolute",top:8,right:8,background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 8px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
+            </div>
+            <div style={{padding:"12px 14px 14px"}}>
+              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{r.name}</div>
+              {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
+              {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).slice(0,5).map((a,i)=><span key={i} style={{background:G1,fontSize:10,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>open(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
+                <button onClick={()=>toggle(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${r.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:r.active?WA:OK,fontWeight:700}}>{r.active?"Disable":"Enable"}</button>
+                <button onClick={()=>del(r)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
+              </div>
+            </div>
+          </Card>
+          );
+        })}
+      </div>
+      {modal&&(
+        <Modal title={form.id?"Edit Room":"Add Room"} onClose={()=>setModal(false)}>
+          <Inp label="Room Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Lotus Room, Room 1…"/>
+          <Inp label="Description (optional)" value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Peaceful room with soft lighting…"/>
+          <Inp label="Amenities (comma separated)" value={form.amenities||""} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Air conditioning, Music, Private shower…"/>
+          {/* Photos */}
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>
+              Room Photos ({form.photos.length}/6)
+            </label>
+            {form.photos.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:7,marginBottom:10}}>
+                {form.photos.map((src,i)=>(
+                  <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",border:`2px solid ${i===0?PL:G2}`}}>
+                    <div style={{paddingTop:"75%",position:"relative"}}>
+                      <img src={src} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                    </div>
+                    {i===0&&<div style={{position:"absolute",top:2,left:2,background:PL,color:WH,fontSize:8,fontWeight:700,padding:"1px 4px",borderRadius:99}}>MAIN</div>}
+                    <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:2,right:2,width:18,height:18,borderRadius:"50%",background:"rgba(200,0,0,.85)",color:WH,border:"none",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {form.photos.length<6&&(
+              <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",border:`2px dashed ${G2}`,borderRadius:8,cursor:"pointer",fontSize:13,color:G6}}>
+                📷 {uploading?"Uploading…":"Add Photos"}
+                <input type="file" accept="image/*" multiple onChange={addPhotos} style={{display:"none"}} disabled={uploading}/>
+              </label>
+            )}
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Room"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
+  const [modal,setModal]=useState(false);
+  const [form,setForm]=useState({id:null,name:"",category:"Massage",description:"",duration_min:60});
+  const [priceForm,setPriceForm]=useState({serviceId:"",roomId:"",serviceType:"inhouse",price:""});
+  const CATS=["Massage","Facial","Body","Wellness","Other"];
+  const catColor={Massage:PL,Facial:GOLD,Body:OK,Wellness:IN,Other:G6};
+
+  const openSvc=(s)=>{ if(s) setForm({...s}); else setForm({id:null,name:"",category:"Massage",description:"",duration_min:60}); setModal(true); };
+
+  const saveSvc=async()=>{
+    if(!form.name) return;
+    const payload={name:form.name,category:form.category,description:form.description||"",duration_min:Number(form.duration_min)||60};
+    try{
+      if(form.id){ const u=await api.updateService(form.id,payload); setServices(p=>p.map(s=>s.id===form.id?u:s)); pop("Service updated"); }
+      else{ const u=await api.createService(payload); setServices(p=>[...p,u]); pop("Service added"); }
+      setModal(false);
+    }catch(e){ pop(e.message,"err"); }
+  };
+
+  const savePrice=async()=>{
+    if(!priceForm.serviceId||!priceForm.price) return pop("Select a service and enter price","err");
+    if(priceForm.serviceType==="inhouse"&&!priceForm.roomId) return pop("Select a room for in-house pricing","err");
+    try{
+      const u=await api.upsertPrice({
+        service_id:   priceForm.serviceId,
+        room_id:      priceForm.serviceType==="inhouse" ? priceForm.roomId : null,
+        service_type: priceForm.serviceType,
+        price:        Number(priceForm.price)
+      });
+      setPricing(p=>{
+        const ex=p.findIndex(x=>x.service_id===u.service_id&&x.room_id===u.room_id&&x.service_type===u.service_type);
+        if(ex>=0){const n=[...p];n[ex]=u;return n;}
+        return[...p,u];
+      });
+      setPriceForm(f=>({...f,price:""}));
+      pop("Price saved");
+    }catch(e){ pop(e.message,"err"); }
+  };
+
+  const delPrice=async(id)=>{
+    try{ await api.deletePrice(id); setPricing(p=>p.filter(x=>x.id!==id)); pop("Price removed"); }
+    catch(e){ pop(e.message,"err"); }
+  };
+
+  // Get all prices for a service
+  const getPrices=(sId)=>pricing.filter(p=>p.service_id===sId).map(p=>({
+    ...p,
+    room_name: p.room_name || rooms.find(r=>r.id===p.room_id)?.name || p.room_type || null
+  }));
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Services & Pricing</h2>
+        <Btn onClick={()=>openSvc(null)}>+ Add Service</Btn>
+      </div>
+
+      {/* Pricing tool */}
+      <Card style={{marginBottom:20}}>
+        <ST c="Set / Update Price"/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+          <Sel label="Service *" value={priceForm.serviceId} onChange={e=>setPriceForm(f=>({...f,serviceId:e.target.value}))}>
+            <option value="">Select service…</option>
+            {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </Sel>
+          <Sel label="Service Type *" value={priceForm.serviceType} onChange={e=>setPriceForm(f=>({...f,serviceType:e.target.value,roomId:e.target.value==="outcall"?"":f.roomId}))}>
+            <option value="inhouse">🏢 In-House</option>
+            <option value="outcall">🏠 Outcall</option>
+          </Sel>
+          {priceForm.serviceType==="inhouse"&&(
+            <Sel label="Room *" value={priceForm.roomId} onChange={e=>setPriceForm(f=>({...f,roomId:e.target.value}))}>
+              <option value="">Select room…</option>
+              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+            </Sel>
+          )}
+          {priceForm.serviceType==="outcall"&&(
+            <div style={{display:"flex",alignItems:"flex-end",paddingBottom:14}}>
+              <div style={{fontSize:12,color:G6,padding:"9px 0"}}>No room needed for outcall</div>
+            </div>
+          )}
+          <Inp label="Price (TZS) *" type="number" value={priceForm.price} onChange={e=>setPriceForm(f=>({...f,price:e.target.value}))} placeholder="50000" style={{marginBottom:0}}/>
+        </div>
+        <div style={{marginTop:12}}>
+          <Btn onClick={savePrice} disabled={!priceForm.serviceId||!priceForm.price||(priceForm.serviceType==="inhouse"&&!priceForm.roomId)}>
+            Save Price
+          </Btn>
+        </div>
+      </Card>
+
+      {/* Services list */}
+      {CATS.map(cat=>{
+        const svcs=services.filter(s=>s.category===cat);
+        if(!svcs.length) return null;
+        return(
+          <div key={cat} style={{marginBottom:24}}>
+            <div style={{fontSize:13,fontWeight:700,color:catColor[cat]||G6,textTransform:"uppercase",letterSpacing:".1em",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:catColor[cat]||G6}}/>
+              {cat}
+            </div>
+            {svcs.map(sv=>{
+              const svPrices=getPrices(sv.id);
+              const inhousePrices=svPrices.filter(p=>p.service_type==="inhouse");
+              const outcallPrice =svPrices.find(p=>p.service_type==="outcall");
+              return(
+                <Card key={sv.id} style={{marginBottom:10,padding:"14px 16px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:10}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:15,color:BK}}>{sv.name}</div>
+                      <div style={{fontSize:12,color:G6,marginTop:2}}>{sv.duration_min} min{sv.description?" · "+sv.description:""}</div>
+                    </div>
+                    <button onClick={()=>openSvc(sv)} style={{padding:"5px 10px",fontSize:11,borderRadius:6,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit",flexShrink:0}}>Edit</button>
+                  </div>
+
+                  {/* In-house prices per room */}
+                  {inhousePrices.length>0&&(
+                    <div style={{marginBottom:8}}>
+                      <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>🏢 In-House</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {inhousePrices.map(p=>(
+                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,background:G1,borderRadius:8,padding:"5px 11px",fontSize:13}}>
+                            <span style={{color:G8,fontWeight:600}}>{p.room_name||rooms.find(r=>r.id===p.room_id)?.name||"Room"}</span>
+                            <span style={{color:G4}}>·</span>
+                            <span style={{fontWeight:700}}>{fmt(p.price)}</span>
+                            <button onClick={()=>delPrice(p.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Outcall price */}
+                  {outcallPrice?(
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>🏠 Outcall</div>
+                      <div style={{display:"inline-flex",alignItems:"center",gap:6,background:PLF,borderRadius:8,padding:"5px 11px",fontSize:13}}>
+                        <span style={{fontWeight:700,color:PL}}>{fmt(outcallPrice.price)}</span>
+                        <button onClick={()=>delPrice(outcallPrice.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>×</button>
+                      </div>
+                    </div>
+                  ):null}
+
+                  {!svPrices.length&&(
+                    <div style={{fontSize:12,color:G4,fontStyle:"italic"}}>No prices set — use the form above to add prices</div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        );
+      })}
+      {!services.length&&<div style={{color:G4,fontSize:14,padding:20}}>No services yet. Add your first service.</div>}
+
+      {/* Service form modal */}
+      {modal&&(
+        <Modal title={form.id?"Edit Service":"Add Service"} onClose={()=>setModal(false)}>
+          <Inp label="Service Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Swedish Massage"/>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Category</label>
+            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+              {CATS.map(ct=>(
+                <button key={ct} onClick={()=>setForm(f=>({...f,category:ct}))}
+                  style={{padding:"6px 13px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${form.category===ct?(catColor[ct]||G6):G2}`,
+                    background:form.category===ct?`${catColor[ct]||G6}15`:WH,
+                    color:form.category===ct?(catColor[ct]||G6):G6}}>
+                  {ct}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Inp label="Duration (minutes)" type="number" value={form.duration_min} onChange={e=>setForm(f=>({...f,duration_min:e.target.value}))} placeholder="60"/>
+          <Inp label="Description (optional)" value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Full body relaxation massage…"/>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn onClick={saveSvc} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Service"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function OffersTab({offers,setOffers,pop}){
+  const [modal,setModal]=useState(false);
+  const [form,setForm]=useState({id:null,name:"",code:"",type:"pct",value:"",min_amount:0,valid_from:"",valid_to:""});
+  const today=td();
+
+  const open=(o)=>{ if(o) setForm({...o,value:String(o.value),min_amount:o.min_amount||0});else setForm({id:null,name:"",code:"",type:"pct",value:"",min_amount:0,valid_from:"",valid_to:""}); setModal(true); };
+  const save=async()=>{
+    if(!form.name||!form.value) return;
+    const payload={...form,value:Number(form.value),min_amount:Number(form.min_amount)||0};
+    try{
+      if(form.id){ const u=await api.updateOffer(form.id,payload); setOffers(p=>p.map(o=>o.id===form.id?u:o)); pop("Offer updated"); }
+      else{ const u=await api.createOffer(payload); setOffers(p=>[...p,u]); pop("Offer created"); }
+      setModal(false);
+    }catch(e){pop(e.message,"err");}
+  };
+  const del=async(o)=>{
+    if(!window.confirm(`Delete ${o.name}?`)) return;
+    try{ await api.deleteOffer(o.id); setOffers(p=>p.filter(x=>x.id!==o.id)); pop("Deleted"); }catch(e){pop(e.message,"err");}
+  };
+  const toggle=async(o)=>{
+    try{ const u=await api.updateOffer(o.id,{active:!o.active}); setOffers(p=>p.map(x=>x.id===o.id?{...x,...u}:x)); pop(u.active?"Activated":"Deactivated"); }catch(e){pop(e.message,"err");}
+  };
+  const isValid=(o)=>o.active&&(!o.valid_from||o.valid_from<=today)&&(!o.valid_to||o.valid_to>=today);
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Offers & Discounts</h2>
+        <Btn onClick={()=>open(null)}>+ New Offer</Btn>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>
+        {offers.map(o=>{
+          const valid=isValid(o);
+          return(
+            <Card key={o.id} style={{borderTop:`3px solid ${valid?GOLD:G2}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif"}}>{o.name}</div>
+                  {o.code&&<div style={{fontSize:12,color:G6,fontFamily:"monospace",background:G1,display:"inline-block",padding:"2px 8px",borderRadius:6,marginTop:4}}>{o.code}</div>}
+                </div>
+                <span style={{background:valid?`${GOLD}20`:G1,color:valid?GOLD:G4,padding:"3px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>{valid?"✓ Active":"Inactive"}</span>
+              </div>
+              <div style={{fontSize:22,fontWeight:700,color:valid?GOLD:G4,fontFamily:"'Playfair Display',serif",marginBottom:6}}>
+                {o.type==="pct"?`${o.value}% OFF`:`TZS ${Number(o.value).toLocaleString()} OFF`}
+              </div>
+              {Number(o.min_amount)>0&&<div style={{fontSize:12,color:G6,marginBottom:4}}>Min. order: {fmt(o.min_amount)}</div>}
+              {(o.valid_from||o.valid_to)&&<div style={{fontSize:12,color:G6,marginBottom:8}}>{o.valid_from||"—"} → {o.valid_to||"—"}</div>}
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>open(o)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit",fontWeight:700}}>✏️ Edit</button>
+                <button onClick={()=>toggle(o)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${o.active?WA:OK}`,background:"none",cursor:"pointer",color:o.active?WA:OK,fontFamily:"inherit",fontWeight:700}}>{o.active?"Disable":"Enable"}</button>
+                <button onClick={()=>del(o)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",color:ER,fontFamily:"inherit",fontWeight:700}}>🗑</button>
+              </div>
+            </Card>
+          );
+        })}
+        {offers.length===0&&<div style={{color:G4,fontSize:14,padding:20}}>No offers yet. Create your first discount!</div>}
+      </div>
+      {modal&&(
+        <Modal title={form.id?"Edit Offer":"New Offer"} onClose={()=>setModal(false)}>
+          <Inp label="Offer Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Weekend Special"/>
+          <Inp label="Promo Code (optional)" value={form.code} onChange={e=>setForm(f=>({...f,code:e.target.value.toUpperCase()}))} placeholder="e.g. SPA20"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <Sel label="Discount Type" value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
+              <option value="pct">Percentage (%)</option>
+              <option value="fix">Fixed Amount (TZS)</option>
+            </Sel>
+            <Inp label={form.type==="pct"?"Percentage (0-100)":"Amount (TZS)"} type="number" value={form.value} onChange={e=>setForm(f=>({...f,value:e.target.value}))} placeholder={form.type==="pct"?"20":"5000"}/>
+          </div>
+          <Inp label="Minimum Order Amount (TZS)" type="number" value={form.min_amount} onChange={e=>setForm(f=>({...f,min_amount:e.target.value}))} placeholder="0 = no minimum"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <Inp label="Valid From" type="date" value={form.valid_from} onChange={e=>setForm(f=>({...f,valid_from:e.target.value}))}/>
+            <Inp label="Valid To" type="date" value={form.valid_to} onChange={e=>setForm(f=>({...f,valid_to:e.target.value}))}/>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn onClick={save} disabled={!form.name||!form.value} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Create Offer"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ExpensesTab({expenses,setExpenses,pop,user}){
+  const [modal,setModal]=useState(false);
+  const [form,setForm]=useState({category:"",description:"",amount:"",expense_date:td()});
+  const CATS=["Supplies","Rent","Utilities","Salaries","Marketing","Equipment","Other"];
+
+  const save=async()=>{
+    if(!form.category||!form.amount) return;
+    try{ const u=await api.createExpense({...form,amount:Number(form.amount),staff_id:user?.id}); setExpenses(p=>[u,...p]); setModal(false); pop("Expense recorded"); }catch(e){pop(e.message,"err");}
+  };
+  const total=expenses.reduce((s,e)=>s+Number(e.amount),0);
+  const byCat=CATS.map(c=>({cat:c,total:expenses.filter(e=>e.category===c).reduce((s,e)=>s+Number(e.amount),0)})).filter(x=>x.total>0);
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Expenses</h2>
+        <Btn onClick={()=>setModal(true)}>+ Add Expense</Btn>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
+        <KPI label="Total Expenses" value={fmt(total)} color={ER} icon="💸"/>
+        {byCat.slice(0,3).map(x=><KPI key={x.cat} label={x.cat} value={fmt(x.total)} color={G6} icon="📂"/>)}
+      </div>
+      {byCat.length>0&&(
+        <Card style={{marginBottom:16}}>
+          <ST c="By Category"/>
+          {byCat.map(x=>(
+            <div key={x.cat} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style={{fontSize:13,color:G6,width:90,flexShrink:0}}>{x.cat}</span>
+              <div style={{flex:1,height:5,background:G1,borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:total>0?Math.round(x.total/total*100)+"%":"0%",background:ER,borderRadius:99}}/>
+              </div>
+              <span style={{fontSize:13,fontWeight:700,minWidth:80,textAlign:"right"}}>{fmt(x.total)}</span>
+            </div>
+          ))}
+        </Card>
+      )}
+      {expenses.slice(0,50).map(e=>(
+        <div key={e.id} style={{background:WH,borderRadius:10,border:`1px solid ${G2}`,padding:"11px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:13}}>{e.description}</div>
+            <div style={{fontSize:11,color:G6,marginTop:2}}>{e.category} · {fmtDate(e.expense_date)}</div>
+          </div>
+          <div style={{fontWeight:700,fontSize:14,color:ER}}>{fmt(e.amount)}</div>
+        </div>
+      ))}
+      {modal&&(
+        <Modal title="Add Expense" onClose={()=>setModal(false)}>
+          <Sel label="Category" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+            <option value="">Select category…</option>
+            {CATS.map(c=><option key={c} value={c}>{c}</option>)}
+          </Sel>
+          <Inp label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="What was purchased?"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <Inp label="Amount (TZS)" type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))}/>
+            <Inp label="Date" type="date" value={form.expense_date} onChange={e=>setForm(f=>({...f,expense_date:e.target.value}))}/>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <Btn onClick={save} disabled={!form.category||!form.amount} style={{flex:1,justifyContent:"center"}}>Save Expense</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
+  const [df,setDf]=useState("");
+  const [dt,setDt]=useState("");
+  const [tab,setTab]=useState("financial");
+
+  const allRev=[...appts,...reception];
+  const filtered=df||dt ? allRev.filter(a=>{const d=fmtDate(a.appt_date||a.in_time);return(!df||d>=df)&&(!dt||d<=dt);}) : allRev;
+  const totRev=filtered.reduce((s,a)=>s+Number(a.paid_amount),0);
+  const totExp=df||dt ? expenses.filter(e=>{const d=fmtDate(e.expense_date);return(!df||d>=df)&&(!dt||d<=dt);}).reduce((s,e)=>s+Number(e.amount),0) : expenses.reduce((s,e)=>s+Number(e.amount),0);
+  const net=totRev-totExp;
+  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount),0);
+  const outstanding=totInvoiced-totRev;
+
+  const byMethod=payMethods.map(m=>({method:m,total:filtered.filter(a=>a.payment_method===m).reduce((s,a)=>s+Number(a.paid_amount),0)})).filter(x=>x.total>0);
+  const byTherapist=therapists.map(t=>({...t,rev:filtered.filter(a=>a.therapist_id===t.id).reduce((s,a)=>s+Number(a.paid_amount),0),count:filtered.filter(a=>a.therapist_id===t.id).length})).sort((a,b)=>b.rev-a.rev);
+  const byService=services.map(sv=>({...sv,rev:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).reduce((s,a)=>s+Number(a.paid_amount),0),count:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).length})).filter(x=>x.rev>0).sort((a,b)=>b.rev-a.rev);
+
+  const presets=[["Today",td(),td()],["This Week",(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().split("T")[0];})(),(()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().split("T")[0];})()] ,["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})()  ,(()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split("T")[0];})()] ,["All Time","",""]];
+
+  return(
+    <div>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:16}}>Reports</h2>
+      {/* Date range */}
+      <Card style={{marginBottom:16}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+          {presets.map(([l,f,t])=><button key={l} onClick={()=>{setDf(f);setDt(t);}} style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${df===f&&dt===t?PL:G2}`,background:df===f&&dt===t?PLF:WH,color:df===f&&dt===t?PL:G6,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>)}
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <Inp label="From" type="date" value={df} onChange={e=>setDf(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
+          <Inp label="To"   type="date" value={dt} onChange={e=>setDt(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
+          {(df||dt)&&<button onClick={()=>{setDf("");setDt("");}} style={{padding:"8px 12px",borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontSize:12,fontFamily:"inherit"}}>✕ Clear</button>}
+        </div>
+      </Card>
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+        {[["financial","💰 Financial"],["therapists","💆 Therapists"],["services","📋 Services"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,border:`1px solid ${tab===id?PL:G2}`,background:tab===id?PL:WH,color:tab===id?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+        ))}
+      </div>
+
+      {tab==="financial"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:20}}>
+            <KPI label="Total Revenue"    value={fmt(totRev)}  color={PL}           icon="💰"/>
+            <KPI label="Total Expenses"   value={fmt(totExp)}  color={ER}           icon="📤"/>
+            <KPI label="Net Profit"       value={fmt(net)}     color={net>=0?OK:ER} icon="📈" sub={net>=0?"Profitable":"Loss"}/>
+            <KPI label="Outstanding"      value={fmt(outstanding)} color={WA}        icon="⏳"/>
+            <KPI label="Appointments"     value={appts.filter(a=>a.status==="completed").length} color={IN} icon="✅"/>
+            <KPI label="Walk-ins"         value={reception.filter(r=>r.status==="completed").length} color={G6} icon="🚪"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <Card>
+              <ST c="Payment Methods"/>
+              {byMethod.length===0&&<div style={{color:G4,fontSize:13}}>No payment data</div>}
+              {byMethod.map((m,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                  <span style={{color:G6}}>{m.method}</span>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontWeight:700}}>{fmt(m.total)}</div>
+                    <div style={{fontSize:11,color:G4}}>{totRev>0?Math.round(m.total/totRev*100):0}%</div>
+                  </div>
+                </div>
+              ))}
+              {byMethod.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:`2px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:PL}}>{fmt(totRev)}</span></div>}
+            </Card>
+            <Card>
+              <ST c="Collection Summary"/>
+              {[["Invoiced",fmt(totInvoiced),G6],["Collected",fmt(totRev),OK],["Outstanding",fmt(outstanding),ER],["Net Profit",fmt(net),net>=0?OK:ER],["Expenses",fmt(totExp),ER],["Sessions",String(filtered.length),PL]].map(([k,v,c])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                  <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:c}}>{v}</span>
+                </div>
+              ))}
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {tab==="therapists"&&(
+        <Card>
+          <ST c="Revenue by Therapist"/>
+          {byTherapist.filter(t=>t.rev>0).map((t,i)=>{
+            const maxR=byTherapist[0]?.rev||1;
+            return(
+              <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:i===1?"#aaa":G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:i<2?WH:G6,flexShrink:0}}>{i+1}</div>
+                {t.photo?<img src={t.photo} alt="" style={{width:32,height:32,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>:<div style={{width:32,height:32,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:13,flexShrink:0}}>{t.name?.[0]}</div>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700}}>{t.name}</div>
+                  <div style={{height:4,background:G1,borderRadius:99,marginTop:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:Math.round(t.rev/maxR*100)+"%",background:i===0?GOLD:PL,borderRadius:99}}/>
+                  </div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(t.rev)}</div>
+                  <div style={{fontSize:11,color:G6}}>{t.count} sessions</div>
+                </div>
+              </div>
+            );
+          })}
+          {byTherapist.every(t=>!t.rev)&&<div style={{color:G4,fontSize:13}}>No therapist revenue data</div>}
+        </Card>
+      )}
+
+      {tab==="services"&&(
+        <Card>
+          <ST c="Popular Services"/>
+          {byService.map((sv,i)=>{
+            const maxR=byService[0]?.rev||1;
+            return(
+              <div key={sv.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i===0?WH:G6,flexShrink:0}}>{i+1}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sv.name}</div>
+                  <div style={{height:4,background:G1,borderRadius:99,marginTop:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:Math.round(sv.rev/maxR*100)+"%",background:PL,borderRadius:99}}/>
+                  </div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(sv.rev)}</div>
+                  <div style={{fontSize:11,color:G6}}>{sv.count} sessions</div>
+                </div>
+              </div>
+            );
+          })}
+          {byService.length===0&&<div style={{color:G4,fontSize:13}}>No service data yet</div>}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function PaymentsTab({payMethods,setPayMethods,pop}){
+  const [name,setName]=useState("");
+  const [dbMethods,setDbMethods]=useState([]);
+  useEffect(()=>{ api.getPayMethods().then(r=>setDbMethods(r)).catch(()=>{}); },[]);
+
+  const add=async()=>{
+    if(!name.trim()) return;
+    try{ const u=await api.createPayMethod(name.trim()); setDbMethods(p=>[...p,u]); setPayMethods(p=>[...p,name.trim()]); setName(""); pop("Method added"); }catch(e){pop(e.message,"err");}
+  };
+  const del=async(pm)=>{
+    if(pm.name==="Cash") return pop("Cash cannot be removed","err");
+    try{ await api.deletePayMethod(pm.id); setDbMethods(p=>p.filter(x=>x.id!==pm.id)); setPayMethods(p=>p.filter(x=>x!==pm.name)); pop("Removed"); }catch(e){pop(e.message,"err");}
+  };
+
+  return(
+    <div>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20}}>Payment Methods</h2>
+      <Card>
+        <ST c="Active Methods"/>
+        {(dbMethods.length?dbMethods:payMethods.map(n=>({name:n}))).map((pm,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${G1}`,fontSize:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:OK,display:"inline-block"}}/>
+              <span style={{fontWeight:600}}>{pm.name||pm}</span>
+            </div>
+            {(pm.name||pm)!=="Cash"&&pm.id&&<button onClick={()=>del(pm)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,fontWeight:700}}>Remove</button>}
+          </div>
+        ))}
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          <Inp label="" value={name} onChange={e=>setName(e.target.value)} placeholder="Add new method (e.g. Cheque)" style={{marginBottom:0,flex:1}}/>
+          <Btn onClick={add} disabled={!name.trim()} style={{flexShrink:0,marginTop:0}}>Add</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) {
   const [dateFrom, setDateFrom] = useState(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";});
   const [dateTo,   setDateTo]   = useState(()=>new Date().toISOString().split("T")[0]);
