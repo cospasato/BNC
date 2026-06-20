@@ -1,8 +1,6 @@
 {
+  "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/spa",      "destination": "/api/spa"      },
-    { "source": "/api/setup",    "destination": "/api/setup"    },
-    { "source": "/api/pesapal",  "destination": "/api/pesapal"  },
-    { "source": "/(.*)",         "destination": "/index.html"   }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

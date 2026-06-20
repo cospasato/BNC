@@ -567,48 +567,155 @@ function CustProfileTab({customer,setCustomer,pop}){
 
 // ── ADMIN TABS ────────────────────────────────────────────────────────────────
 
-function DashTab({appts,reception,therapists,rooms,pop}){
+
+function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods}){
   const today=td();
-  const todayAppts=appts.filter(a=>a.appt_date===today||a.appt_date?.split?.("T")[0]===today);
+  const todayAppts=appts.filter(a=>(a.appt_date||"").slice(0,10)===today);
   const active=reception.filter(r=>r.status==="inProgress");
   const pending=appts.filter(a=>a.status==="pending");
-  const todayRev=appts.filter(a=>fmtDate(a.appt_date)===today).reduce((s,a)=>s+Number(a.paid_amount),0)
-                +reception.filter(r=>fmtDate(r.in_time).slice(0,10)===today).reduce((s,r)=>s+Number(r.paid_amount),0);
+  const todayRev=appts.filter(a=>(a.appt_date||"").slice(0,10)===today).reduce((s,a)=>s+Number(a.paid_amount||0),0)
+                +reception.filter(r=>(r.in_time||"").slice(0,10)===today).reduce((s,r)=>s+Number(r.paid_amount||0),0);
+
+  const [editSession,setEditSession]=useState(null);
+  const [coModal,setCoModal]=useState(null);
+  const [payAmt,setPayAmt]=useState("");
+  const [payMethod,setPayMethod]=useState((payMethods||[])[0]||"Cash");
+  const [saving,setSaving]=useState(false);
+
+  const checkout=async(id,extra)=>{
+    setSaving(true);
+    try{
+      const r=await api.updateReception(id,{out_time:new Date().toISOString(),status:"completed",add_payment:Number(extra)||0,payment_method:payMethod});
+      setReception(p=>p.map(x=>x.id===id?{...x,...r}:x));
+      setCoModal(null);setPayAmt("");pop("Session ended ✓");
+    }catch(e){pop(e.message,"err");}
+    setSaving(false);
+  };
+  const addPay=async(id)=>{
+    if(!payAmt) return;
+    setSaving(true);
+    try{
+      const r=await api.updateReception(id,{add_payment:Number(payAmt),payment_method:payMethod});
+      setReception(p=>p.map(x=>x.id===id?{...x,...r}:x));
+      setPayAmt("");pop("Payment recorded ✓");setEditSession(null);
+    }catch(e){pop(e.message,"err");}
+    setSaving(false);
+  };
+
   return(
     <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20}}>Dashboard</h2>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:24}}>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20,color:BK}}>Dashboard</h2>
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:24}}>
         <KPI label="Today's Revenue" value={fmt(todayRev)} color={PL} icon="💰"/>
-        <KPI label="Active Sessions" value={active.length} color={OK} icon="🏃"/>
-        <KPI label="Today's Appts"   value={todayAppts.length} color={IN} icon="📅"/>
-        <KPI label="Pending Confirm" value={pending.length} color={WA} icon="⏳"/>
+        <KPI label="Active Sessions" value={active.length}  color={OK} icon="🏃"/>
+        <KPI label="Today's Appts"  value={todayAppts.length} color={IN} icon="📅"/>
+        <KPI label="Pending"        value={pending.length} color={WA} icon="⏳"/>
       </div>
+
+      {/* ── ACTIVE SESSIONS ── */}
       {active.length>0&&(
-        <Card>
-          <ST c="Currently In Session"/>
-          {active.map(r=>{
-            const th=therapists.find(t=>t.id===r.therapist_id);
-            const rm=rooms.find(rm=>rm.id===r.room_id);
-            const elapsed=r.in_time?Math.round((Date.now()-new Date(r.in_time))/60000):0;
-            return(
-              <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                <div>
-                  <div style={{fontWeight:700}}>{r.customer_name}</div>
-                  <div style={{fontSize:12,color:G6}}>{th?.name||"—"} · {rm?.name||"Outcall"}</div>
+        <div style={{marginBottom:20}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:700,color:BK,marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+            <span style={{width:10,height:10,borderRadius:"50%",background:OK,display:"inline-block",boxShadow:`0 0 0 3px ${OKB}`}}/>
+            Active Sessions ({active.length})
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {active.map(r=>{
+              const th=therapists.find(t=>t.id===r.therapist_id);
+              const rm=rooms.find(rm=>rm.id===r.room_id);
+              const elapsed=r.in_time?Math.floor((Date.now()-new Date(r.in_time))/60000):0;
+              const hrs=Math.floor(elapsed/60), mins=elapsed%60;
+              const svcs=Array.isArray(r.services)?r.services:(typeof r.services==="string"?JSON.parse(r.services||"[]"):[]);
+              const bal=Number(r.total_amount||0)-Number(r.paid_amount||0);
+              const isEditing=editSession===r.id;
+              return(
+                <div key={r.id} style={{background:WH,borderRadius:14,border:`2px solid ${PL}30`,overflow:"hidden",boxShadow:`0 2px 12px ${PL}15`}}>
+                  {/* Header bar */}
+                  <div style={{background:`linear-gradient(135deg,${PLD},${PL})`,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{color:WH}}>
+                      <div style={{fontWeight:700,fontSize:15}}>{r.customer_name}</div>
+                      <div style={{fontSize:12,opacity:.8}}>{r.customer_phone||""}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{background:"rgba(255,255,255,.2)",color:WH,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>
+                        🕐 {hrs>0?`${hrs}h `:""}${mins}m
+                      </div>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:3}}>
+                        In: {r.in_time?new Date(r.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"—"}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Body */}
+                  <div style={{padding:"12px 14px"}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                      {th&&<span style={{background:PLF,color:PL,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>💆 {th.name}</span>}
+                      {rm&&<span style={{background:G1,color:G6,padding:"3px 10px",borderRadius:99,fontSize:12}}>🛏 {rm.name}</span>}
+                      <span style={{background:G1,color:G6,padding:"3px 10px",borderRadius:99,fontSize:12}}>{r.service_type==="outcall"?"🏠 Outcall":"🏢 In-House"}</span>
+                    </div>
+                    {svcs.length>0&&(
+                      <div style={{fontSize:13,color:G6,marginBottom:10}}>{svcs.map(s=>s.name).join(" + ")}</div>
+                    )}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                      <div style={{display:"flex",gap:16,fontSize:13}}>
+                        <div><span style={{color:G6}}>Total: </span><strong style={{color:BK}}>{fmt(r.total_amount)}</strong></div>
+                        <div><span style={{color:G6}}>Paid: </span><strong style={{color:OK}}>{fmt(r.paid_amount)}</strong></div>
+                        {bal>0&&<div><span style={{color:G6}}>Due: </span><strong style={{color:ER}}>{fmt(bal)}</strong></div>}
+                      </div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        <button onClick={()=>setEditSession(isEditing?null:r.id)}
+                          style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${IN}`,background:INB,color:IN,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✏️ Edit
+                        </button>
+                        {bal>0&&(
+                          <button onClick={()=>{setCoModal({...r,bal});setPayAmt(String(bal));}}
+                            style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${OK}`,background:OKB,color:OK,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                            💵 Pay
+                          </button>
+                        )}
+                        <button onClick={()=>{setCoModal({...r,bal});setPayAmt(bal>0?String(bal):"0");}}
+                          style={{padding:"6px 12px",borderRadius:8,border:"none",background:ER,color:WH,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          🚪 End Session
+                        </button>
+                      </div>
+                    </div>
+                    {/* Inline payment */}
+                    {isEditing&&(
+                      <div style={{marginTop:12,padding:"12px 14px",background:G1,borderRadius:10}}>
+                        <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>💵 Record Payment</div>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                          {(payMethods||["Cash"]).map(pm=>(
+                            <button key={pm} onClick={()=>setPayMethod(pm)}
+                              style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                                border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>
+                              {pm}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <input type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder={`Amount (due: ${fmt(bal)})`}
+                            style={{flex:1,padding:"8px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+                          <button onClick={()=>addPay(r.id)} disabled={saving||!payAmt}
+                            style={{padding:"8px 16px",borderRadius:8,border:"none",background:PL,color:WH,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{color:OK,fontWeight:700}}>{elapsed}m</div>
-                  <div style={{fontSize:11,color:G6}}>In since {fmtTime(r.in_time?.split?.("T")[1]||r.in_time)}</div>
-                </div>
-              </div>
-            );
-          })}
-        </Card>
+              );
+            })}
+          </div>
+        </div>
       )}
+
+      {/* Today's appointments */}
       {todayAppts.length>0&&(
         <Card>
           <ST c="Today's Appointments"/>
-          {todayAppts.slice(0,8).map(a=>{
+          {todayAppts.slice(0,10).map(a=>{
             const th=therapists.find(t=>t.id===a.therapist_id);
             const svcs=Array.isArray(a.services)?a.services.map(s=>s.name).join(", "):"-";
             return(
@@ -622,6 +729,42 @@ function DashTab({appts,reception,therapists,rooms,pop}){
             );
           })}
         </Card>
+      )}
+
+      {/* End session modal */}
+      {coModal&&(
+        <Modal title="End Session / Checkout" onClose={()=>{setCoModal(null);setPayAmt("");}}>
+          <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{coModal.customer_name}</div>
+            {[["Total",fmt(coModal.total_amount)],["Paid so far",fmt(coModal.paid_amount)],["Balance",fmt(coModal.bal)]].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
+                <span style={{color:G6}}>{k}</span><strong>{v}</strong>
+              </div>
+            ))}
+          </div>
+          {coModal.bal>0&&(
+            <>
+              <Inp label="Payment Amount" type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder={`Due: ${fmt(coModal.bal)}`}/>
+              <div style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase"}}>Method</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(payMethods||["Cash"]).map(pm=>(
+                    <button key={pm} onClick={()=>setPayMethod(pm)}
+                      style={{padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>{pm}</button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          <div style={{display:"flex",gap:10}}>
+            <Btn v="ghost" onClick={()=>{setCoModal(null);setPayAmt("");}} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <button onClick={()=>checkout(coModal.id,payAmt)} disabled={saving}
+              style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:ER,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {saving?"Ending…":"🚪 End Session"}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -748,817 +891,416 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
   );
 }
 
+
 function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,payMethods,pop,user}){
-  // Split name/phone into own state to prevent input focus loss on re-render
   const [clientName,  setClientName]  = useState("");
   const [clientPhone, setClientPhone] = useState("");
-  const [form,setForm] = useState({
-    therapistId:"", roomId:"",
-    serviceType:"inhouse", selServices:[], disc:0, discT:"pct",
-    paid:0, method:"Cash", notes:""
+  const [form, setForm] = useState({
+    therapistId:"", roomId:"", serviceType:"inhouse",
+    selServices:[], disc:0, discT:"pct", paid:0, method:"Cash", notes:""
   });
-  const [step,    setStep]    = useState(1); // 1=client, 2=services, 3=payment
+  const [step,    setStep]    = useState(1);
   const [coModal, setCoModal] = useState(null);
+  const [editModal,setEditModal] = useState(null);
   const [dateF,   setDateF]   = useState(td());
   const [payAmt,  setPayAmt]  = useState("");
-  const [payMethod,setPayMethod] = useState(payMethods[0]||"Cash");
+  const [payMethod,setPayMethod] = useState((payMethods||[])[0]||"Cash");
+  const [saving,  setSaving]  = useState(false);
 
-  // Price lookup using room_id
-  const getPrice=(svcId, roomId, svcType)=>{
-    const p = pricing.find(p=>p.service_id===svcId && (p.room_id===roomId||p.room_type===roomId) && p.service_type===svcType)
-           || pricing.find(p=>p.service_id===svcId && p.service_type===svcType);
-    return p ? Number(p.price) : 0;
+  const getPrice=(svcId,roomId,svcType)=>{
+    const p=pricing.find(p=>p.service_id===svcId&&(p.room_id===roomId||p.room_type===roomId)&&p.service_type===svcType)
+           ||pricing.find(p=>p.service_id===svcId&&p.service_type===svcType);
+    return p?Number(p.price):0;
   };
-
-  const roomId = form.roomId||null;
-  const base   = form.selServices.reduce((s,sv)=>s+getPrice(sv.id,roomId,form.serviceType),0);
-  const disc   = form.discT==="pct" ? Math.round(base*Number(form.disc)/100) : Number(form.disc||0);
-  const total  = Math.max(0, base-disc);
+  const roomId=form.roomId||null;
+  const base=form.selServices.reduce((s,sv)=>s+getPrice(sv.id,roomId,form.serviceType),0);
+  const disc=form.discT==="pct"?Math.round(base*Number(form.disc||0)/100):Number(form.disc||0);
+  const total=Math.max(0,base-disc);
 
   const toggleSvc=(sv)=>{
-    const price = getPrice(sv.id, roomId, form.serviceType);
     setForm(f=>{
-      const ex = f.selServices.find(s=>s.id===sv.id);
-      if(ex) return {...f, selServices:f.selServices.filter(s=>s.id!==sv.id)};
-      return {...f, selServices:[...f.selServices, {id:sv.id, name:sv.name, price}]};
+      const ex=f.selServices.find(s=>s.id===sv.id);
+      if(ex) return{...f,selServices:f.selServices.filter(s=>s.id!==sv.id)};
+      return{...f,selServices:[...f.selServices,{id:sv.id,name:sv.name,price:getPrice(sv.id,roomId,f.serviceType)}]};
     });
   };
-
-  // Refresh prices when room or service type changes
-  const updatePrices=(newRoomId, newServiceType)=>{
-    setForm(f=>({
-      ...f,
-      roomId: newRoomId,
-      serviceType: newServiceType||f.serviceType,
-      selServices: f.selServices.map(s=>({...s, price:getPrice(s.id, newRoomId||null, newServiceType||f.serviceType)}))
-    }));
+  const updatePrices=(newRoom,newType)=>{
+    setForm(f=>({...f,roomId:newRoom??f.roomId,serviceType:newType||f.serviceType,
+      selServices:f.selServices.map(s=>({...s,price:getPrice(s.id,newRoom??f.roomId,newType||f.serviceType)}))}));
   };
-
   const resetForm=()=>{
-    setClientName(""); setClientPhone("");
-    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:payMethods[0]||"Cash",notes:""});
+    setClientName("");setClientPhone("");
+    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:(payMethods||[])[0]||"Cash",notes:""});
     setStep(1);
   };
 
   const startSession=async()=>{
     if(!clientName.trim()) return pop("Client name required","err");
-    if(form.selServices.length===0) return pop("Select at least one service","err");
+    if(!form.selServices.length) return pop("Select at least one service","err");
+    setSaving(true);
     try{
-      const r = await api.createReception({
-        customer_name:  clientName,
-        customer_phone: clientPhone,
-        therapist_id:   form.therapistId||null,
-        room_id:        form.roomId||null,
-        service_type:   form.serviceType,
-        services:       form.selServices.map(s=>({...s, price:getPrice(s.id,roomId,form.serviceType)})),
-        base_amount:    base,
-        discount:       Number(form.disc||0),
-        discount_type:  form.discT,
-        total_amount:   total,
-        paid_amount:    Number(form.paid||0),
-        payment_method: form.method,
-        notes:          form.notes,
-        status:         "inProgress",
-        staff_id:       user?.id||null,
+      const r=await api.createReception({
+        customer_name:clientName, customer_phone:clientPhone,
+        therapist_id:form.therapistId||null, room_id:form.roomId||null,
+        service_type:form.serviceType,
+        services:form.selServices.map(s=>({...s,price:getPrice(s.id,roomId,form.serviceType)})),
+        base_amount:base, discount:Number(form.disc||0), discount_type:form.discT,
+        total_amount:total, paid_amount:Number(form.paid||0),
+        payment_method:form.method, notes:form.notes,
+        status:"inProgress", staff_id:user?.id||null,
       });
-      // Add therapist_name and room_name for display
-      const display = {
-        ...r,
-        therapist_name: therapists.find(t=>t.id===r.therapist_id)?.name||null,
-        room_name:      rooms.find(rm=>rm.id===r.room_id)?.name||null,
-      };
-      setReception(p=>[display,...p]);
-      resetForm();
-      pop("Session started ✓");
-    }catch(e){ pop(e.message||"Failed to start session","err"); }
+      setReception(p=>[{...r,
+        therapist_name:therapists.find(t=>t.id===r.therapist_id)?.name||null,
+        room_name:rooms.find(rm=>rm.id===r.room_id)?.name||null,
+      },...p]);
+      resetForm();pop("Session started ✓");
+    }catch(e){pop(e.message||"Failed","err");}
+    setSaving(false);
   };
 
-  const checkout=async(id, amountToAdd)=>{
+  const checkout=async(id,extra)=>{
+    setSaving(true);
     try{
-      const r = await api.updateReception(id,{
-        out_time:      new Date().toISOString(),
-        status:        "completed",
-        add_payment:   Number(amountToAdd)||0,
-        payment_method: payMethod,
-      });
+      const r=await api.updateReception(id,{out_time:new Date().toISOString(),status:"completed",add_payment:Number(extra)||0,payment_method:payMethod});
       setReception(p=>p.map(x=>x.id===id?{...x,...r}:x));
-      setCoModal(null); setPayAmt(""); pop("Checked out ✓");
-    }catch(e){ pop(e.message||"Checkout failed","err"); }
+      setCoModal(null);setPayAmt("");pop("Checked out ✓");
+    }catch(e){pop(e.message||"Failed","err");}
+    setSaving(false);
   };
 
-  const filtered = reception.filter(r=>!dateF || fmtDate(r.in_time||r.created_at).slice(0,10)===dateF);
-  const STEP_LABELS = ["Client & Room","Services","Payment & Confirm"];
+  const filtered=reception.filter(r=>!dateF||(r.in_time||r.created_at||"").slice(0,10)===dateF)
+    .sort((a,b)=>new Date(b.in_time||b.created_at)-new Date(a.in_time||a.created_at));
+
+  const STEPS=["Client & Room","Services","Payment"];
 
   return(
     <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20}}>Reception Log</h2>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20,color:BK}}>Reception</h2>
 
-      {/* ── WALK-IN FORM ── */}
-      <Card style={{marginBottom:20}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
-          <ST c="New Walk-In"/>
-          {step>1&&<button onClick={resetForm} style={{background:"none",border:`1px solid ${G2}`,borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer",color:G6,fontFamily:"inherit"}}>✕ Clear</button>}
-        </div>
-
-        {/* Step indicators */}
-        <div style={{display:"flex",gap:0,marginBottom:20}}>
-          {STEP_LABELS.map((label,i)=>{
-            const n=i+1; const done=step>n; const cur=step===n;
-            return(
-              <div key={n} style={{flex:1,textAlign:"center"}}>
-                <div style={{height:4,borderRadius:99,background:done?OK:cur?PL:G2,marginBottom:5,transition:"background .3s"}}/>
-                <div style={{fontSize:11,color:cur?PL:done?OK:G4,fontWeight:cur?700:400}}>{label}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* STEP 1 — Client & Room */}
-        {step===1&&(
-          <div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Client Name *</label>
-                <input value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="e.g. Jane Mwangi"
-                  style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".05em"}}>Phone</label>
-                <input value={clientPhone} onChange={e=>setClientPhone(e.target.value)} placeholder="+255 7XX…"
-                  style={{width:"100%",padding:"9px 11px",border:`1px solid ${G2}`,borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-              </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <Sel label="Therapist" value={form.therapistId} onChange={e=>setForm(f=>({...f,therapistId:e.target.value}))}>
-                <option value="">Any Available</option>
-                {therapists.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-              </Sel>
-              <Sel label="Room" value={form.roomId} onChange={e=>updatePrices(e.target.value, form.serviceType)}>
-                <option value="">Outcall / No Room</option>
-                {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-              </Sel>
-            </div>
-            {/* Service type */}
-            <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Service Type</label>
-              <div style={{display:"flex",gap:8}}>
-                {[["inhouse","🏢 In-House"],["outcall","🏠 Outcall"]].map(([v,l])=>(
-                  <button key={v} onClick={()=>updatePrices(form.roomId, v)}
-                    style={{padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                      border:`2px solid ${form.serviceType===v?PL:G2}`,background:form.serviceType===v?PLF:WH,color:form.serviceType===v?PL:G6}}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <Btn onClick={()=>{if(!clientName.trim())return pop("Client name required","err");setStep(2);}} style={{width:"100%",justifyContent:"center"}}>
-              Continue → Choose Services
-            </Btn>
+      {/* ── NEW WALK-IN FORM ── */}
+      <div style={{background:WH,borderRadius:16,border:`1px solid ${G2}`,overflow:"hidden",marginBottom:24,boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+        {/* Form header */}
+        <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{color:WH}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:700}}>New Walk-In Session</div>
+            <div style={{fontSize:12,opacity:.7,marginTop:2}}>Step {step} of 3 — {STEPS[step-1]}</div>
           </div>
-        )}
+          {step>1&&<button onClick={resetForm}
+            style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.3)",color:WH,borderRadius:7,padding:"5px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+            ✕ Reset
+          </button>}
+        </div>
 
-        {/* STEP 2 — Services */}
-        {step===2&&(
-          <div>
-            <div style={{fontSize:13,color:G6,marginBottom:12}}>
-              <strong>{clientName}</strong> · {therapists.find(t=>t.id===form.therapistId)?.name||"Any therapist"} · {rooms.find(r=>r.id===form.roomId)?.name||"No room"} · {form.serviceType==="inhouse"?"In-House":"Outcall"}
+        {/* Step progress */}
+        <div style={{display:"flex",height:3}}>
+          {STEPS.map((_,i)=>(
+            <div key={i} style={{flex:1,background:step>i?PL:G2,transition:"background .3s"}}/>
+          ))}
+        </div>
+
+        <div style={{padding:"18px 18px 20px"}}>
+          {/* ── STEP 1: Client & Room ── */}
+          {step===1&&(
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {/* Client name + phone */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <div>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Client Name *</label>
+                  <input value={clientName} onChange={e=>setClientName(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&clientName.trim()&&setStep(2)}
+                    placeholder="Jane Mwangi"
+                    style={{width:"100%",padding:"10px 12px",border:`2px solid ${clientName?PL:G2}`,borderRadius:9,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",transition:"border-color .15s"}}/>
+                </div>
+                <div>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Phone</label>
+                  <input value={clientPhone} onChange={e=>setClientPhone(e.target.value)} placeholder="+255 7XX XXX XXX"
+                    style={{width:"100%",padding:"10px 12px",border:`2px solid ${G2}`,borderRadius:9,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                </div>
+              </div>
+
+              {/* Therapist + Room — visually prominent */}
+              <div style={{background:`linear-gradient(135deg,${PLF},${WH})`,borderRadius:12,border:`1px solid ${PL}30`,padding:"14px"}}>
+                <div style={{fontSize:12,fontWeight:700,color:PL,textTransform:"uppercase",letterSpacing:".08em",marginBottom:12}}>
+                  💆 Assign Therapist & Room
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <div>
+                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Therapist</label>
+                    <select value={form.therapistId} onChange={e=>setForm(f=>({...f,therapistId:e.target.value}))}
+                      style={{width:"100%",padding:"9px 11px",border:`2px solid ${form.therapistId?PL:G2}`,borderRadius:8,fontSize:13,outline:"none",fontFamily:"inherit",background:WH,boxSizing:"border-box",cursor:"pointer"}}>
+                      <option value="">🎲 Any Available</option>
+                      {therapists.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Room</label>
+                    <select value={form.roomId} onChange={e=>updatePrices(e.target.value,null)}
+                      style={{width:"100%",padding:"9px 11px",border:`2px solid ${form.roomId?PL:G2}`,borderRadius:8,fontSize:13,outline:"none",fontFamily:"inherit",background:WH,boxSizing:"border-box",cursor:"pointer"}}>
+                      <option value="">🏠 Outcall / No Room</option>
+                      {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Service type */}
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Service Type</label>
+                <div style={{display:"flex",gap:8}}>
+                  {[["inhouse","🏢","In-House"],["outcall","🏠","Outcall"]].map(([v,ic,l])=>(
+                    <button key={v} onClick={()=>updatePrices(null,v)}
+                      style={{flex:1,padding:"10px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${form.serviceType===v?PL:G2}`,background:form.serviceType===v?PLF:WH,color:form.serviceType===v?PL:G6,
+                        display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <span>{ic}</span>{l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button onClick={()=>{if(!clientName.trim())return pop("Client name required","err");setStep(2);}}
+                style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${PLD},${PL})`,
+                  color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                Continue → Choose Services
+              </button>
             </div>
-            <div style={{marginBottom:10}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Select Services *</label>
-              <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+          )}
+
+          {/* ── STEP 2: Services ── */}
+          {step===2&&(
+            <div>
+              {/* Summary bar */}
+              <div style={{background:PLF,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+                <span style={{background:PL,color:WH,padding:"2px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>{clientName}</span>
+                {form.therapistId&&<span style={{background:WH,color:PL,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${PL}30`}}>
+                  💆 {therapists.find(t=>t.id===form.therapistId)?.name}
+                </span>}
+                {form.roomId&&<span style={{background:WH,color:G6,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${G2}`}}>
+                  🛏 {rooms.find(r=>r.id===form.roomId)?.name}
+                </span>}
+                <span style={{background:WH,color:G6,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${G2}`}}>
+                  {form.serviceType==="outcall"?"🏠 Outcall":"🏢 In-House"}
+                </span>
+              </div>
+
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>
+                Select Services *
+              </label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
                 {services.filter(s=>s.active).map(sv=>{
-                  const price = getPrice(sv.id, roomId, form.serviceType);
-                  const sel   = form.selServices.find(s=>s.id===sv.id);
+                  const price=getPrice(sv.id,roomId,form.serviceType);
+                  const sel=form.selServices.find(s=>s.id===sv.id);
                   return(
                     <button key={sv.id} onClick={()=>toggleSvc(sv)}
-                      style={{padding:"8px 14px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      style={{padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
                         border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G8,
-                        display:"flex",alignItems:"center",gap:7,transition:"all .15s"}}>
-                      <span style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${sel?PL:G2}`,background:sel?PL:"none",display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                        {sel&&<span style={{color:WH,fontSize:10,lineHeight:1}}>✓</span>}
-                      </span>
-                      {sv.name}
-                      {price>0&&<span style={{fontSize:12,color:sel?PL:G6,fontWeight:400}}>· {fmt(price)}</span>}
-                      {price===0&&<span style={{fontSize:11,color:G4,fontWeight:400}}>· no price set</span>}
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:100,transition:"all .15s",
+                        boxShadow:sel?`0 0 0 3px ${PL}20`:"none"}}>
+                      <span>{sv.name}</span>
+                      <span style={{fontSize:12,color:sel?PL:G4,fontWeight:400}}>{price>0?fmt(price):"—"}</span>
                     </button>
                   );
                 })}
               </div>
-            </div>
-            {form.selServices.length>0&&(
-              <div style={{background:PLF,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-                <div style={{fontSize:12,fontWeight:700,color:PL,marginBottom:6}}>Selected ({form.selServices.length})</div>
-                {form.selServices.map(s=>(
-                  <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
-                    <span>{s.name}</span>
-                    <span style={{fontWeight:700}}>{fmt(getPrice(s.id,roomId,form.serviceType))}</span>
+
+              {form.selServices.length>0&&(
+                <div style={{background:PLF,borderRadius:10,padding:"12px 14px",marginBottom:14,border:`1px solid ${PL}30`}}>
+                  <div style={{fontSize:12,fontWeight:700,color:PL,marginBottom:8}}>Selected ({form.selServices.length})</div>
+                  {form.selServices.map(s=>(
+                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                      <span>{s.name}</span><span style={{fontWeight:700,color:PL}}>{fmt(getPrice(s.id,roomId,form.serviceType))}</span>
+                    </div>
+                  ))}
+                  <div style={{borderTop:`1px solid ${PL}30`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
+                    <span>Subtotal</span><span style={{color:PL}}>{fmt(base)}</span>
                   </div>
+                </div>
+              )}
+
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setStep(1)}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ← Back
+                </button>
+                <button onClick={()=>{if(!form.selServices.length)return pop("Select at least one service","err");setStep(3);}}
+                  disabled={!form.selServices.length}
+                  style={{flex:2,padding:"10px",borderRadius:9,border:"none",background:form.selServices.length?`linear-gradient(135deg,${PLD},${PL})`:"#ccc",
+                    color:WH,fontSize:13,fontWeight:700,cursor:form.selServices.length?"pointer":"not-allowed",fontFamily:"inherit"}}>
+                  Continue → Payment
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 3: Payment & Confirm ── */}
+          {step===3&&(
+            <div>
+              <div style={{background:PLF,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}>
+                <span style={{background:PL,color:WH,padding:"2px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>{clientName}</span>
+                {form.selServices.map(s=>(
+                  <span key={s.id} style={{background:WH,color:PL,padding:"2px 9px",borderRadius:99,fontSize:12,border:`1px solid ${PL}30`}}>{s.name}</span>
                 ))}
-                <div style={{borderTop:`1px solid ${PL}20`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
-                  <span>Subtotal</span><span style={{color:PL}}>{fmt(base)}</span>
+              </div>
+
+              {/* Discount */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
+                <Inp label="Discount" type="number" value={form.disc} onChange={e=>setForm(f=>({...f,disc:e.target.value}))} placeholder="0" style={{marginBottom:0}}/>
+                <Sel label="Type" value={form.discT} onChange={e=>setForm(f=>({...f,discT:e.target.value}))} style={{marginBottom:0}}>
+                  <option value="pct">% Percentage</option>
+                  <option value="fix">TZS Fixed</option>
+                </Sel>
+              </div>
+
+              {/* Totals */}
+              <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4,color:"rgba(255,255,255,.7)"}}>
+                  <span>Subtotal</span><span>{fmt(base)}</span>
+                </div>
+                {disc>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4,color:"rgba(255,255,255,.7)"}}>
+                  <span>Discount</span><span style={{color:"#86efac"}}>−{fmt(disc)}</span>
+                </div>}
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:20,fontWeight:700,borderTop:"1px solid rgba(255,255,255,.2)",paddingTop:10,marginTop:6,color:GOLD}}>
+                  <span>Total</span><span>{fmt(total)}</span>
                 </div>
               </div>
-            )}
-            <div style={{display:"flex",gap:10}}>
-              <Btn v="ghost" onClick={()=>setStep(1)} style={{flex:1,justifyContent:"center"}}>← Back</Btn>
-              <Btn onClick={()=>{if(!form.selServices.length)return pop("Select at least one service","err");setStep(3);}} disabled={!form.selServices.length} style={{flex:2,justifyContent:"center"}}>
-                Continue → Payment
-              </Btn>
-            </div>
-          </div>
-        )}
 
-        {/* STEP 3 — Payment & Confirm */}
-        {step===3&&(
-          <div>
-            <div style={{fontSize:13,color:G6,marginBottom:14}}>
-              <strong>{clientName}</strong> · {form.selServices.map(s=>s.name).join(", ")}
-            </div>
-            {/* Discount */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
-              <Inp label="Discount" type="number" value={form.disc} onChange={e=>setForm(f=>({...f,disc:e.target.value}))} placeholder="0" style={{marginBottom:0}}/>
-              <Sel label="Discount Type" value={form.discT} onChange={e=>setForm(f=>({...f,discT:e.target.value}))} style={{marginBottom:0}}>
-                <option value="pct">% Percentage</option>
-                <option value="fix">TZS Fixed</option>
-              </Sel>
-            </div>
-            {/* Totals */}
-            <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span style={{color:G6}}>Subtotal</span><span>{fmt(base)}</span></div>
-              {disc>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span style={{color:G6}}>Discount</span><span style={{color:OK}}>−{fmt(disc)}</span></div>}
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:700,borderTop:`1px solid ${G2}`,paddingTop:8,marginTop:4}}><span>Total</span><span style={{color:PL}}>{fmt(total)}</span></div>
-            </div>
-            {/* Payment */}
-            <Inp label="Amount Paid Now" type="number" value={form.paid} onChange={e=>setForm(f=>({...f,paid:e.target.value}))} placeholder={`0 — full amount: ${fmt(total)}`}/>
-            <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".05em"}}>Payment Method</label>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {payMethods.map(pm=>(
-                  <button key={pm} onClick={()=>setForm(f=>({...f,method:pm}))}
-                    style={{padding:"7px 13px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                      border:`2px solid ${form.method===pm?PL:G2}`,background:form.method===pm?PLF:WH,color:form.method===pm?PL:G6}}>
-                    {pm}
-                  </button>
-                ))}
+              <Inp label="Amount Paid Now" type="number" value={form.paid} onChange={e=>setForm(f=>({...f,paid:e.target.value}))} placeholder={`0 — full: ${fmt(total)}`}/>
+              <div style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Payment Method</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(payMethods.length?payMethods:["Cash"]).map(pm=>(
+                    <button key={pm} onClick={()=>setForm(f=>({...f,method:pm}))}
+                      style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${form.method===pm?PL:G2}`,background:form.method===pm?PLF:WH,color:form.method===pm?PL:G6}}>
+                      {pm}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Txa label="Notes (optional)" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={2} placeholder="Session notes…"/>
+
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setStep(2)}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ← Back
+                </button>
+                <button onClick={startSession} disabled={saving}
+                  style={{flex:2,padding:"12px",borderRadius:9,border:"none",background:`linear-gradient(135deg,#16a34a,#22c55e)`,
+                    color:WH,fontSize:14,fontWeight:700,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit",opacity:saving?.7:1}}>
+                  {saving?"Starting…":"🚪 Start Session"}
+                </button>
               </div>
             </div>
-            <Txa label="Notes (optional)" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={2} placeholder="Any notes about the session…"/>
-            <div style={{display:"flex",gap:10}}>
-              <Btn v="ghost" onClick={()=>setStep(2)} style={{flex:1,justifyContent:"center"}}>← Back</Btn>
-              <Btn onClick={startSession} disabled={!form.name||form.selServices.length===0} style={{flex:2,justifyContent:"center",background:OK}}>
-                🚪 Start Session
-              </Btn>
-            </div>
-          </div>
-        )}
-      </Card>
+          )}
+        </div>
+      </div>
 
       {/* ── SESSION LOG ── */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
-        <div style={{fontWeight:700,fontSize:16,fontFamily:"'Playfair Display',serif"}}>Session Log</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:700,color:BK}}>Session Log</div>
         <Inp label="" type="date" value={dateF} onChange={e=>setDateF(e.target.value)} style={{marginBottom:0,width:"auto"}}/>
       </div>
 
-      {filtered.length===0&&<div style={{color:G4,fontSize:14,textAlign:"center",padding:20,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>No sessions for this date</div>}
+      {filtered.length===0&&(
+        <div style={{color:G4,fontSize:14,textAlign:"center",padding:30,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>
+          No sessions for this date
+        </div>
+      )}
 
       {filtered.map(r=>{
-        const th   = therapists.find(t=>t.id===r.therapist_id);
-        const rm   = rooms.find(rm=>rm.id===r.room_id);
-        const svcs = Array.isArray(r.services)?r.services:(typeof r.services==="string"?JSON.parse(r.services||"[]"):[]);
-        const bal  = Number(r.total_amount)-Number(r.paid_amount);
-        const inT  = r.in_time  ? new Date(r.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "—";
-        const outT = r.out_time ? new Date(r.out_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : null;
+        const th=therapists.find(t=>t.id===r.therapist_id);
+        const rm=rooms.find(rm=>rm.id===r.room_id);
+        const svcs=Array.isArray(r.services)?r.services:(typeof r.services==="string"?JSON.parse(r.services||"[]"):[]);
+        const bal=Number(r.total_amount||0)-Number(r.paid_amount||0);
+        const inT=r.in_time?new Date(r.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"—";
+        const outT=r.out_time?new Date(r.out_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):null;
+        const isActive=r.status==="inProgress";
         return(
-          <div key={r.id} style={{background:WH,borderRadius:12,border:`1px solid ${r.status==="inProgress"?PL:G2}`,padding:"14px 16px",marginBottom:10,borderLeft:`4px solid ${r.status==="inProgress"?PL:r.status==="completed"?OK:G2}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:15,marginBottom:3}}>{r.customer_name}
-                  <span style={{fontSize:11,color:G4,fontWeight:400,marginLeft:8}}>{r.id}</span>
-                </div>
-                <div style={{fontSize:12,color:G6,marginBottom:3}}>
-                  {th?.name||"—"} · {rm?.name||r.room_name||"Outcall"} · <span style={{fontWeight:600}}>{inT}</span>
-                  {outT&&<span> → {outT}</span>}
-                </div>
-                <div style={{fontSize:12,color:G6,marginBottom:6}}>{svcs.map(s=>s.name).join(", ")||"—"}</div>
+          <div key={r.id} style={{background:WH,borderRadius:14,border:`2px solid ${isActive?PL:r.status==="completed"?OK+"40":G2}`,
+            marginBottom:12,overflow:"hidden",boxShadow:isActive?`0 4px 16px ${PL}20`:"0 1px 4px rgba(0,0,0,.06)"}}>
+            {/* Row header */}
+            <div style={{background:isActive?`linear-gradient(135deg,${PLD},${PL})`:G1,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <span style={{fontWeight:700,fontSize:14,color:isActive?WH:BK}}>{r.customer_name}</span>
+                {r.customer_phone&&<span style={{fontSize:12,color:isActive?"rgba(255,255,255,.7)":G6,marginLeft:8}}>{r.customer_phone}</span>}
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{background:isActive?"rgba(255,255,255,.2)":r.status==="completed"?OKB:G2,
+                  color:isActive?WH:r.status==="completed"?OK:G6,
+                  padding:"2px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>
+                  {isActive?"● In Session":r.status==="completed"?"✓ Done":r.status}
+                </span>
+              </div>
+            </div>
+            {/* Body */}
+            <div style={{padding:"12px 14px"}}>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                {th&&<span style={{background:PLF,color:PL,padding:"2px 9px",borderRadius:99,fontSize:12,fontWeight:600}}>💆 {th.name}</span>}
+                {rm&&<span style={{background:G1,color:G6,padding:"2px 9px",borderRadius:99,fontSize:12}}>🛏 {rm.name}</span>}
+                <span style={{background:G1,color:G6,padding:"2px 9px",borderRadius:99,fontSize:12}}>
+                  🕐 {inT}{outT?` → ${outT}`:""}
+                </span>
+              </div>
+              {svcs.length>0&&<div style={{fontSize:13,color:G6,marginBottom:8}}>{svcs.map(s=>s.name).join(" + ")}</div>}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",gap:12,fontSize:13}}>
-                  <span style={{fontWeight:700,color:PL}}>{fmt(r.total_amount)}</span>
-                  <span style={{color:OK}}>Paid: {fmt(r.paid_amount)}</span>
-                  {bal>0&&<span style={{color:ER}}>Due: {fmt(bal)}</span>}
+                  <span><span style={{color:G6}}>Total: </span><strong style={{color:BK}}>{fmt(r.total_amount)}</strong></span>
+                  <span><span style={{color:G6}}>Paid: </span><strong style={{color:OK}}>{fmt(r.paid_amount)}</strong></span>
+                  {bal>0&&<span><span style={{color:G6}}>Due: </span><strong style={{color:ER}}>{fmt(bal)}</strong></span>}
+                </div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {isActive&&bal>0&&(
+                    <button onClick={()=>{setCoModal({...r,bal});setPayAmt(String(bal));}}
+                      style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${OK}`,background:OKB,color:OK,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      💵 Pay
+                    </button>
+                  )}
+                  {isActive&&(
+                    <button onClick={()=>{setCoModal({...r,bal});setPayAmt(bal>0?String(bal):"0");}}
+                      style={{padding:"6px 12px",borderRadius:7,border:"none",background:ER,color:WH,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      🚪 End
+                    </button>
+                  )}
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0,alignItems:"flex-end"}}>
-                <Badge s={r.status}/>
-                {r.status==="inProgress"&&(
-                  <button onClick={()=>{setCoModal(r.id);setPayAmt(String(bal>0?bal:""));setPayMethod(r.payment_method||payMethods[0]||"Cash");}}
-                    style={{padding:"6px 13px",fontSize:12,borderRadius:7,border:`1px solid ${OK}`,background:OKB,color:OK,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
-                    Check Out →
-                  </button>
-                )}
-              </div>
+              {r.notes&&<div style={{marginTop:8,fontSize:12,color:G6,padding:"6px 10px",background:G1,borderRadius:7}}>📝 {r.notes}</div>}
             </div>
           </div>
         );
       })}
 
       {/* Checkout modal */}
-      {coModal&&(()=>{
-        const r   = reception.find(x=>x.id===coModal);
-        const bal = Number(r?.total_amount||0)-Number(r?.paid_amount||0);
-        return(
-          <Modal title={`Check Out — ${r?.customer_name}`} onClose={()=>setCoModal(null)}>
-            <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:16}}>
-              {[["In Time", r?.in_time?new Date(r.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"—"],
-                ["Therapist", therapists.find(t=>t.id===r?.therapist_id)?.name||"—"],
-                ["Room",      rooms.find(rm=>rm.id===r?.room_id)?.name||"Outcall"],
-                ["Total",     fmt(r?.total_amount)],
-                ["Paid",      fmt(r?.paid_amount)],
-                ["Balance",   fmt(bal)],
-              ].map(([k,v])=>(
-                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:13,borderBottom:`1px solid ${G2}`}}>
-                  <span style={{color:G6}}>{k}</span><strong>{v}</strong>
-                </div>
-              ))}
-            </div>
-            <Inp label={`Amount to Collect Now${bal>0?" (balance: "+fmt(bal)+")":""}`} type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder={String(bal>0?bal:0)}/>
-            <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".05em"}}>Payment Method</label>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {payMethods.map(pm=>(
-                  <button key={pm} onClick={()=>setPayMethod(pm)}
-                    style={{padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                      border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>
-                    {pm}
-                  </button>
-                ))}
+      {coModal&&(
+        <Modal title="Checkout" onClose={()=>{setCoModal(null);setPayAmt("");}}>
+          <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>{coModal.customer_name}</div>
+            {[["Total",fmt(coModal.total_amount)],["Paid",fmt(coModal.paid_amount)],["Balance Due",fmt(coModal.bal)]].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
+                <span style={{color:G6}}>{k}</span><strong style={{color:k==="Balance Due"&&coModal.bal>0?ER:BK}}>{v}</strong>
               </div>
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <Btn v="ghost" onClick={()=>setCoModal(null)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-              <Btn v="ok" onClick={()=>checkout(coModal, Number(payAmt)||0)} style={{flex:1,justifyContent:"center"}}>
-                Complete Check Out
-              </Btn>
-            </div>
-          </Modal>
-        );
-      })()}
-    </div>
-  );
-}
-
-function TherapistsTab({therapists,setTherapists,pop}){
-  const [modal,setModal]   = useState(false);
-  const [uploading,setUploading] = useState(false);
-  const [form,setForm]     = useState({
-    id:null,name:"",phone:"",email:"",bio:"",
-    photo:"",photos:[],specialties:"",
-    outcall:true,active:true,pin:"",availability:"available"
-  });
-
-  const open = (t) => {
-    if(t) setForm({...t, specialties:(t.specialties||[]).join(", "), pin:"", photos:t.photos||[], photo:t.photo||""});
-    else  setForm({id:null,name:"",phone:"",email:"",bio:"",photo:"",photos:[],specialties:"",outcall:true,active:true,pin:"",availability:"available"});
-    setModal(true);
-  };
-
-  const save = async() => {
-    if(!form.name) return;
-    const specs = typeof form.specialties==="string"
-      ? form.specialties.split(",").map(s=>s.trim()).filter(Boolean)
-      : (form.specialties||[]);
-    const payload = {
-      name:form.name, phone:form.phone||"", email:form.email||"",
-      bio:form.bio||"", photo:form.photos[0]||form.photo||null,
-      photos:form.photos||[], specialties:specs,
-      outcall:!!form.outcall, active:form.active!==false,
-      availability:form.availability||"available"
-    };
-    if(form.pin) payload.pin = form.pin;
-    try{
-      if(form.id){ const u=await api.updateTherapist(form.id,payload); setTherapists(p=>p.map(t=>t.id===form.id?u:t)); pop("Therapist updated"); }
-      else        { const u=await api.createTherapist(payload);         setTherapists(p=>[...p,u]);                    pop("Therapist added"); }
-      setModal(false);
-    }catch(e){ pop(e.message,"err"); }
-  };
-
-  const addPhotos = async(e) => {
-    const files = Array.from(e.target.files||[]);
-    if(!files.length) return;
-    setUploading(true);
-    const compressed = await Promise.all(files.map(f=>compressPhoto(f)));
-    setForm(f=>({ ...f, photos:[...f.photos,...compressed].slice(0,8) }));
-    setUploading(false);
-    e.target.value="";
-  };
-
-  const removePhoto = (i) => setForm(f=>({ ...f, photos:f.photos.filter((_,idx)=>idx!==i) }));
-  const moveFirst   = (i) => setForm(f=>{ const p=[...f.photos]; const [img]=p.splice(i,1); p.unshift(img); return {...f,photos:p}; });
-
-  const deactivate = async(t) => {
-    try{ const u=await api.updateTherapist(t.id,{active:!t.active}); setTherapists(p=>p.map(x=>x.id===t.id?{...x,...u}:x)); pop(u.active?"Activated":"Deactivated"); }catch(e){pop(e.message,"err");}
-  };
-  const del = async(t) => {
-    if(!window.confirm(`Delete ${t.name}?`)) return;
-    try{ await api.deleteTherapist(t.id); setTherapists(p=>p.filter(x=>x.id!==t.id)); pop("Deleted"); }catch(e){pop(e.message,"err");}
-  };
-
-  return(
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Therapists</h2>
-        <Btn onClick={()=>open(null)}>+ Add Therapist</Btn>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14}}>
-        {therapists.map(t=>{
-          const mainPhoto = (t.photos||[])[0] || t.photo;
-          const photoCount = (t.photos||[]).length || (t.photo?1:0);
-          return(
-            <Card key={t.id} style={{padding:0,overflow:"hidden",opacity:t.active?1:.65}}>
-              <div style={{paddingTop:"75%",position:"relative",background:mainPhoto?G1:`linear-gradient(135deg,${PLD},${PL})`}}>
-                {mainPhoto
-                  ? <img src={mainPhoto} alt={t.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-                  : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,color:WH,fontFamily:"'Playfair Display',serif"}}>{t.name?.[0]}</div>
-                }
-                {photoCount>1&&<div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.6)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>📷 {photoCount}</div>}
-              </div>
-              <div style={{padding:"12px 14px 14px"}}>
-                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{t.name}</div>
-                {(t.specialties||[]).length>0&&<div style={{fontSize:12,color:G6,marginBottom:6}}>{(t.specialties||[]).join(" · ")}</div>}
-                <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
-                  {t.outcall&&<span style={{background:PLF,color:PL,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>Outcall ✓</span>}
-                  <span style={{background:t.active?OKB:G1,color:t.active?OK:G4,padding:"2px 7px",borderRadius:99,fontSize:10,fontWeight:700}}>{t.active?"Active":"Inactive"}</span>
-                </div>
-                <div style={{display:"flex",gap:6}}>
-                  <button onClick={()=>open(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
-                  <button onClick={()=>deactivate(t)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${t.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:t.active?WA:OK,fontWeight:700}}>{t.active?"Deactivate":"Activate"}</button>
-                  <button onClick={()=>del(t)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
+            ))}
+          </div>
+          {coModal.bal>0&&(
+            <>
+              <Inp label={`Payment Amount (due: ${fmt(coModal.bal)})`} type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder="0"/>
+              <div style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase"}}>Method</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(payMethods.length?payMethods:["Cash"]).map(pm=>(
+                    <button key={pm} onClick={()=>setPayMethod(pm)}
+                      style={{padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${payMethod===pm?PL:G2}`,background:payMethod===pm?PLF:WH,color:payMethod===pm?PL:G6}}>{pm}</button>
+                  ))}
                 </div>
               </div>
-            </Card>
-          );
-        })}
-      </div>
-
-      {modal&&(
-        <Modal title={form.id?"Edit Therapist":"Add Therapist"} onClose={()=>setModal(false)} wide>
-          <Inp label="Full Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Aisha Mwangi"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-            <Inp label="Phone" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/>
-            <Inp label="Email (for login)" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="aisha@massagetz.com"/>
-          </div>
-          <Inp label="Specialties (comma separated)" value={form.specialties} onChange={e=>setForm(f=>({...f,specialties:e.target.value}))} placeholder="Swedish, Deep Tissue, Hot Stone"/>
-          <Txa label="Bio" value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} rows={2} placeholder="Short therapist bio…"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-            <Inp label={form.id?"New Login PIN (blank = keep)":"Login PIN (4–6 digits)"} type="password" value={form.pin||""} onChange={e=>setForm(f=>({...f,pin:e.target.value}))} placeholder={form.id?"Leave blank to keep…":"Set a PIN"} maxLength={6}/>
-            <Sel label="Availability" value={form.availability||"available"} onChange={e=>setForm(f=>({...f,availability:e.target.value}))}>
-              <option value="available">🟢 Available</option>
-              <option value="outcall_only">🟡 Outcall Only</option>
-              <option value="unavailable">🔴 Unavailable</option>
-            </Sel>
-          </div>
-          <div style={{display:"flex",gap:12,marginBottom:14}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
-              <input type="checkbox" checked={form.outcall} onChange={e=>setForm(f=>({...f,outcall:e.target.checked}))}/>
-              Accepts Outcall Requests
-            </label>
-          </div>
-
-          {/* ── MULTI-PHOTO UPLOAD ── */}
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>
-              Photos ({form.photos.length}/8) — First photo is the profile picture
-            </label>
-            {/* Photo grid */}
-            {form.photos.length>0&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:10}}>
-                {form.photos.map((src,i)=>(
-                  <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",border:`2px solid ${i===0?PL:G2}`}}>
-                    <div style={{paddingTop:"100%",position:"relative"}}>
-                      <img src={src} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-                    </div>
-                    {i===0&&<div style={{position:"absolute",top:3,left:3,background:PL,color:WH,fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99}}>MAIN</div>}
-                    <div style={{position:"absolute",top:3,right:3,display:"flex",gap:3}}>
-                      {i>0&&(
-                        <button onClick={()=>moveFirst(i)} title="Set as main"
-                          style={{width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.6)",color:WH,border:"none",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>★</button>
-                      )}
-                      <button onClick={()=>removePhoto(i)}
-                        style={{width:20,height:20,borderRadius:"50%",background:"rgba(200,0,0,.8)",color:WH,border:"none",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* Upload button */}
-            {form.photos.length<8&&(
-              <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",border:`2px dashed ${G2}`,borderRadius:8,cursor:"pointer",fontSize:13,color:G6,background:WH}}>
-                📷 {uploading?"Uploading…":"Add Photos (select multiple)"}
-                <input type="file" accept="image/*" multiple onChange={addPhotos} style={{display:"none"}} disabled={uploading}/>
-              </label>
-            )}
-            <div style={{fontSize:11,color:G4,marginTop:5}}>Click ★ to set any photo as the main profile picture. Up to 8 photos.</div>
-          </div>
-
-          <div style={{display:"flex",gap:10}}>
-            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save Changes":"Add Therapist"}</Btn>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function RoomsTab({rooms,setRooms,pop}){
-  const [modal,setModal]     = useState(false);
-  const [uploading,setUploading] = useState(false);
-  const [form,setForm]       = useState({id:null,name:"",description:"",amenities:"",photos:[]});
-
-  const open=(r)=>{
-    if(r) setForm({id:r.id,name:r.name,description:r.description||"",amenities:(r.amenities||[]).join(", "),photos:r.photos||[]});
-    else  setForm({id:null,name:"",description:"",amenities:"",photos:[]});
-    setModal(true);
-  };
-
-  const addPhotos=async(e)=>{
-    const files=Array.from(e.target.files||[]);
-    if(!files.length) return;
-    setUploading(true);
-    const compressed=await Promise.all(files.map(f=>compressPhoto(f)));
-    setForm(f=>({...f,photos:[...f.photos,...compressed].slice(0,6)}));
-    setUploading(false);
-    e.target.value="";
-  };
-  const removePhoto=(i)=>setForm(f=>({...f,photos:f.photos.filter((_,idx)=>idx!==i)}));
-
-  const save=async()=>{
-    if(!form.name) return;
-    const amen=typeof form.amenities==="string"
-      ?form.amenities.split(",").map(s=>s.trim()).filter(Boolean)
-      :(form.amenities||[]);
-    const payload={name:form.name,description:form.description||"",amenities:amen,photos:form.photos||[]};
-    try{
-      if(form.id){const u=await api.updateRoom(form.id,payload);setRooms(p=>p.map(r=>r.id===form.id?u:r));pop("Room updated");}
-      else{const u=await api.createRoom(payload);setRooms(p=>[...p,u]);pop("Room added");}
-      setModal(false);
-    }catch(e){pop(e.message,"err");}
-  };
-  const del=async(r)=>{
-    if(!window.confirm(`Delete ${r.name}?`)) return;
-    try{await api.deleteRoom(r.id);setRooms(p=>p.filter(x=>x.id!==r.id));pop("Deleted");}catch(e){pop(e.message,"err");}
-  };
-  const toggle=async(r)=>{
-    try{const u=await api.updateRoom(r.id,{active:!r.active});setRooms(p=>p.map(x=>x.id===r.id?{...x,...u}:x));pop(u.active?"Activated":"Deactivated");}catch(e){pop(e.message,"err");}
-  };
-
-  return(
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Treatment Rooms</h2>
-        <Btn onClick={()=>open(null)}>+ Add Room</Btn>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
-        {rooms.map(r=>{
-          const photos=r.photos||[];
-          return(
-          <Card key={r.id} style={{opacity:r.active?1:.65,padding:0,overflow:"hidden"}}>
-            {/* Room photo or color block */}
-            <div style={{paddingTop:"55%",position:"relative",background:photos[0]?G1:`linear-gradient(135deg,#7B3F6E,#5C2E52)`}}>
-              {photos[0]
-                ?<img src={photos[0]} alt={r.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-                :<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,color:"rgba(255,255,255,.25)",fontFamily:"'Playfair Display',serif",fontWeight:900}}>{r.name[0]}</div>
-              }
-              {photos.length>1&&<div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.5)",color:WH,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99}}>📷 {photos.length}</div>}
-              <span style={{position:"absolute",top:8,right:8,background:r.active?OKB:G1,color:r.active?OK:G4,padding:"2px 8px",borderRadius:99,fontSize:10,fontWeight:700}}>{r.active?"Active":"Off"}</span>
-            </div>
-            <div style={{padding:"12px 14px 14px"}}>
-              <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",color:BK,marginBottom:4}}>{r.name}</div>
-              {r.description&&<div style={{fontSize:12,color:G6,marginBottom:8,lineHeight:1.5}}>{r.description}</div>}
-              {(r.amenities||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{(r.amenities||[]).slice(0,5).map((a,i)=><span key={i} style={{background:G1,fontSize:10,padding:"2px 7px",borderRadius:99,color:G6}}>{a}</span>)}</div>}
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>open(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:G6,fontWeight:700}}>✏️ Edit</button>
-                <button onClick={()=>toggle(r)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${r.active?WA:OK}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:r.active?WA:OK,fontWeight:700}}>{r.active?"Disable":"Enable"}</button>
-                <button onClick={()=>del(r)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",fontFamily:"inherit",color:ER,fontWeight:700}}>🗑</button>
-              </div>
-            </div>
-          </Card>
-          );
-        })}
-      </div>
-      {modal&&(
-        <Modal title={form.id?"Edit Room":"Add Room"} onClose={()=>setModal(false)}>
-          <Inp label="Room Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Lotus Room, Room 1…"/>
-          <Inp label="Description (optional)" value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Peaceful room with soft lighting…"/>
-          <Inp label="Amenities (comma separated)" value={form.amenities||""} onChange={e=>setForm(f=>({...f,amenities:e.target.value}))} placeholder="Air conditioning, Music, Private shower…"/>
-          {/* Photos */}
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>
-              Room Photos ({form.photos.length}/6)
-            </label>
-            {form.photos.length>0&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:7,marginBottom:10}}>
-                {form.photos.map((src,i)=>(
-                  <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",border:`2px solid ${i===0?PL:G2}`}}>
-                    <div style={{paddingTop:"75%",position:"relative"}}>
-                      <img src={src} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-                    </div>
-                    {i===0&&<div style={{position:"absolute",top:2,left:2,background:PL,color:WH,fontSize:8,fontWeight:700,padding:"1px 4px",borderRadius:99}}>MAIN</div>}
-                    <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:2,right:2,width:18,height:18,borderRadius:"50%",background:"rgba(200,0,0,.85)",color:WH,border:"none",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {form.photos.length<6&&(
-              <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",border:`2px dashed ${G2}`,borderRadius:8,cursor:"pointer",fontSize:13,color:G6}}>
-                📷 {uploading?"Uploading…":"Add Photos"}
-                <input type="file" accept="image/*" multiple onChange={addPhotos} style={{display:"none"}} disabled={uploading}/>
-              </label>
-            )}
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <Btn onClick={save} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Room"}</Btn>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
-  const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",category:"Massage",description:"",duration_min:60});
-  const [priceForm,setPriceForm]=useState({serviceId:"",roomId:"",serviceType:"inhouse",price:""});
-  const CATS=["Massage","Facial","Body","Wellness","Other"];
-  const catColor={Massage:PL,Facial:GOLD,Body:OK,Wellness:IN,Other:G6};
-
-  const openSvc=(s)=>{ if(s) setForm({...s}); else setForm({id:null,name:"",category:"Massage",description:"",duration_min:60}); setModal(true); };
-
-  const saveSvc=async()=>{
-    if(!form.name) return;
-    const payload={name:form.name,category:form.category,description:form.description||"",duration_min:Number(form.duration_min)||60};
-    try{
-      if(form.id){ const u=await api.updateService(form.id,payload); setServices(p=>p.map(s=>s.id===form.id?u:s)); pop("Service updated"); }
-      else{ const u=await api.createService(payload); setServices(p=>[...p,u]); pop("Service added"); }
-      setModal(false);
-    }catch(e){ pop(e.message,"err"); }
-  };
-
-  const savePrice=async()=>{
-    if(!priceForm.serviceId||!priceForm.price) return pop("Select a service and enter price","err");
-    if(priceForm.serviceType==="inhouse"&&!priceForm.roomId) return pop("Select a room for in-house pricing","err");
-    try{
-      const u=await api.upsertPrice({
-        service_id:   priceForm.serviceId,
-        room_id:      priceForm.serviceType==="inhouse" ? priceForm.roomId : null,
-        service_type: priceForm.serviceType,
-        price:        Number(priceForm.price)
-      });
-      setPricing(p=>{
-        const ex=p.findIndex(x=>x.service_id===u.service_id&&x.room_id===u.room_id&&x.service_type===u.service_type);
-        if(ex>=0){const n=[...p];n[ex]=u;return n;}
-        return[...p,u];
-      });
-      setPriceForm(f=>({...f,price:""}));
-      pop("Price saved");
-    }catch(e){ pop(e.message,"err"); }
-  };
-
-  const delPrice=async(id)=>{
-    try{ await api.deletePrice(id); setPricing(p=>p.filter(x=>x.id!==id)); pop("Price removed"); }
-    catch(e){ pop(e.message,"err"); }
-  };
-
-  // Get all prices for a service
-  const getPrices=(sId)=>pricing.filter(p=>p.service_id===sId).map(p=>({
-    ...p,
-    room_name: p.room_name || rooms.find(r=>r.id===p.room_id)?.name || p.room_type || null
-  }));
-
-  return(
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Services & Pricing</h2>
-        <Btn onClick={()=>openSvc(null)}>+ Add Service</Btn>
-      </div>
-
-      {/* Pricing tool */}
-      <Card style={{marginBottom:20}}>
-        <ST c="Set / Update Price"/>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
-          <Sel label="Service *" value={priceForm.serviceId} onChange={e=>setPriceForm(f=>({...f,serviceId:e.target.value}))}>
-            <option value="">Select service…</option>
-            {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-          </Sel>
-          <Sel label="Service Type *" value={priceForm.serviceType} onChange={e=>setPriceForm(f=>({...f,serviceType:e.target.value,roomId:e.target.value==="outcall"?"":f.roomId}))}>
-            <option value="inhouse">🏢 In-House</option>
-            <option value="outcall">🏠 Outcall</option>
-          </Sel>
-          {priceForm.serviceType==="inhouse"&&(
-            <Sel label="Room *" value={priceForm.roomId} onChange={e=>setPriceForm(f=>({...f,roomId:e.target.value}))}>
-              <option value="">Select room…</option>
-              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-            </Sel>
+            </>
           )}
-          {priceForm.serviceType==="outcall"&&(
-            <div style={{display:"flex",alignItems:"flex-end",paddingBottom:14}}>
-              <div style={{fontSize:12,color:G6,padding:"9px 0"}}>No room needed for outcall</div>
-            </div>
-          )}
-          <Inp label="Price (TZS) *" type="number" value={priceForm.price} onChange={e=>setPriceForm(f=>({...f,price:e.target.value}))} placeholder="50000" style={{marginBottom:0}}/>
-        </div>
-        <div style={{marginTop:12}}>
-          <Btn onClick={savePrice} disabled={!priceForm.serviceId||!priceForm.price||(priceForm.serviceType==="inhouse"&&!priceForm.roomId)}>
-            Save Price
-          </Btn>
-        </div>
-      </Card>
-
-      {/* Services list */}
-      {CATS.map(cat=>{
-        const svcs=services.filter(s=>s.category===cat);
-        if(!svcs.length) return null;
-        return(
-          <div key={cat} style={{marginBottom:24}}>
-            <div style={{fontSize:13,fontWeight:700,color:catColor[cat]||G6,textTransform:"uppercase",letterSpacing:".1em",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:10,height:10,borderRadius:"50%",background:catColor[cat]||G6}}/>
-              {cat}
-            </div>
-            {svcs.map(sv=>{
-              const svPrices=getPrices(sv.id);
-              const inhousePrices=svPrices.filter(p=>p.service_type==="inhouse");
-              const outcallPrice =svPrices.find(p=>p.service_type==="outcall");
-              return(
-                <Card key={sv.id} style={{marginBottom:10,padding:"14px 16px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:10}}>
-                    <div>
-                      <div style={{fontWeight:700,fontSize:15,color:BK}}>{sv.name}</div>
-                      <div style={{fontSize:12,color:G6,marginTop:2}}>{sv.duration_min} min{sv.description?" · "+sv.description:""}</div>
-                    </div>
-                    <button onClick={()=>openSvc(sv)} style={{padding:"5px 10px",fontSize:11,borderRadius:6,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit",flexShrink:0}}>Edit</button>
-                  </div>
-
-                  {/* In-house prices per room */}
-                  {inhousePrices.length>0&&(
-                    <div style={{marginBottom:8}}>
-                      <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>🏢 In-House</div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                        {inhousePrices.map(p=>(
-                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,background:G1,borderRadius:8,padding:"5px 11px",fontSize:13}}>
-                            <span style={{color:G8,fontWeight:600}}>{p.room_name||rooms.find(r=>r.id===p.room_id)?.name||"Room"}</span>
-                            <span style={{color:G4}}>·</span>
-                            <span style={{fontWeight:700}}>{fmt(p.price)}</span>
-                            <button onClick={()=>delPrice(p.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>×</button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Outcall price */}
-                  {outcallPrice?(
-                    <div>
-                      <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>🏠 Outcall</div>
-                      <div style={{display:"inline-flex",alignItems:"center",gap:6,background:PLF,borderRadius:8,padding:"5px 11px",fontSize:13}}>
-                        <span style={{fontWeight:700,color:PL}}>{fmt(outcallPrice.price)}</span>
-                        <button onClick={()=>delPrice(outcallPrice.id)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>×</button>
-                      </div>
-                    </div>
-                  ):null}
-
-                  {!svPrices.length&&(
-                    <div style={{fontSize:12,color:G4,fontStyle:"italic"}}>No prices set — use the form above to add prices</div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        );
-      })}
-      {!services.length&&<div style={{color:G4,fontSize:14,padding:20}}>No services yet. Add your first service.</div>}
-
-      {/* Service form modal */}
-      {modal&&(
-        <Modal title={form.id?"Edit Service":"Add Service"} onClose={()=>setModal(false)}>
-          <Inp label="Service Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Swedish Massage"/>
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Category</label>
-            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-              {CATS.map(ct=>(
-                <button key={ct} onClick={()=>setForm(f=>({...f,category:ct}))}
-                  style={{padding:"6px 13px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                    border:`2px solid ${form.category===ct?(catColor[ct]||G6):G2}`,
-                    background:form.category===ct?`${catColor[ct]||G6}15`:WH,
-                    color:form.category===ct?(catColor[ct]||G6):G6}}>
-                  {ct}
-                </button>
-              ))}
-            </div>
-          </div>
-          <Inp label="Duration (minutes)" type="number" value={form.duration_min} onChange={e=>setForm(f=>({...f,duration_min:e.target.value}))} placeholder="60"/>
-          <Inp label="Description (optional)" value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Full body relaxation massage…"/>
           <div style={{display:"flex",gap:10}}>
-            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <Btn onClick={saveSvc} disabled={!form.name} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Add Service"}</Btn>
+            <Btn v="ghost" onClick={()=>{setCoModal(null);setPayAmt("");}} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <button onClick={()=>checkout(coModal.id,payAmt)} disabled={saving}
+              style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:ER,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {saving?"Ending…":"🚪 End Session"}
+            </button>
           </div>
         </Modal>
       )}
@@ -1566,323 +1308,6 @@ function ServicesTab({services,setServices,pricing,setPricing,rooms,pop}){
   );
 }
 
-function OffersTab({offers,setOffers,pop}){
-  const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({id:null,name:"",code:"",type:"pct",value:"",min_amount:0,valid_from:"",valid_to:""});
-  const today=td();
-
-  const open=(o)=>{ if(o) setForm({...o,value:String(o.value),min_amount:o.min_amount||0});else setForm({id:null,name:"",code:"",type:"pct",value:"",min_amount:0,valid_from:"",valid_to:""}); setModal(true); };
-  const save=async()=>{
-    if(!form.name||!form.value) return;
-    const payload={...form,value:Number(form.value),min_amount:Number(form.min_amount)||0};
-    try{
-      if(form.id){ const u=await api.updateOffer(form.id,payload); setOffers(p=>p.map(o=>o.id===form.id?u:o)); pop("Offer updated"); }
-      else{ const u=await api.createOffer(payload); setOffers(p=>[...p,u]); pop("Offer created"); }
-      setModal(false);
-    }catch(e){pop(e.message,"err");}
-  };
-  const del=async(o)=>{
-    if(!window.confirm(`Delete ${o.name}?`)) return;
-    try{ await api.deleteOffer(o.id); setOffers(p=>p.filter(x=>x.id!==o.id)); pop("Deleted"); }catch(e){pop(e.message,"err");}
-  };
-  const toggle=async(o)=>{
-    try{ const u=await api.updateOffer(o.id,{active:!o.active}); setOffers(p=>p.map(x=>x.id===o.id?{...x,...u}:x)); pop(u.active?"Activated":"Deactivated"); }catch(e){pop(e.message,"err");}
-  };
-  const isValid=(o)=>o.active&&(!o.valid_from||o.valid_from<=today)&&(!o.valid_to||o.valid_to>=today);
-
-  return(
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Offers & Discounts</h2>
-        <Btn onClick={()=>open(null)}>+ New Offer</Btn>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>
-        {offers.map(o=>{
-          const valid=isValid(o);
-          return(
-            <Card key={o.id} style={{borderTop:`3px solid ${valid?GOLD:G2}`}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif"}}>{o.name}</div>
-                  {o.code&&<div style={{fontSize:12,color:G6,fontFamily:"monospace",background:G1,display:"inline-block",padding:"2px 8px",borderRadius:6,marginTop:4}}>{o.code}</div>}
-                </div>
-                <span style={{background:valid?`${GOLD}20`:G1,color:valid?GOLD:G4,padding:"3px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>{valid?"✓ Active":"Inactive"}</span>
-              </div>
-              <div style={{fontSize:22,fontWeight:700,color:valid?GOLD:G4,fontFamily:"'Playfair Display',serif",marginBottom:6}}>
-                {o.type==="pct"?`${o.value}% OFF`:`TZS ${Number(o.value).toLocaleString()} OFF`}
-              </div>
-              {Number(o.min_amount)>0&&<div style={{fontSize:12,color:G6,marginBottom:4}}>Min. order: {fmt(o.min_amount)}</div>}
-              {(o.valid_from||o.valid_to)&&<div style={{fontSize:12,color:G6,marginBottom:8}}>{o.valid_from||"—"} → {o.valid_to||"—"}</div>}
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>open(o)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontFamily:"inherit",fontWeight:700}}>✏️ Edit</button>
-                <button onClick={()=>toggle(o)} style={{flex:2,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${o.active?WA:OK}`,background:"none",cursor:"pointer",color:o.active?WA:OK,fontFamily:"inherit",fontWeight:700}}>{o.active?"Disable":"Enable"}</button>
-                <button onClick={()=>del(o)} style={{flex:1,padding:"6px",fontSize:12,borderRadius:7,border:`1px solid ${ER}`,background:"none",cursor:"pointer",color:ER,fontFamily:"inherit",fontWeight:700}}>🗑</button>
-              </div>
-            </Card>
-          );
-        })}
-        {offers.length===0&&<div style={{color:G4,fontSize:14,padding:20}}>No offers yet. Create your first discount!</div>}
-      </div>
-      {modal&&(
-        <Modal title={form.id?"Edit Offer":"New Offer"} onClose={()=>setModal(false)}>
-          <Inp label="Offer Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Weekend Special"/>
-          <Inp label="Promo Code (optional)" value={form.code} onChange={e=>setForm(f=>({...f,code:e.target.value.toUpperCase()}))} placeholder="e.g. SPA20"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-            <Sel label="Discount Type" value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
-              <option value="pct">Percentage (%)</option>
-              <option value="fix">Fixed Amount (TZS)</option>
-            </Sel>
-            <Inp label={form.type==="pct"?"Percentage (0-100)":"Amount (TZS)"} type="number" value={form.value} onChange={e=>setForm(f=>({...f,value:e.target.value}))} placeholder={form.type==="pct"?"20":"5000"}/>
-          </div>
-          <Inp label="Minimum Order Amount (TZS)" type="number" value={form.min_amount} onChange={e=>setForm(f=>({...f,min_amount:e.target.value}))} placeholder="0 = no minimum"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-            <Inp label="Valid From" type="date" value={form.valid_from} onChange={e=>setForm(f=>({...f,valid_from:e.target.value}))}/>
-            <Inp label="Valid To" type="date" value={form.valid_to} onChange={e=>setForm(f=>({...f,valid_to:e.target.value}))}/>
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <Btn onClick={save} disabled={!form.name||!form.value} style={{flex:1,justifyContent:"center"}}>{form.id?"Save":"Create Offer"}</Btn>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function ExpensesTab({expenses,setExpenses,pop,user}){
-  const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({category:"",description:"",amount:"",expense_date:td()});
-  const CATS=["Supplies","Rent","Utilities","Salaries","Marketing","Equipment","Other"];
-
-  const save=async()=>{
-    if(!form.category||!form.amount) return;
-    try{ const u=await api.createExpense({...form,amount:Number(form.amount),staff_id:user?.id}); setExpenses(p=>[u,...p]); setModal(false); pop("Expense recorded"); }catch(e){pop(e.message,"err");}
-  };
-  const total=expenses.reduce((s,e)=>s+Number(e.amount),0);
-  const byCat=CATS.map(c=>({cat:c,total:expenses.filter(e=>e.category===c).reduce((s,e)=>s+Number(e.amount),0)})).filter(x=>x.total>0);
-
-  return(
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Expenses</h2>
-        <Btn onClick={()=>setModal(true)}>+ Add Expense</Btn>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
-        <KPI label="Total Expenses" value={fmt(total)} color={ER} icon="💸"/>
-        {byCat.slice(0,3).map(x=><KPI key={x.cat} label={x.cat} value={fmt(x.total)} color={G6} icon="📂"/>)}
-      </div>
-      {byCat.length>0&&(
-        <Card style={{marginBottom:16}}>
-          <ST c="By Category"/>
-          {byCat.map(x=>(
-            <div key={x.cat} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-              <span style={{fontSize:13,color:G6,width:90,flexShrink:0}}>{x.cat}</span>
-              <div style={{flex:1,height:5,background:G1,borderRadius:99,overflow:"hidden"}}>
-                <div style={{height:"100%",width:total>0?Math.round(x.total/total*100)+"%":"0%",background:ER,borderRadius:99}}/>
-              </div>
-              <span style={{fontSize:13,fontWeight:700,minWidth:80,textAlign:"right"}}>{fmt(x.total)}</span>
-            </div>
-          ))}
-        </Card>
-      )}
-      {expenses.slice(0,50).map(e=>(
-        <div key={e.id} style={{background:WH,borderRadius:10,border:`1px solid ${G2}`,padding:"11px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:13}}>{e.description}</div>
-            <div style={{fontSize:11,color:G6,marginTop:2}}>{e.category} · {fmtDate(e.expense_date)}</div>
-          </div>
-          <div style={{fontWeight:700,fontSize:14,color:ER}}>{fmt(e.amount)}</div>
-        </div>
-      ))}
-      {modal&&(
-        <Modal title="Add Expense" onClose={()=>setModal(false)}>
-          <Sel label="Category" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
-            <option value="">Select category…</option>
-            {CATS.map(c=><option key={c} value={c}>{c}</option>)}
-          </Sel>
-          <Inp label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="What was purchased?"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-            <Inp label="Amount (TZS)" type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))}/>
-            <Inp label="Date" type="date" value={form.expense_date} onChange={e=>setForm(f=>({...f,expense_date:e.target.value}))}/>
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <Btn onClick={save} disabled={!form.category||!form.amount} style={{flex:1,justifyContent:"center"}}>Save Expense</Btn>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
-  const [df,setDf]=useState("");
-  const [dt,setDt]=useState("");
-  const [tab,setTab]=useState("financial");
-
-  const allRev=[...appts,...reception];
-  const filtered=df||dt ? allRev.filter(a=>{const d=fmtDate(a.appt_date||a.in_time);return(!df||d>=df)&&(!dt||d<=dt);}) : allRev;
-  const totRev=filtered.reduce((s,a)=>s+Number(a.paid_amount),0);
-  const totExp=df||dt ? expenses.filter(e=>{const d=fmtDate(e.expense_date);return(!df||d>=df)&&(!dt||d<=dt);}).reduce((s,e)=>s+Number(e.amount),0) : expenses.reduce((s,e)=>s+Number(e.amount),0);
-  const net=totRev-totExp;
-  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount),0);
-  const outstanding=totInvoiced-totRev;
-
-  const byMethod=payMethods.map(m=>({method:m,total:filtered.filter(a=>a.payment_method===m).reduce((s,a)=>s+Number(a.paid_amount),0)})).filter(x=>x.total>0);
-  const byTherapist=therapists.map(t=>({...t,rev:filtered.filter(a=>a.therapist_id===t.id).reduce((s,a)=>s+Number(a.paid_amount),0),count:filtered.filter(a=>a.therapist_id===t.id).length})).sort((a,b)=>b.rev-a.rev);
-  const byService=services.map(sv=>({...sv,rev:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).reduce((s,a)=>s+Number(a.paid_amount),0),count:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).length})).filter(x=>x.rev>0).sort((a,b)=>b.rev-a.rev);
-
-  const presets=[["Today",td(),td()],["This Week",(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().split("T")[0];})(),(()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().split("T")[0];})()] ,["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})()  ,(()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split("T")[0];})()] ,["All Time","",""]];
-
-  return(
-    <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:16}}>Reports</h2>
-      {/* Date range */}
-      <Card style={{marginBottom:16}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-          {presets.map(([l,f,t])=><button key={l} onClick={()=>{setDf(f);setDt(t);}} style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${df===f&&dt===t?PL:G2}`,background:df===f&&dt===t?PLF:WH,color:df===f&&dt===t?PL:G6,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>)}
-        </div>
-        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-          <Inp label="From" type="date" value={df} onChange={e=>setDf(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
-          <Inp label="To"   type="date" value={dt} onChange={e=>setDt(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
-          {(df||dt)&&<button onClick={()=>{setDf("");setDt("");}} style={{padding:"8px 12px",borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontSize:12,fontFamily:"inherit"}}>✕ Clear</button>}
-        </div>
-      </Card>
-
-      {/* Sub-tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-        {[["financial","💰 Financial"],["therapists","💆 Therapists"],["services","📋 Services"]].map(([id,label])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,border:`1px solid ${tab===id?PL:G2}`,background:tab===id?PL:WH,color:tab===id?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
-        ))}
-      </div>
-
-      {tab==="financial"&&(
-        <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:20}}>
-            <KPI label="Total Revenue"    value={fmt(totRev)}  color={PL}           icon="💰"/>
-            <KPI label="Total Expenses"   value={fmt(totExp)}  color={ER}           icon="📤"/>
-            <KPI label="Net Profit"       value={fmt(net)}     color={net>=0?OK:ER} icon="📈" sub={net>=0?"Profitable":"Loss"}/>
-            <KPI label="Outstanding"      value={fmt(outstanding)} color={WA}        icon="⏳"/>
-            <KPI label="Appointments"     value={appts.filter(a=>a.status==="completed").length} color={IN} icon="✅"/>
-            <KPI label="Walk-ins"         value={reception.filter(r=>r.status==="completed").length} color={G6} icon="🚪"/>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Card>
-              <ST c="Payment Methods"/>
-              {byMethod.length===0&&<div style={{color:G4,fontSize:13}}>No payment data</div>}
-              {byMethod.map((m,i)=>(
-                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                  <span style={{color:G6}}>{m.method}</span>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontWeight:700}}>{fmt(m.total)}</div>
-                    <div style={{fontSize:11,color:G4}}>{totRev>0?Math.round(m.total/totRev*100):0}%</div>
-                  </div>
-                </div>
-              ))}
-              {byMethod.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:`2px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:PL}}>{fmt(totRev)}</span></div>}
-            </Card>
-            <Card>
-              <ST c="Collection Summary"/>
-              {[["Invoiced",fmt(totInvoiced),G6],["Collected",fmt(totRev),OK],["Outstanding",fmt(outstanding),ER],["Net Profit",fmt(net),net>=0?OK:ER],["Expenses",fmt(totExp),ER],["Sessions",String(filtered.length),PL]].map(([k,v,c])=>(
-                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                  <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:c}}>{v}</span>
-                </div>
-              ))}
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {tab==="therapists"&&(
-        <Card>
-          <ST c="Revenue by Therapist"/>
-          {byTherapist.filter(t=>t.rev>0).map((t,i)=>{
-            const maxR=byTherapist[0]?.rev||1;
-            return(
-              <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:i===1?"#aaa":G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:i<2?WH:G6,flexShrink:0}}>{i+1}</div>
-                {t.photo?<img src={t.photo} alt="" style={{width:32,height:32,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>:<div style={{width:32,height:32,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:13,flexShrink:0}}>{t.name?.[0]}</div>}
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:700}}>{t.name}</div>
-                  <div style={{height:4,background:G1,borderRadius:99,marginTop:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:Math.round(t.rev/maxR*100)+"%",background:i===0?GOLD:PL,borderRadius:99}}/>
-                  </div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(t.rev)}</div>
-                  <div style={{fontSize:11,color:G6}}>{t.count} sessions</div>
-                </div>
-              </div>
-            );
-          })}
-          {byTherapist.every(t=>!t.rev)&&<div style={{color:G4,fontSize:13}}>No therapist revenue data</div>}
-        </Card>
-      )}
-
-      {tab==="services"&&(
-        <Card>
-          <ST c="Popular Services"/>
-          {byService.map((sv,i)=>{
-            const maxR=byService[0]?.rev||1;
-            return(
-              <div key={sv.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i===0?WH:G6,flexShrink:0}}>{i+1}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sv.name}</div>
-                  <div style={{height:4,background:G1,borderRadius:99,marginTop:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:Math.round(sv.rev/maxR*100)+"%",background:PL,borderRadius:99}}/>
-                  </div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(sv.rev)}</div>
-                  <div style={{fontSize:11,color:G6}}>{sv.count} sessions</div>
-                </div>
-              </div>
-            );
-          })}
-          {byService.length===0&&<div style={{color:G4,fontSize:13}}>No service data yet</div>}
-        </Card>
-      )}
-    </div>
-  );
-}
-
-function PaymentsTab({payMethods,setPayMethods,pop}){
-  const [name,setName]=useState("");
-  const [dbMethods,setDbMethods]=useState([]);
-  useEffect(()=>{ api.getPayMethods().then(r=>setDbMethods(r)).catch(()=>{}); },[]);
-
-  const add=async()=>{
-    if(!name.trim()) return;
-    try{ const u=await api.createPayMethod(name.trim()); setDbMethods(p=>[...p,u]); setPayMethods(p=>[...p,name.trim()]); setName(""); pop("Method added"); }catch(e){pop(e.message,"err");}
-  };
-  const del=async(pm)=>{
-    if(pm.name==="Cash") return pop("Cash cannot be removed","err");
-    try{ await api.deletePayMethod(pm.id); setDbMethods(p=>p.filter(x=>x.id!==pm.id)); setPayMethods(p=>p.filter(x=>x!==pm.name)); pop("Removed"); }catch(e){pop(e.message,"err");}
-  };
-
-  return(
-    <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20}}>Payment Methods</h2>
-      <Card>
-        <ST c="Active Methods"/>
-        {(dbMethods.length?dbMethods:payMethods.map(n=>({name:n}))).map((pm,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${G1}`,fontSize:14}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{width:8,height:8,borderRadius:"50%",background:OK,display:"inline-block"}}/>
-              <span style={{fontWeight:600}}>{pm.name||pm}</span>
-            </div>
-            {(pm.name||pm)!=="Cash"&&pm.id&&<button onClick={()=>del(pm)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,fontWeight:700}}>Remove</button>}
-          </div>
-        ))}
-        <div style={{display:"flex",gap:10,marginTop:16}}>
-          <Inp label="" value={name} onChange={e=>setName(e.target.value)} placeholder="Add new method (e.g. Cheque)" style={{marginBottom:0,flex:1}}/>
-          <Btn onClick={add} disabled={!name.trim()} style={{flexShrink:0,marginTop:0}}>Add</Btn>
-        </div>
-      </Card>
-    </div>
-  );
-}
 
 function CommissionTab({therapists, setTherapists, staff, setStaff, user, pop}) {
   const [dateFrom, setDateFrom] = useState(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";});
@@ -2737,7 +2162,7 @@ function AdminPortal({navTo,customer,user,therapistUser,therapistLogout,custLogo
         )}
         <div style={{flex:1,padding:isDesktop?"28px 28px 60px":`${46+16}px 14px 60px`,paddingTop:isDesktop?"24px":"70px",maxWidth:isDesktop?900:"100%",overflowX:"hidden"}}>
           {loading&&<div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
-          {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop}/>}
+          {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop} setReception={setReception} payMethods={payMethods}/>}
           {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user} offers={offers}/>}
           {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user}/>}
           {!loading&&aTab==="therapists"&&<TherapistsTab therapists={therapists} setTherapists={setTherapists} pop={pop}/>}
