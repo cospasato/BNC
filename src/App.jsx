@@ -964,7 +964,8 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
   const [clientPhone, setClientPhone] = useState("");
   const [form, setForm] = useState({
     therapistId:"", roomId:"", serviceType:"inhouse",
-    selServices:[], disc:0, discT:"pct", paid:0, method:"Cash", notes:""
+    selServices:[], disc:0, discT:"pct", paid:0, method:"Cash", notes:"",
+    gender:"male"
   });
   const [step,    setStep]    = useState(1);
   const [coModal, setCoModal] = useState(null);
@@ -997,7 +998,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
   };
   const resetForm=()=>{
     setClientName("");setClientPhone("");
-    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:(payMethods||[])[0]||"Cash",notes:""});
+    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:(payMethods||[])[0]||"Cash",notes:"",gender:"male"});
     setStep(1);
   };
 
@@ -1008,6 +1009,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
     try{
       const r=await api.createReception({
         customer_name:clientName, customer_phone:clientPhone,
+        client_gender:form.gender||"male",
         therapist_id:form.therapistId||null, room_id:form.roomId||null,
         service_type:form.serviceType,
         services:form.selServices.map(s=>({...s,price:getPrice(s.id,roomId,form.serviceType)})),
@@ -1073,6 +1075,22 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
           {step===1&&(
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {/* Client name + phone */}
+              {/* Gender selector */}
+              <div style={{marginBottom:4}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Client Gender</label>
+                <div style={{display:"flex",gap:8}}>
+                  {[["male","👨 Male"],["female","👩 Female"],["other","⚧ Other"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setForm(f=>({...f,gender:v}))}
+                      style={{flex:1,padding:"9px 8px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        border:`2px solid ${form.gender===v?PL:G2}`,
+                        background:form.gender===v?(v==="male"?"#1565C020":v==="female"?"#e91e6320":PLF):WH,
+                        color:form.gender===v?PL:G6}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <div>
                   <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Client Name *</label>
@@ -2045,26 +2063,53 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
   const [tab,setTab]=useState("financial");
 
   const allRev=[...appts,...reception];
-  const filtered=df||dt ? allRev.filter(a=>{const d=fmtDate(a.appt_date||a.in_time);return(!df||d>=df)&&(!dt||d<=dt);}) : allRev;
-  const totRev=filtered.reduce((s,a)=>s+Number(a.paid_amount),0);
-  const totExp=df||dt ? expenses.filter(e=>{const d=fmtDate(e.expense_date);return(!df||d>=df)&&(!dt||d<=dt);}).reduce((s,e)=>s+Number(e.amount),0) : expenses.reduce((s,e)=>s+Number(e.amount),0);
+  const inRange=r=>{
+    const d=(r.appt_date||r.in_time||r.created_at||"").slice(0,10);
+    return(!df||d>=df)&&(!dt||d<=dt);
+  };
+  const filtered=allRev.filter(inRange);
+  const filteredRec=reception.filter(inRange);
+  const filteredAppts=appts.filter(inRange);
+  const filteredExp=expenses.filter(e=>inRange({appt_date:e.expense_date}));
+
+  const totRev=filtered.reduce((s,a)=>s+Number(a.paid_amount||0),0);
+  const totExp=filteredExp.reduce((s,e)=>s+Number(e.amount||0),0);
   const net=totRev-totExp;
-  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount),0);
+  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount||0),0);
   const outstanding=totInvoiced-totRev;
 
-  const byMethod=payMethods.map(m=>({method:m,total:filtered.filter(a=>a.payment_method===m).reduce((s,a)=>s+Number(a.paid_amount),0)})).filter(x=>x.total>0);
-  const byTherapist=therapists.map(t=>({...t,rev:filtered.filter(a=>a.therapist_id===t.id).reduce((s,a)=>s+Number(a.paid_amount),0),count:filtered.filter(a=>a.therapist_id===t.id).length})).sort((a,b)=>b.rev-a.rev);
-  const byService=services.map(sv=>({...sv,rev:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).reduce((s,a)=>s+Number(a.paid_amount),0),count:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).length})).filter(x=>x.rev>0).sort((a,b)=>b.rev-a.rev);
+  // gender breakdown (reception only)
+  const genderCounts={male:0,female:0,other:0};
+  filteredRec.forEach(r=>{const g=r.client_gender||"male";genderCounts[g]=(genderCounts[g]||0)+1;});
+  const totalGender=Object.values(genderCounts).reduce((a,b)=>a+b,0);
 
-  const presets=[["Today",td(),td()],["This Week",(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().split("T")[0];})(),(()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().split("T")[0];})()] ,["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})()  ,(()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split("T")[0];})()] ,["All Time","",""]];
+  const byMethod=payMethods.map(m=>({method:m,total:filtered.filter(a=>a.payment_method===m).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>a.payment_method===m).length})).filter(x=>x.total>0);
+  const byTherapist=therapists.map(t=>({...t,rev:filtered.filter(a=>a.therapist_id===t.id).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>a.therapist_id===t.id).length})).sort((a,b)=>b.rev-a.rev);
+  const byService=services.map(sv=>({...sv,rev:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).length})).filter(x=>x.rev>0).sort((a,b)=>b.rev-a.rev);
+  const byServiceType={inhouse:filtered.filter(a=>a.service_type!=="outcall").length,outcall:filtered.filter(a=>a.service_type==="outcall").length};
+  const byExpCat=[...new Set(filteredExp.map(e=>e.category||"General"))].map(cat=>({cat,total:filteredExp.filter(e=>(e.category||"General")===cat).reduce((s,e)=>s+Number(e.amount||0),0)})).sort((a,b)=>b.total-a.total);
+
+  const presets=[["Today",td(),td()],["This Week",(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10);})(),(()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().slice(0,10);})()],["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})(),new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().slice(0,10)],["All Time","",""]];
+
+  const Bar=({pct,color})=>(
+    <div style={{height:6,background:G1,borderRadius:99,overflow:"hidden",marginTop:4}}>
+      <div style={{height:"100%",width:pct+"%",background:color||PL,borderRadius:99,transition:"width .4s"}}/>
+    </div>
+  );
 
   return(
     <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:16}}>Reports</h2>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:16,color:BK}}>Reports</h2>
+
       {/* Date range */}
       <Card style={{marginBottom:16}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-          {presets.map(([l,f,t])=><button key={l} onClick={()=>{setDf(f);setDt(t);}} style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${df===f&&dt===t?PL:G2}`,background:df===f&&dt===t?PLF:WH,color:df===f&&dt===t?PL:G6,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>)}
+          {presets.map(([l,f,t])=>(
+            <button key={l} onClick={()=>{setDf(f);setDt(t);}}
+              style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,
+                border:`1px solid ${df===f&&dt===t?PL:G2}`,background:df===f&&dt===t?PLF:WH,
+                color:df===f&&dt===t?PL:G6,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+          ))}
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <Inp label="From" type="date" value={df} onChange={e=>setDf(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
@@ -2075,97 +2120,243 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
 
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-        {[["financial","💰 Financial"],["therapists","💆 Therapists"],["services","📋 Services"]].map(([id,label])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,border:`1px solid ${tab===id?PL:G2}`,background:tab===id?PL:WH,color:tab===id?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+        {[["financial","💰 Financial"],["clients","👥 Clients"],["therapists","💆 Therapists"],["services","📋 Services"],["expenses","📤 Expenses"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)}
+            style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,
+              border:`1px solid ${tab===id?PL:G2}`,background:tab===id?PL:WH,color:tab===id?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
+            {label}
+          </button>
         ))}
       </div>
 
+      {/* ── FINANCIAL ── */}
       {tab==="financial"&&(
-        <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:20}}>
-            <KPI label="Total Revenue"    value={fmt(totRev)}  color={PL}           icon="💰"/>
-            <KPI label="Total Expenses"   value={fmt(totExp)}  color={ER}           icon="📤"/>
-            <KPI label="Net Profit"       value={fmt(net)}     color={net>=0?OK:ER} icon="📈" sub={net>=0?"Profitable":"Loss"}/>
-            <KPI label="Outstanding"      value={fmt(outstanding)} color={WA}        icon="⏳"/>
-            <KPI label="Appointments"     value={appts.filter(a=>a.status==="completed").length} color={IN} icon="✅"/>
-            <KPI label="Walk-ins"         value={reception.filter(r=>r.status==="completed").length} color={G6} icon="🚪"/>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+            <KPI label="Total Revenue"  value={fmt(totRev)}  color={PL}           icon="💰"/>
+            <KPI label="Total Expenses" value={fmt(totExp)}  color={ER}           icon="📤"/>
+            <KPI label="Net Profit"     value={fmt(net)}     color={net>=0?OK:ER} icon="📈"/>
+            <KPI label="Outstanding"    value={fmt(outstanding)} color={WA}       icon="⏳"/>
+            <KPI label="Appointments"   value={filteredAppts.filter(a=>a.status==="completed").length} color={IN} icon="✅"/>
+            <KPI label="Walk-ins"       value={filteredRec.filter(r=>r.status==="completed").length} color={G6} icon="🚪"/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
             <Card>
               <ST c="Payment Methods"/>
               {byMethod.length===0&&<div style={{color:G4,fontSize:13}}>No payment data</div>}
               {byMethod.map((m,i)=>(
-                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                  <span style={{color:G6}}>{m.method}</span>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontWeight:700}}>{fmt(m.total)}</div>
-                    <div style={{fontSize:11,color:G4}}>{totRev>0?Math.round(m.total/totRev*100):0}%</div>
+                <div key={i} style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                    <span style={{color:G6}}>{m.method}</span>
+                    <div style={{textAlign:"right"}}>
+                      <span style={{fontWeight:700}}>{fmt(m.total)}</span>
+                      <span style={{fontSize:11,color:G4,marginLeft:6}}>{totRev>0?Math.round(m.total/totRev*100):0}%</span>
+                    </div>
                   </div>
+                  <Bar pct={totRev>0?Math.round(m.total/totRev*100):0}/>
                 </div>
               ))}
-              {byMethod.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:`2px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:PL}}>{fmt(totRev)}</span></div>}
+              {byMethod.length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:PL}}>{fmt(totRev)}</span></div>}
             </Card>
             <Card>
-              <ST c="Collection Summary"/>
-              {[["Invoiced",fmt(totInvoiced),G6],["Collected",fmt(totRev),OK],["Outstanding",fmt(outstanding),ER],["Net Profit",fmt(net),net>=0?OK:ER],["Expenses",fmt(totExp),ER],["Sessions",String(filtered.length),PL]].map(([k,v,c])=>(
+              <ST c="Summary"/>
+              {[["Invoiced",fmt(totInvoiced),G6],["Collected",fmt(totRev),OK],["Outstanding",fmt(outstanding),outstanding>0?ER:G4],["Expenses",fmt(totExp),ER],["Net Profit",fmt(net),net>=0?OK:ER],["Sessions",String(filtered.length),PL]].map(([k,v,col])=>(
                 <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                  <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:c}}>{v}</span>
+                  <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:col}}>{v}</span>
                 </div>
               ))}
             </Card>
           </div>
+          <Card>
+            <ST c="Service Type Breakdown"/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {[["🏢 In-House",byServiceType.inhouse,"#1565C0"],["🏠 Outcall",byServiceType.outcall,"#7B3F6E"]].map(([l,n,col])=>(
+                <div key={l} style={{background:col+"10",borderRadius:10,padding:"14px",textAlign:"center",border:`1px solid ${col}20`}}>
+                  <div style={{fontSize:28,fontWeight:700,color:col}}>{n}</div>
+                  <div style={{fontSize:12,color:G6,marginTop:4}}>{l} sessions</div>
+                  <div style={{fontSize:11,color:G4}}>{filtered.length>0?Math.round(n/filtered.length*100):0}%</div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
       )}
 
-      {tab==="therapists"&&(
-        <Card>
-          <ST c="Revenue by Therapist"/>
-          {byTherapist.filter(t=>t.rev>0).map((t,i)=>{
-            const maxR=byTherapist[0]?.rev||1;
-            return(
-              <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:i===1?"#aaa":G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:i<2?WH:G6,flexShrink:0}}>{i+1}</div>
-                {t.photo?<img src={t.photo} alt="" style={{width:32,height:32,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>:<div style={{width:32,height:32,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:13,flexShrink:0}}>{t.name?.[0]}</div>}
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:700}}>{t.name}</div>
-                  <div style={{height:4,background:G1,borderRadius:99,marginTop:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:Math.round(t.rev/maxR*100)+"%",background:i===0?GOLD:PL,borderRadius:99}}/>
-                  </div>
+      {/* ── CLIENTS ── */}
+      {tab==="clients"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+            <KPI label="Total Clients" value={filteredRec.length} color={PL} icon="👥"/>
+            <KPI label="Male"   value={genderCounts.male}   color={"#1565C0"} icon="👨"/>
+            <KPI label="Female" value={genderCounts.female} color={"#e91e63"} icon="👩"/>
+            {genderCounts.other>0&&<KPI label="Other" value={genderCounts.other} color={G6} icon="⚧"/>}
+          </div>
+          <Card>
+            <ST c="Gender Breakdown (Walk-ins)"/>
+            {totalGender===0&&<div style={{color:G4,fontSize:13}}>No walk-in data</div>}
+            {[["👨 Male",genderCounts.male,"#1565C0"],["👩 Female",genderCounts.female,"#e91e63"],["⚧ Other",genderCounts.other,"#6A1B9A"]].filter(x=>x[1]>0).map(([l,n,col])=>(
+              <div key={l} style={{marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                  <span style={{fontWeight:600}}>{l}</span>
+                  <span><strong>{n}</strong> <span style={{color:G4,fontSize:11}}>({totalGender>0?Math.round(n/totalGender*100):0}%)</span></span>
                 </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(t.rev)}</div>
-                  <div style={{fontSize:11,color:G6}}>{t.count} sessions</div>
-                </div>
+                <Bar pct={totalGender>0?Math.round(n/totalGender*100):0} color={col}/>
               </div>
-            );
-          })}
-          {byTherapist.every(t=>!t.rev)&&<div style={{color:G4,fontSize:13}}>No therapist revenue data</div>}
-        </Card>
+            ))}
+          </Card>
+          <Card>
+            <ST c="Repeat Clients"/>
+            {(()=>{
+              const freq={};
+              filteredRec.forEach(r=>{const k=(r.customer_name||"").toLowerCase();freq[k]=(freq[k]||0)+1;});
+              const sorted=Object.entries(freq).filter(([,n])=>n>1).sort((a,b)=>b[1]-a[1]).slice(0,10);
+              return sorted.length===0
+                ?<div style={{color:G4,fontSize:13}}>No repeat clients in this period</div>
+                :sorted.map(([name,count],i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                    <span style={{textTransform:"capitalize",fontWeight:600}}>{name}</span>
+                    <span style={{background:PLF,color:PL,padding:"2px 9px",borderRadius:99,fontSize:12,fontWeight:700}}>{count}x</span>
+                  </div>
+                ));
+            })()}
+          </Card>
+          <Card>
+            <ST c="Walk-ins by Service Type"/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {[["🏢 In-House",filteredRec.filter(r=>r.service_type!=="outcall").length,"#1565C0"],["🏠 Outcall",filteredRec.filter(r=>r.service_type==="outcall").length,"#7B3F6E"]].map(([l,n,col])=>(
+                <div key={l} style={{background:col+"10",borderRadius:10,padding:"14px",textAlign:"center"}}>
+                  <div style={{fontSize:26,fontWeight:700,color:col}}>{n}</div>
+                  <div style={{fontSize:12,color:G6,marginTop:4}}>{l}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
       )}
 
-      {tab==="services"&&(
-        <Card>
-          <ST c="Popular Services"/>
-          {byService.map((sv,i)=>{
-            const maxR=byService[0]?.rev||1;
-            return(
-              <div key={sv.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i===0?WH:G6,flexShrink:0}}>{i+1}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sv.name}</div>
-                  <div style={{height:4,background:G1,borderRadius:99,marginTop:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:Math.round(sv.rev/maxR*100)+"%",background:PL,borderRadius:99}}/>
+      {/* ── THERAPISTS ── */}
+      {tab==="therapists"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <Card>
+            <ST c="Revenue by Therapist"/>
+            {byTherapist.filter(t=>t.rev>0).length===0&&<div style={{color:G4,fontSize:13}}>No data</div>}
+            {byTherapist.filter(t=>t.rev>0).map((t,i)=>{
+              const maxR=byTherapist[0]?.rev||1;
+              return(
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                  <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:i===1?"#aaa":G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i<2?WH:G6,flexShrink:0}}>{i+1}</div>
+                  {t.photo?<img src={t.photo} alt="" style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
+                    :<div style={{width:36,height:36,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,flexShrink:0}}>{t.name?.[0]}</div>}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700}}>{t.name}</div>
+                    <Bar pct={Math.round(t.rev/maxR*100)} color={i===0?GOLD:PL}/>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(t.rev)}</div>
+                    <div style={{fontSize:11,color:G6}}>{t.count} sessions</div>
                   </div>
                 </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(sv.rev)}</div>
-                  <div style={{fontSize:11,color:G6}}>{sv.count} sessions</div>
+              );
+            })}
+          </Card>
+          <Card>
+            <ST c="Therapist Session Count"/>
+            {byTherapist.filter(t=>t.count>0).map((t,i)=>(
+              <div key={t.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                <span style={{fontWeight:600}}>{t.name}</span>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{color:G6}}>{t.count} sessions</span>
+                  <span style={{fontWeight:700,color:PL}}>{fmt(t.rev)}</span>
                 </div>
               </div>
-            );
-          })}
-          {byService.length===0&&<div style={{color:G4,fontSize:13}}>No service data yet</div>}
-        </Card>
+            ))}
+          </Card>
+        </div>
+      )}
+
+      {/* ── SERVICES ── */}
+      {tab==="services"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <Card>
+            <ST c="Popular Services"/>
+            {byService.length===0&&<div style={{color:G4,fontSize:13}}>No data</div>}
+            {byService.map((sv,i)=>{
+              const maxR=byService[0]?.rev||1;
+              return(
+                <div key={sv.id} style={{marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:2}}>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <div style={{width:22,height:22,borderRadius:"50%",background:i===0?GOLD:G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i===0?WH:G6,flexShrink:0}}>{i+1}</div>
+                      <span style={{fontWeight:700}}>{sv.name}</span>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <span style={{fontWeight:700,color:PL}}>{fmt(sv.rev)}</span>
+                      <span style={{fontSize:11,color:G4,marginLeft:6}}>{sv.count} sessions</span>
+                    </div>
+                  </div>
+                  <Bar pct={Math.round(sv.rev/maxR*100)} color={i===0?GOLD:PL}/>
+                </div>
+              );
+            })}
+          </Card>
+          <Card>
+            <ST c="Service Type Revenue"/>
+            {(()=>{
+              const inRev=filtered.filter(a=>a.service_type!=="outcall").reduce((s,a)=>s+Number(a.paid_amount||0),0);
+              const outRev=filtered.filter(a=>a.service_type==="outcall").reduce((s,a)=>s+Number(a.paid_amount||0),0);
+              return(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  {[["🏢 In-House",inRev,"#1565C0"],["🏠 Outcall",outRev,"#7B3F6E"]].map(([l,v,col])=>(
+                    <div key={l} style={{background:col+"10",borderRadius:10,padding:"14px",textAlign:"center"}}>
+                      <div style={{fontSize:14,color:G6,marginBottom:4}}>{l}</div>
+                      <div style={{fontSize:20,fontWeight:700,color:col}}>{fmt(v)}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </Card>
+        </div>
+      )}
+
+      {/* ── EXPENSES ── */}
+      {tab==="expenses"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+            <KPI label="Total Expenses" value={fmt(totExp)} color={ER} icon="📤"/>
+            <KPI label="Net Profit"     value={fmt(net)}    color={net>=0?OK:ER} icon="📈"/>
+            <KPI label="Expense Count"  value={filteredExp.length} color={G6} icon="🧾"/>
+          </div>
+          <Card>
+            <ST c="Expenses by Category"/>
+            {byExpCat.length===0&&<div style={{color:G4,fontSize:13}}>No expenses in this period</div>}
+            {byExpCat.map((e,i)=>{
+              const pct=totExp>0?Math.round(e.total/totExp*100):0;
+              return(
+                <div key={i} style={{marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:2}}>
+                    <span style={{fontWeight:600}}>{e.cat}</span>
+                    <span><strong style={{color:ER}}>{fmt(e.total)}</strong> <span style={{color:G4,fontSize:11}}>({pct}%)</span></span>
+                  </div>
+                  <Bar pct={pct} color={ER}/>
+                </div>
+              );
+            })}
+          </Card>
+          <Card>
+            <ST c="Expense Log"/>
+            {filteredExp.length===0&&<div style={{color:G4,fontSize:13}}>No expenses</div>}
+            {filteredExp.slice().reverse().slice(0,20).map((e,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                <div>
+                  <div style={{fontWeight:600}}>{e.description||"Expense"}</div>
+                  <div style={{fontSize:11,color:G4}}>{e.category||"General"} · {fmtDate(e.expense_date)}</div>
+                </div>
+                <span style={{fontWeight:700,color:ER}}>{fmt(e.amount)}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
       )}
     </div>
   );

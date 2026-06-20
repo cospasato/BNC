@@ -111,24 +111,23 @@ module.exports = async function handler(req, res) {
         return res.status(200).json(rows);
       }
       if (req.method === 'POST') {
-        const { name, description, amenities } = req.body || {};
+        const { name, description, amenities, photos } = req.body || {};
         if (!name) return res.status(400).json({ error: 'name required' });
-        // Try with description+amenities, fall back to name-only if columns missing
+        await sql`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}'`.catch(()=>{});
         let rows;
         try {
           rows = await sql`
-            INSERT INTO rooms (name, description, amenities)
-            VALUES (${name}, ${description||''}, ${amenities||[]})
+            INSERT INTO rooms (name, description, amenities, photos)
+            VALUES (${name}, ${description||''}, ${amenities||[]}, ${photos||[]})
             RETURNING *`;
         } catch(e) {
-          if (e.message && e.message.includes('does not exist')) {
-            rows = await sql`INSERT INTO rooms (name) VALUES (${name}) RETURNING *`;
-          } else throw e;
+          rows = await sql`INSERT INTO rooms (name) VALUES (${name}) RETURNING *`;
         }
         return res.status(201).json(rows[0]);
       }
       if (req.method === 'PUT' && id) {
-        const { name, description, amenities, active } = req.body || {};
+        const { name, description, amenities, active, photos } = req.body || {};
+        await sql`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}'`.catch(()=>{});
         let rows;
         try {
           rows = await sql`
@@ -136,16 +135,13 @@ module.exports = async function handler(req, res) {
               name        = COALESCE(${name        ?? null}, name),
               description = COALESCE(${description ?? null}, description),
               amenities   = COALESCE(${amenities   ?? null}, amenities),
+              photos      = COALESCE(${photos      ?? null}, photos),
               active      = COALESCE(${active      ?? null}, active)
             WHERE id = ${id} RETURNING *`;
         } catch(e) {
-          if (e.message && e.message.includes('does not exist')) {
-            rows = await sql`
-              UPDATE rooms SET
-                name   = COALESCE(${name   ?? null}, name),
-                active = COALESCE(${active ?? null}, active)
-              WHERE id = ${id} RETURNING *`;
-          } else throw e;
+          rows = await sql`
+            UPDATE rooms SET name=COALESCE(${name??null},name),active=COALESCE(${active??null},active)
+            WHERE id=${id} RETURNING *`;
         }
         if (!rows.length) return res.status(404).json({ error: 'Not found' });
         return res.status(200).json(rows[0]);
@@ -324,6 +320,7 @@ module.exports = async function handler(req, res) {
 
     // ── RECEPTION LOG ─────────────────────────────────────────
     if (resource === 'reception') {
+      await sql`ALTER TABLE reception_log ADD COLUMN IF NOT EXISTS client_gender TEXT NOT NULL DEFAULT 'male'`.catch(()=>{});
       if (req.method === 'GET') {
         const { date } = req.query;
         const rows = date
