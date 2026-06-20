@@ -379,12 +379,23 @@ export default function App(){
   // CustomerPortal defined outside App()
 
   // ── ADMIN PORTAL ──
-  const ADMIN_TABS = [
-    ["dash","Dashboard","📊"],["appts","Appointments","📋"],["reception","Reception Log","🚪"],
-    ["therapists","Therapists","💆"],["rooms","Rooms","🛁"],["services","Services & Pricing","📋"],
-    ["offers","Offers","🏷️"],["expenses","Expenses","💸"],["reports","Reports","📈"],
-    ["packages","Packages","🎁"],["payments","Payments","💳"],["commission","Commission","💵"],["staff","Staff","👥"]
+  const ALL_TABS = [
+    ["dash","Dashboard","📊",["Admin","Manager","Receptionist"]],
+    ["appts","Appointments","📋",["Admin","Manager","Receptionist"]],
+    ["reception","Reception Log","🚪",["Admin","Manager","Receptionist"]],
+    ["therapists","Therapists","💆",["Admin","Manager"]],
+    ["rooms","Rooms","🛁",["Admin","Manager"]],
+    ["services","Services & Pricing","📋",["Admin","Manager"]],
+    ["offers","Offers","🏷️",["Admin","Manager"]],
+    ["expenses","Expenses","💸",["Admin","Manager","Receptionist"]],
+    ["reports","Reports","📈",["Admin","Manager"]],
+    ["packages","Packages","🎁",["Admin","Manager"]],
+    ["payments","Payments","💳",["Admin","Manager"]],
+    ["commission","Commission","💵",["Admin","Manager"]],
+    ["staff","Staff","👥",["Admin"]],
   ];
+  const userRole = user?.role||"Receptionist";
+  const ADMIN_TABS = ALL_TABS.filter(([,,, roles])=>roles.includes(userRole)).map(([id,label,icon])=>[id,label,icon]);
   // AdminPortal defined outside App()
 
 
@@ -3128,7 +3139,7 @@ return (
         </div>
       )}
       {!customer&&!user&&<button onClick={()=>setCustModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Login":"My Account"}</button>}
-      {!user&&<button onClick={()=>setModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Staff":"Staff Login"}</button>}
+      
       
     </div>
   </nav>
@@ -4239,7 +4250,6 @@ function StaffLoginModal({onLogin,onClose,pop}){
       <Inp label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="staff@spa.com"/>
       <Inp label="PIN" type="password" value={pin} onChange={e=>setPin(e.target.value)} placeholder="Enter your PIN" maxLength={6} onKeyDown={e=>e.key==="Enter"&&go()}/>
       {err&&<div style={{background:ERB,color:ER,borderRadius:8,padding:"9px 12px",fontSize:13,marginBottom:12,fontWeight:700}}>{err}</div>}
-      <div style={{background:PLF,borderRadius:8,padding:"9px 12px",fontSize:12,color:PL,marginBottom:14}}>Default: <strong>admin@massagetz.com</strong> / PIN: <strong>0000</strong></div>
       <Btn onClick={go} style={{width:"100%",justifyContent:"center"}}>Login</Btn>
     </Modal>
   );

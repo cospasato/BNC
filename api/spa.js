@@ -106,28 +106,36 @@ module.exports = async function handler(req, res) {
     // NOTE: We only use columns guaranteed to exist: id, name, active, created_at
     // description and amenities are added via setup migration
     if (resource === 'rooms') {
+      // Use photos_json (TEXT) to store photos as JSON string — avoids TEXT[] size issues
+      await sql`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS photos_json TEXT NOT NULL DEFAULT '[]'`.catch(()=>{});
+
+      const parseRoom = (r) => {
+        try { r.photos = JSON.parse(r.photos_json || '[]'); } catch { r.photos = []; }
+        return r;
+      };
+
       if (req.method === 'GET') {
         const rows = await sql`SELECT * FROM rooms WHERE active = true ORDER BY name ASC`;
-        return res.status(200).json(rows);
+        return res.status(200).json(rows.map(parseRoom));
       }
       if (req.method === 'POST') {
         const { name, description, amenities, photos } = req.body || {};
         if (!name) return res.status(400).json({ error: 'name required' });
-        await sql`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}'`.catch(()=>{});
+        const photosJson = JSON.stringify(photos || []);
         let rows;
         try {
           rows = await sql`
-            INSERT INTO rooms (name, description, amenities, photos)
-            VALUES (${name}, ${description||''}, ${amenities||[]}, ${photos||[]})
+            INSERT INTO rooms (name, description, amenities, photos_json)
+            VALUES (${name}, ${description||''}, ${amenities||[]}, ${photosJson})
             RETURNING *`;
         } catch(e) {
           rows = await sql`INSERT INTO rooms (name) VALUES (${name}) RETURNING *`;
         }
-        return res.status(201).json(rows[0]);
+        return res.status(201).json(parseRoom(rows[0]));
       }
       if (req.method === 'PUT' && id) {
         const { name, description, amenities, active, photos } = req.body || {};
-        await sql`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS photos TEXT[] NOT NULL DEFAULT '{}'`.catch(()=>{});
+        const photosJson = photos !== undefined ? JSON.stringify(photos) : undefined;
         let rows;
         try {
           rows = await sql`
@@ -135,7 +143,7 @@ module.exports = async function handler(req, res) {
               name        = COALESCE(${name        ?? null}, name),
               description = COALESCE(${description ?? null}, description),
               amenities   = COALESCE(${amenities   ?? null}, amenities),
-              photos      = COALESCE(${photos      ?? null}, photos),
+              photos_json = COALESCE(${photosJson  ?? null}, photos_json),
               active      = COALESCE(${active      ?? null}, active)
             WHERE id = ${id} RETURNING *`;
         } catch(e) {
@@ -144,7 +152,7 @@ module.exports = async function handler(req, res) {
             WHERE id=${id} RETURNING *`;
         }
         if (!rows.length) return res.status(404).json({ error: 'Not found' });
-        return res.status(200).json(rows[0]);
+        return res.status(200).json(parseRoom(rows[0]));
       }
       if (req.method === 'DELETE' && id) {
         await sql`UPDATE rooms SET active = false WHERE id = ${id}`;
