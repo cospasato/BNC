@@ -973,34 +973,139 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
         </div>
       )}
 
-      {/* Today's appointments summary */}
-      {todayAppts.length>0&&(
-        <Card>
-          <ST c="Today's Appointments"/>
-          {todayAppts.slice(0,10).map(a=>{
-            const th=therapists.find(t=>t.id===a.therapist_id);
-            const svcs=Array.isArray(a.services)?a.services.map(s=>s.name).join(", "):"-";
-            return(
-              <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                <div>
-                  <div style={{fontWeight:700}}>{a.customer_name}</div>
-                  <div style={{fontSize:12,color:G6}}>{fmtTime(a.appt_time)} · {th?.name||"Any"} · {svcs.slice(0,40)}</div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <Badge s={a.status}/>
-                  {["cancelled","noShow"].includes(a.status)&&["Admin","Manager"].includes(user?.role)&&(
-                    <button onClick={e=>{e.stopPropagation();delAppt(a);}}
-                      title="Delete appointment"
-                      style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:16,padding:"2px 4px",lineHeight:1}}>
-                      🗑
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      )}
+      {/* ── TODAY'S SESSIONS TABLE ── */}
+      {(()=>{
+        // Merge today's walk-in sessions + appointments into one table
+        const todaySessions = [
+          ...reception.filter(r=>(r.in_time||"").slice(0,10)===today)
+            .map(r=>({...r, _type:"walkin"})),
+          ...todayAppts.map(a=>({...a, _type:"appt"})),
+        ].sort((a,b)=>{
+          const ta = a._type==="walkin" ? (a.in_time||"") : (a.appt_date||"")+"T"+(a.appt_time||"");
+          const tb = b._type==="walkin" ? (b.in_time||"") : (b.appt_date||"")+"T"+(b.appt_time||"");
+          return ta.localeCompare(tb);
+        });
+
+        if(!todaySessions.length) return null;
+
+        const H = (label) => (
+          <th style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",
+            letterSpacing:".06em",textAlign:"left",background:G1,whiteSpace:"nowrap",borderBottom:`1px solid ${G2}`}}>
+            {label}
+          </th>
+        );
+
+        return(
+          <div style={{marginBottom:20}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:700,color:BK,marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+              🗓 Today's Sessions
+              <span style={{background:PLF,color:PL,borderRadius:99,fontSize:12,fontWeight:700,padding:"2px 10px"}}>{todaySessions.length}</span>
+            </div>
+            <div style={{overflowX:"auto",borderRadius:12,border:`1px solid ${G2}`,background:WH}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:620}}>
+                <thead>
+                  <tr>
+                    {H("Client")}
+                    {H("Type")}
+                    {H("Time In")}
+                    {H("Time Out")}
+                    {H("Room")}
+                    {H("Services")}
+                    {H("Total")}
+                    {H("Paid")}
+                    {H("Payment")}
+                    {H("Status")}
+                  </tr>
+                </thead>
+                <tbody>
+                  {todaySessions.map((s,i)=>{
+                    const th  = therapists.find(t=>t.id===s.therapist_id);
+                    const rm  = rooms.find(r=>r.id===s.room_id);
+                    const svcs = Array.isArray(s.services)
+                      ? s.services : (typeof s.services==="string" ? JSON.parse(s.services||"[]") : []);
+                    const isWalkin  = s._type==="walkin";
+                    const isActive  = s.status==="inProgress";
+                    const isComplete= s.status==="completed";
+                    const timeIn  = isWalkin
+                      ? (s.in_time  ? new Date(s.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "—")
+                      : fmtTime(s.appt_time);
+                    const timeOut = isWalkin
+                      ? (s.out_time ? new Date(s.out_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : isActive ? "⏳ Active" : "—")
+                      : (isComplete ? "✓" : "—");
+                    const bal   = Number(s.total_amount||0)-Number(s.paid_amount||0);
+                    const rowBg = isActive ? `${PL}08` : i%2===0 ? WH : G1+"80";
+                    const statusColor = {inProgress:PL,completed:OK,pending:WA,confirmed:IN,cancelled:ER,noShow:G4}[s.status]||G6;
+                    const statusLabel = {inProgress:"● Active",completed:"✓ Done",pending:"⏳ Pending",confirmed:"✅ Confirmed",cancelled:"✗ Cancelled",noShow:"👻 No Show"}[s.status]||s.status;
+                    return(
+                      <tr key={s.id} style={{background:rowBg,borderBottom:`1px solid ${G2}`}}>
+                        <td style={{padding:"9px 10px"}}>
+                          <div style={{fontWeight:700,color:BK}}>{s.customer_name}</div>
+                          {s.customer_phone&&<div style={{fontSize:11,color:G4}}>{s.customer_phone}</div>}
+                          {th&&<div style={{fontSize:11,color:PL,marginTop:1}}>💆 {th.name}</div>}
+                        </td>
+                        <td style={{padding:"9px 10px"}}>
+                          <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                            background:isWalkin?G1:PLF,color:isWalkin?G6:PL}}>
+                            {isWalkin?"🚪 Walk-in":"📅 Booking"}
+                          </span>
+                        </td>
+                        <td style={{padding:"9px 10px",fontWeight:600,color:BK,whiteSpace:"nowrap"}}>{timeIn}</td>
+                        <td style={{padding:"9px 10px",color:isActive?PL:G6,whiteSpace:"nowrap"}}>{timeOut}</td>
+                        <td style={{padding:"9px 10px",color:G6}}>{rm?.name||<span style={{color:G4}}>—</span>}</td>
+                        <td style={{padding:"9px 10px",maxWidth:160}}>
+                          <div style={{fontSize:12,color:G6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {svcs.length ? svcs.map(sv=>sv.name).join(", ") : <span style={{color:G4}}>—</span>}
+                          </div>
+                          {svcs.length>0&&(
+                            <div style={{fontSize:11,color:G4}}>
+                              {svcs.map(sv=>fmt(sv.price||0)).join(" + ")}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{padding:"9px 10px",fontWeight:700,color:BK,whiteSpace:"nowrap"}}>{fmt(s.total_amount||0)}</td>
+                        <td style={{padding:"9px 10px",whiteSpace:"nowrap"}}>
+                          <div style={{fontWeight:700,color:OK}}>{fmt(s.paid_amount||0)}</div>
+                          {bal>0&&<div style={{fontSize:11,color:ER}}>-{fmt(bal)}</div>}
+                        </td>
+                        <td style={{padding:"9px 10px"}}>
+                          <span style={{fontSize:12,color:G6}}>{s.payment_method||"—"}</span>
+                        </td>
+                        <td style={{padding:"9px 10px",whiteSpace:"nowrap"}}>
+                          <span style={{fontSize:11,fontWeight:700,color:statusColor,background:statusColor+"15",
+                            padding:"3px 8px",borderRadius:99}}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {/* Totals row */}
+                {(()=>{
+                  const totTotal = todaySessions.reduce((s,r)=>s+Number(r.total_amount||0),0);
+                  const totPaid  = todaySessions.reduce((s,r)=>s+Number(r.paid_amount||0),0);
+                  const totBal   = totTotal-totPaid;
+                  return(
+                    <tfoot>
+                      <tr style={{background:G1,borderTop:`2px solid ${G2}`}}>
+                        <td colSpan={6} style={{padding:"8px 10px",fontWeight:700,fontSize:13,color:G6}}>
+                          Totals ({todaySessions.length} sessions)
+                        </td>
+                        <td style={{padding:"8px 10px",fontWeight:700,color:BK}}>{fmt(totTotal)}</td>
+                        <td style={{padding:"8px 10px"}}>
+                          <div style={{fontWeight:700,color:OK}}>{fmt(totPaid)}</div>
+                          {totBal>0&&<div style={{fontSize:11,color:ER}}>-{fmt(totBal)}</div>}
+                        </td>
+                        <td colSpan={2}/>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* End session modal */}
       {coModal&&(()=>{
