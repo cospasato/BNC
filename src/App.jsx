@@ -4085,9 +4085,10 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
 function NavBar({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal}){
 const isMobile = typeof window!=="undefined" && window.innerWidth<640;
 return (
-  <nav style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 18px",justifyContent:"space-between",flexShrink:0,position:"fixed",top:0,left:0,right:0,zIndex:200,boxShadow:"0 2px 12px rgba(0,0,0,.25)"}}>
-    <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>navTo("land")}>
-      <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
+  <nav style={{background:BK,height:62,display:"flex",alignItems:"center",padding:"0 14px",justifyContent:"space-between",flexShrink:0,position:"fixed",top:0,left:0,right:0,zIndex:200,boxShadow:"0 2px 12px rgba(0,0,0,.25)"}}>
+    {/* Left — Logo */}
+    <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flex:1}} onClick={()=>navTo("land")}>
+      <div style={{width:36,height:36,background:PL,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         <span style={{color:WH,fontWeight:900,fontSize:9,fontFamily:"'Playfair Display',serif",textAlign:"center",lineHeight:1.1,letterSpacing:".02em"}}>MTZ</span>
       </div>
       {!isMobile&&<div>
@@ -4095,33 +4096,42 @@ return (
         <div style={{color:G4,fontSize:10,letterSpacing:".12em",textTransform:"uppercase"}}>Massage & Outcall</div>
       </div>}
     </div>
-    <div style={{display:"flex",alignItems:"center",gap:8}}>
+
+    {/* Centre — M-Videos (always visible, centred) */}
+    <div style={{position:"absolute",left:"50%",transform:"translateX(-50%)"}}>
+      <button onClick={()=>navTo("videos")}
+        style={{background:`linear-gradient(135deg,${GOLD}22,${GOLD}11)`,color:GOLD,
+          border:`1.5px solid ${GOLD}`,borderRadius:20,
+          padding:"7px 18px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit",
+          display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap",
+          boxShadow:`0 0 12px ${GOLD}30`}}>
+        <span style={{fontSize:14}}>▶</span>
+        M-Videos
+      </button>
+    </div>
+
+    {/* Right — actions */}
+    <div style={{display:"flex",alignItems:"center",gap:6,flex:1,justifyContent:"flex-end"}}>
       {!isMobile&&!customer&&!user&&<button onClick={()=>navTo("book",1)} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.25)",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Book Now</button>}
       {therapistUser&&!user&&(
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>navTo("therapist")} style={{background:"transparent",color:WH,border:`1px solid ${PL}`,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>navTo("therapist")} style={{background:"transparent",color:WH,border:`1px solid ${PL}`,borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
             <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>💆</span>
             {!isMobile&&therapistUser.name}
           </button>
-          <button onClick={therapistLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
+          <button onClick={therapistLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Out</button>
         </div>
       )}
       {customer&&!user&&!therapistUser&&(
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>navTo("customer")} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>navTo("customer")} style={{background:"transparent",color:WH,border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
             <span style={{width:22,height:22,background:PL,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{customer.name?.[0]?.toUpperCase()}</span>
             {!isMobile&&customer.name}
           </button>
-          <button onClick={custLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
+          <button onClick={custLogout} style={{background:"transparent",color:G4,border:"1px solid rgba(255,255,255,.15)",borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Out</button>
         </div>
       )}
-      {!customer&&!user&&<button onClick={()=>setCustModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Login":"My Account"}</button>}
-      <button onClick={()=>navTo("videos")}
-        style={{background:"transparent",color:GOLD,border:`1px solid ${GOLD}`,borderRadius:8,
-          padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit",
-          display:"flex",alignItems:"center",gap:5}}>
-        {isMobile?"▶":"▶ M-Videos"}
-      </button>
+      {!customer&&!user&&<button onClick={()=>setCustModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 12px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Login":"My Account"}</button>}
     </div>
   </nav>
 );
