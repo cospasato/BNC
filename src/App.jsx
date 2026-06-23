@@ -3756,28 +3756,35 @@ function UploadVideoWidget({ pop, onUploaded }) {
 
       setProgress(15);
 
-      // Step 2: upload file DIRECTLY from browser to Cloudinary (bypasses Vercel size limit)
+      // Step 2: upload DIRECTLY from browser to Cloudinary
       const form = new FormData();
-      form.append('file',      file);
-      form.append('api_key',   sig.apiKey);
-      form.append('timestamp', String(sig.timestamp));
-      form.append('signature', sig.signature);
-      form.append('folder',    sig.folder);
-      // Note: resource_type is NOT included in signature, sent separately
+      form.append('file', file);
       form.append('resource_type', 'video');
 
-      // Use XMLHttpRequest for real upload progress
+      if(sig.mode === 'signed') {
+        // Signed upload — include exactly the params that were signed
+        form.append('api_key',   sig.apiKey);
+        form.append('timestamp', String(sig.timestamp));
+        form.append('signature', sig.signature);
+        form.append('folder',    sig.folder);
+      } else {
+        // Unsigned upload — just the preset name
+        form.append('upload_preset', sig.preset);
+      }
+
       const cloudUrl = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.upload.onprogress = e => {
           if(e.lengthComputable) setProgress(15 + Math.round(e.loaded/e.total*75));
         };
         xhr.onload = () => {
-          const d = JSON.parse(xhr.responseText);
-          if(d.error) reject(new Error(d.error.message));
-          else resolve(d);
+          try {
+            const d = JSON.parse(xhr.responseText);
+            if(d.error) reject(new Error(d.error.message));
+            else resolve(d);
+          } catch(e) { reject(new Error('Upload response error')); }
         };
-        xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.onerror = () => reject(new Error('Network error during upload'));
         xhr.open('POST', `https://api.cloudinary.com/v1_1/${sig.cloudName}/video/upload`);
         xhr.send(form);
       });

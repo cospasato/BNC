@@ -928,20 +928,35 @@ module.exports = async function handler(req, res) {
 
         // ── CLOUDINARY SIGNATURE (browser uploads directly to Cloudinary) ──
     if (resource === 'cloudinary_sign') {
-      const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-      const apiKey    = process.env.CLOUDINARY_API_KEY;
-      const apiSecret = process.env.CLOUDINARY_API_SECRET;
-      if (!cloudName || !apiKey || !apiSecret) {
+      const cloudName  = process.env.CLOUDINARY_CLOUD_NAME;
+      const apiKey     = process.env.CLOUDINARY_API_KEY;
+      const apiSecret  = process.env.CLOUDINARY_API_SECRET;
+      const preset     = process.env.CLOUDINARY_PRESET || 'massagetz_unsigned';
+
+      if (!cloudName) {
         return res.status(400).json({ error: 'Cloudinary not configured', setup: true });
       }
-      const crypto    = require('crypto');
-      const timestamp = Math.floor(Date.now() / 1000);
-      const folder    = 'massagetz_videos';
-      // Signature must include ONLY params sent in the upload request, sorted alphabetically
-      // We send: folder, timestamp — that's it (keep it simple, no eager)
-      const sigStr = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
-      const signature = crypto.createHash('sha1').update(sigStr).digest('hex');
-      return res.status(200).json({ timestamp, signature, apiKey, cloudName, folder });
+
+      // If we have API key+secret, use signed upload
+      if (apiKey && apiSecret) {
+        const crypto    = require('crypto');
+        const timestamp = Math.floor(Date.now() / 1000);
+        const folder    = 'massagetz_videos';
+        // EXACT Cloudinary signature format:
+        // params sorted alphabetically, joined with &, then API secret appended directly
+        const params = { folder, timestamp };
+        const sigStr = Object.keys(params).sort()
+          .map(k => `${k}=${params[k]}`).join('&') + apiSecret;
+        const signature = crypto.createHash('sha1').update(sigStr).digest('hex');
+        return res.status(200).json({ 
+          mode: 'signed', timestamp, signature, apiKey, cloudName, folder 
+        });
+      }
+
+      // No API secret — use unsigned upload preset (simpler)
+      return res.status(200).json({ 
+        mode: 'unsigned', cloudName, preset
+      });
     }
 
     // ── SAVE UPLOADED VIDEO RECORD ───────────────────────────────
