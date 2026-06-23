@@ -3708,6 +3708,10 @@ function getEmbedUrl(url, thumb) {
     return { type:'facebook', embedUrl:fbEmbed, thumb:null };
   }
 
+  // Cloudinary uploaded video
+  if (url && (url.includes('cloudinary.com') || url.includes('res.cloudinary'))) {
+    return { type:'upload', embedUrl:url, thumb:url.replace(/\.mp4$|\.[a-z]{3,4}$/, '.jpg') };
+  }
   return { type:'unknown', embedUrl:url, thumb:null };
 }
 
@@ -3715,7 +3719,129 @@ function getSourceIcon(source) {
   if (source==='tiktok')    return { icon:'🎵', label:'TikTok',    color:'#010101' };
   if (source==='instagram') return { icon:'📸', label:'Instagram', color:'#E1306C' };
   if (source==='facebook')  return { icon:'👥', label:'Facebook',  color:'#1877F2' };
+  if (source==='upload')    return { icon:'🎬', label:'Direct',    color:'#7B3F6E' };
   return                           { icon:'▶️', label:'YouTube',   color:'#FF0000' };
+}
+
+
+// ── Video Upload Widget (Cloudinary) ─────────────────────────────────────────
+function UploadVideoWidget({ pop, onUploaded }) {
+  const [file,       setFile]       = useState(null);
+  const [title,      setTitle]      = useState('');
+  const [uploading,  setUploading]  = useState(false);
+  const [progress,   setProgress]   = useState(0);
+  const [preview,    setPreview]    = useState(null);
+  const [fileSize,   setFileSize]   = useState(null);
+
+  const fmt = n => n >= 1073741824 ? (n/1073741824).toFixed(1)+'GB' : n >= 1048576 ? (n/1048576).toFixed(1)+'MB' : (n/1024).toFixed(0)+'KB';
+
+  const pickFile = (e) => {
+    const f = e.target.files?.[0];
+    if(!f) return;
+    if(!f.type.startsWith('video/')) return pop('Please select a video file','err');
+    setFile(f);
+    setFileSize(f.size);
+    setTitle(f.name.replace(/\.[^.]+$/, '').replace(/[_-]/g,' '));
+    const url = URL.createObjectURL(f);
+    setPreview(url);
+    e.target.value='';
+  };
+
+  const upload = async () => {
+    if(!file) return;
+    setUploading(true);
+    setProgress(5);
+    try {
+      // Read file as base64 (Cloudinary accepts data URI)
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload  = e => res(e.target.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      setProgress(30);
+
+      const resp = await fetch('/api/spa?resource=upload_video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_data: base64, filename: file.name, title }),
+      });
+      setProgress(90);
+      const data = await resp.json();
+      if(!resp.ok) throw new Error(data.error || 'Upload failed');
+
+      setProgress(100);
+      const origMB = (file.size/1048576).toFixed(1);
+      const newMB  = (data.original_size/1048576).toFixed(1);
+      pop(`✓ Uploaded! ${origMB}MB → ${newMB}MB on CDN`);
+      onUploaded(data);
+      setFile(null); setPreview(null); setTitle(''); setProgress(0);
+    } catch(e) {
+      pop(e.message, 'err');
+      setProgress(0);
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div>
+      {/* Drop zone */}
+      {!file&&(
+        <label style={{display:"block",border:`2px dashed ${G2}`,borderRadius:12,padding:"32px 20px",textAlign:"center",cursor:"pointer",
+          background:G1,transition:"border-color .2s"}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor=PL}
+          onMouseLeave={e=>e.currentTarget.style.borderColor=G2}>
+          <div style={{fontSize:36,marginBottom:8}}>🎬</div>
+          <div style={{fontWeight:700,fontSize:14,color:BK,marginBottom:4}}>Choose a video file</div>
+          <div style={{fontSize:12,color:G6}}>MP4, MOV, AVI, WebM • Any size (will be compressed)</div>
+          <input type="file" accept="video/*" onChange={pickFile} style={{display:"none"}}/>
+        </label>
+      )}
+
+      {/* Preview */}
+      {file&&(
+        <div>
+          <video src={preview} controls style={{width:"100%",borderRadius:10,maxHeight:280,background:"#000",marginBottom:12}}/>
+          <div style={{background:G1,borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:13}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{color:G6}}>Original size</span>
+              <span style={{fontWeight:700,color:fileSize>50*1048576?WA:OK}}>{fmt(fileSize)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between"}}>
+              <span style={{color:G6}}>After compression</span>
+              <span style={{fontWeight:700,color:PL}}>~{fmt(fileSize*0.15)} (estimated)</span>
+            </div>
+          </div>
+          <Inp label="Video Title" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Full Body Massage Session"/>
+
+          {/* Progress bar */}
+          {uploading&&(
+            <div style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:G6,marginBottom:4}}>
+                <span>Uploading & compressing…</span><span>{progress}%</span>
+              </div>
+              <div style={{height:6,background:G2,borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:progress+"%",background:`linear-gradient(90deg,${PL},${GOLD})`,borderRadius:99,transition:"width .3s"}}/>
+              </div>
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{setFile(null);setPreview(null);setTitle('');setProgress(0);}}
+              style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              ✕ Cancel
+            </button>
+            <button onClick={upload} disabled={uploading}
+              style={{flex:2,padding:"10px",borderRadius:9,border:"none",
+                background:uploading?"#aaa":`linear-gradient(135deg,${PLD},${PL})`,
+                color:WH,fontSize:13,fontWeight:700,cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              {uploading?`Uploading ${progress}%…`:"☁️ Upload & Compress"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Videos Admin Tab ─────────────────────────────────────────────────────────
@@ -3789,34 +3915,46 @@ function VideosAdminTab({ pop }) {
         ))}
       </div>
 
-      {/* ── ADD VIDEO ── */}
+      {/* ── ADD VIDEO (link or upload) ── */}
       {tab==='add'&&(
-        <Card>
-          <ST c="Add Video Link"/>
-          <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:13,color:G6}}>
-            Paste a video link from YouTube, TikTok, Instagram, or Facebook. YouTube videos from your channel are also auto-fetched if you configure the channel settings.
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* Upload directly */}
+          <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden"}}>
+            <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,padding:"12px 16px"}}>
+              <div style={{fontWeight:700,fontSize:15,color:WH}}>📁 Upload Video Directly</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,.6)",marginTop:2}}>Uploaded to Cloudinary CDN — auto-compressed, fast loading</div>
+            </div>
+            <div style={{padding:"16px"}}>
+              {!process.env.CLOUDINARY_CLOUD_NAME&&(
+                <div style={{background:WAB,borderRadius:8,padding:"10px 12px",fontSize:12,color:WA,marginBottom:12}}>
+                  ⚠️ Configure Cloudinary first (see Channel Settings tab)
+                </div>
+              )}
+              <UploadVideoWidget pop={pop} onUploaded={v=>setVideos(p=>[v,...p])}/>
+            </div>
           </div>
-          <Inp label="Video URL" value={url} onChange={e=>handleUrl(e.target.value)}
-            placeholder="https://youtube.com/watch?v=...   or tiktok / instagram / facebook link"/>
-          <Inp label="Title (optional)" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Relaxing Full Body Massage"/>
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>
-              Platform (auto-detected from URL)
-            </label>
-            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+
+          {/* OR paste a link */}
+          <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"16px"}}>
+            <div style={{fontWeight:700,fontSize:15,color:BK,marginBottom:4}}>🔗 Or Paste a Video Link</div>
+            <div style={{fontSize:12,color:G6,marginBottom:14}}>YouTube, TikTok, Instagram, or Facebook</div>
+            <Inp label="Video URL" value={url} onChange={e=>handleUrl(e.target.value)}
+              placeholder="https://youtube.com/watch?v=..."/>
+            <Inp label="Title (optional)" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Relaxing Full Body Massage"/>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:14}}>
               {[["youtube","▶️ YouTube","#FF0000"],["tiktok","🎵 TikTok","#010101"],["instagram","📸 Instagram","#E1306C"],["facebook","👥 Facebook","#1877F2"]].map(([v,l,col])=>(
                 <button key={v} onClick={()=>setSource(v)}
-                  style={{padding:"8px 14px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                  style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
                     border:`2px solid ${source===v?col:G2}`,background:source===v?col+"15":WH,color:source===v?col:G6}}>
                   {l}
                 </button>
               ))}
             </div>
+            <Btn onClick={add} disabled={saving||!url.trim()} style={{width:"100%",justifyContent:"center"}}>
+              {saving?"Adding…":"+ Add Link"}
+            </Btn>
           </div>
-          <Btn onClick={add} disabled={saving||!url.trim()} style={{width:"100%",justifyContent:"center"}}>
-            {saving?"Adding…":"+ Add Video"}
-          </Btn>
-        </Card>
+        </div>
       )}
 
       {/* ── CHANNEL SETTINGS ── */}
@@ -3840,6 +3978,30 @@ function VideosAdminTab({ pop }) {
               1. Go to <strong>console.cloud.google.com</strong> → Create project → Enable "YouTube Data API v3"<br/>
               2. Create credentials → API Key → copy it above<br/>
               3. Your Channel ID is in YouTube Studio → Settings → Channel → Advanced
+            </div>
+          </Card>
+
+          {/* Cloudinary */}
+          <Card>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+              <span style={{fontSize:20}}>☁️</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:15}}>Cloudinary (Direct Upload)</div>
+                <div style={{fontSize:12,color:G6}}>Free video hosting with auto-compression — free 25GB storage</div>
+              </div>
+            </div>
+            <div style={{background:G1,borderRadius:8,padding:"10px 12px",fontSize:12,color:G6,marginBottom:12}}>
+              <strong>Setup (5 minutes, free):</strong><br/>
+              1. Go to <strong>cloudinary.com</strong> → Sign up free<br/>
+              2. Dashboard → copy Cloud Name, API Key, API Secret<br/>
+              3. Add to <strong>Vercel → Settings → Environment Variables</strong>:<br/>
+              &nbsp;&nbsp;• <code>CLOUDINARY_CLOUD_NAME</code><br/>
+              &nbsp;&nbsp;• <code>CLOUDINARY_API_KEY</code><br/>
+              &nbsp;&nbsp;• <code>CLOUDINARY_API_SECRET</code><br/>
+              4. Redeploy Vercel — then upload from the Add Video tab
+            </div>
+            <div style={{background:OKB,borderRadius:8,padding:"10px 12px",fontSize:12,color:OK}}>
+              ✓ Free tier: 25GB storage · Auto H.264 compression · Fast CDN delivery worldwide · No size limits
             </div>
           </Card>
 
