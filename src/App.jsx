@@ -1103,6 +1103,15 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
                 </button>
               ))}
             </div>
+            {/* Delete — only for cancelled or no-show */}
+            {["cancelled","noShow"].includes(selA.status)&&(
+              <button onClick={()=>delAppt(selA)}
+                style={{width:"100%",marginTop:10,padding:"10px",borderRadius:9,fontSize:13,fontWeight:700,
+                  cursor:"pointer",fontFamily:"inherit",border:`2px solid ${ER}`,background:ERB,color:ER,
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                🗑 Delete Appointment Permanently
+              </button>
+            )}
           </div>
           {/* Record payment */}
           {Number(selA.total_amount)>Number(selA.paid_amount)&&(
