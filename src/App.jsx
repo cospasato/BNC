@@ -642,8 +642,22 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
   const todayAppts=appts.filter(a=>(a.appt_date||"").slice(0,10)===today);
   const active=reception.filter(r=>r.status==="inProgress");
   const pending=appts.filter(a=>a.status==="pending");
-  const todayRev=appts.filter(a=>(a.appt_date||"").slice(0,10)===today).reduce((s,a)=>s+Number(a.paid_amount||0),0)
-                +reception.filter(r=>(r.in_time||"").slice(0,10)===today).reduce((s,r)=>s+Number(r.paid_amount||0),0);
+
+  // Daily income breakdown
+  const todayApptRev  = appts.filter(a=>(a.appt_date||"").slice(0,10)===today).reduce((s,a)=>s+Number(a.paid_amount||0),0);
+  const todayWalkinRev= reception.filter(r=>(r.in_time||"").slice(0,10)===today).reduce((s,r)=>s+Number(r.paid_amount||0),0);
+  const todayRev      = todayApptRev + todayWalkinRev;
+  const todayInvoiced = appts.filter(a=>(a.appt_date||"").slice(0,10)===today).reduce((s,a)=>s+Number(a.total_amount||0),0)
+                       +reception.filter(r=>(r.in_time||"").slice(0,10)===today).reduce((s,r)=>s+Number(r.total_amount||0),0);
+  const todayOutstanding = Math.max(0, todayInvoiced - todayRev);
+
+  // Therapist status — busy = has active session today
+  const busyIds = new Set(active.map(r=>r.therapist_id).filter(Boolean));
+  const therapistStatus = therapists.filter(t=>t.active).map(t=>({
+    ...t,
+    busy: busyIds.has(t.id),
+    sessionClient: busyIds.has(t.id) ? active.find(r=>r.therapist_id===t.id)?.customer_name : null,
+  }));
 
   const [editSession,setEditSession]=useState(null);
   const [coModal,setCoModal]=useState(null);
@@ -679,11 +693,32 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
       <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20,color:BK}}>Dashboard</h2>
 
       {/* KPIs */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:24}}>
-        <KPI label="Today's Revenue" value={fmt(todayRev)} color={PL} icon="💰"/>
-        <KPI label="Active Sessions" value={active.length}  color={OK} icon="🏃"/>
-        <KPI label="Today's Appts"  value={todayAppts.length} color={IN} icon="📅"/>
-        <KPI label="Pending"        value={pending.length} color={WA} icon="⏳"/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>
+        <KPI label="Today's Sales"  value={fmt(todayRev)}       color={PL} icon="💰"/>
+        <KPI label="Active Sessions"value={active.length}        color={OK} icon="🏃"/>
+        <KPI label="Today's Appts" value={todayAppts.length}    color={IN} icon="📅"/>
+        <KPI label="Pending"       value={pending.length}       color={WA} icon="⏳"/>
+      </div>
+
+      {/* ── DAILY INCOME BREAKDOWN ── */}
+      <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,marginBottom:20,overflow:"hidden"}}>
+        <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,padding:"12px 16px"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:700,color:WH}}>📊 Today's Income — {fmtDate(today)}</div>
+        </div>
+        <div style={{padding:"14px 16px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
+            {[["From Bookings",todayApptRev,IN],["From Walk-ins",todayWalkinRev,PL],["Outstanding",todayOutstanding,todayOutstanding>0?WA:G4]].map(([l,v,col])=>(
+              <div key={l} style={{textAlign:"center",padding:"10px 8px",background:G1,borderRadius:10}}>
+                <div style={{fontSize:16,fontWeight:700,color:col}}>{fmt(v)}</div>
+                <div style={{fontSize:11,color:G6,marginTop:3}}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",background:`${PL}10`,borderRadius:10,border:`1px solid ${PL}30`}}>
+            <span style={{fontWeight:700,fontSize:14,color:PL}}>Total Collected Today</span>
+            <span style={{fontWeight:700,fontSize:18,color:PL}}>{fmt(todayRev)}</span>
+          </div>
+        </div>
       </div>
 
       {/* ── ACTIVE SESSIONS ── */}
@@ -783,6 +818,47 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
         </div>
       )}
 
+      {/* ── THERAPIST STATUS LIST ── */}
+      {therapistStatus.length>0&&(
+        <div style={{marginBottom:20}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:700,color:BK,marginBottom:12}}>
+            💆 Therapists Today
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,200px),1fr))",gap:8}}>
+            {therapistStatus.map(t=>{
+              const statusColor = t.busy ? PL : t.availability==="unavailable" ? ER : t.availability==="outcall_only" ? WA : OK;
+              const statusLabel = t.busy ? "In Session" : t.availability==="unavailable" ? "Off Duty" : t.availability==="outcall_only" ? "Outcall Only" : "Available";
+              const statusIcon  = t.busy ? "🟣" : t.availability==="unavailable" ? "🔴" : t.availability==="outcall_only" ? "🟡" : "🟢";
+              return(
+                <div key={t.id} style={{background:WH,borderRadius:12,border:`2px solid ${statusColor}30`,padding:"10px 12px",
+                  display:"flex",alignItems:"center",gap:10,boxShadow:`0 1px 6px ${statusColor}15`}}>
+                  {/* Avatar */}
+                  {t.photo
+                    ?<img src={t.photo} alt={t.name} style={{width:38,height:38,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:`2px solid ${statusColor}40`}}/>
+                    :<div style={{width:38,height:38,borderRadius:"50%",background:statusColor+"20",flexShrink:0,
+                      display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:16,color:statusColor}}>
+                      {t.name?.[0]}
+                    </div>
+                  }
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13,color:BK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                      <span style={{fontSize:11}}>{statusIcon}</span>
+                      <span style={{fontSize:11,fontWeight:600,color:statusColor}}>{statusLabel}</span>
+                    </div>
+                    {t.busy&&t.sessionClient&&(
+                      <div style={{fontSize:10,color:G4,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        with {t.sessionClient}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Today's appointments */}
       {todayAppts.length>0&&(
         <Card>
@@ -796,7 +872,16 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
                   <div style={{fontWeight:700}}>{a.customer_name}</div>
                   <div style={{fontSize:12,color:G6}}>{fmtTime(a.appt_time)} · {th?.name||"Any"} · {svcs.slice(0,40)}</div>
                 </div>
-                <Badge s={a.status}/>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <Badge s={a.status}/>
+                  {["cancelled","noShow"].includes(a.status)&&(
+                    <button onClick={e=>{e.stopPropagation();delAppt(a);}}
+                      title="Delete appointment"
+                      style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:16,padding:"2px 4px",lineHeight:1}}>
+                      🗑
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -932,6 +1017,19 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
   };
 
   const STATUS_FLOW=["pending","confirmed","inProgress","completed","cancelled","noShow"];
+
+  const delAppt=async(a)=>{
+    if(!["cancelled","noShow"].includes(a.status)){
+      return pop("Only cancelled or no-show appointments can be deleted","err");
+    }
+    if(!window.confirm(`Delete appointment for ${a.customer_name}? This cannot be undone.`)) return;
+    try{
+      await api.deleteAppt(a.id);
+      setAppts(p=>p.filter(x=>x.id!==a.id));
+      if(sel===a.id) setSel(null);
+      pop("Appointment deleted");
+    }catch(e){ pop(e.message,"err"); }
+  };
 
   return(
     <div>
