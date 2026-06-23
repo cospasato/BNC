@@ -3724,118 +3724,135 @@ function getSourceIcon(source) {
 }
 
 
-// ── Video Upload Widget (Cloudinary) ─────────────────────────────────────────
+// ── Video Upload Widget — browser uploads directly to Cloudinary ──────────────
 function UploadVideoWidget({ pop, onUploaded }) {
-  const [file,       setFile]       = useState(null);
-  const [title,      setTitle]      = useState('');
-  const [uploading,  setUploading]  = useState(false);
-  const [progress,   setProgress]   = useState(0);
-  const [preview,    setPreview]    = useState(null);
-  const [fileSize,   setFileSize]   = useState(null);
+  const [file,      setFile]      = useState(null);
+  const [title,     setTitle]     = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [progress,  setProgress]  = useState(0);
+  const [preview,   setPreview]   = useState(null);
+  const [fileSize,  setFileSize]  = useState(null);
 
-  const fmt = n => n >= 1073741824 ? (n/1073741824).toFixed(1)+'GB' : n >= 1048576 ? (n/1048576).toFixed(1)+'MB' : (n/1024).toFixed(0)+'KB';
+  const fmtSz = n => n>=1073741824?(n/1073741824).toFixed(1)+'GB':n>=1048576?(n/1048576).toFixed(1)+'MB':(n/1024).toFixed(0)+'KB';
 
-  const pickFile = (e) => {
+  const pickFile = e => {
     const f = e.target.files?.[0];
     if(!f) return;
     if(!f.type.startsWith('video/')) return pop('Please select a video file','err');
-    setFile(f);
-    setFileSize(f.size);
-    setTitle(f.name.replace(/\.[^.]+$/, '').replace(/[_-]/g,' '));
-    const url = URL.createObjectURL(f);
-    setPreview(url);
+    setFile(f); setFileSize(f.size);
+    setTitle(f.name.replace(/\.[^.]+$/,'').replace(/[_-]/g,' '));
+    setPreview(URL.createObjectURL(f));
     e.target.value='';
   };
 
   const upload = async () => {
     if(!file) return;
-    setUploading(true);
-    setProgress(5);
+    setUploading(true); setProgress(5);
     try {
-      // Read file as base64 (Cloudinary accepts data URI)
-      const base64 = await new Promise((res, rej) => {
-        const reader = new FileReader();
-        reader.onload  = e => res(e.target.result);
-        reader.onerror = rej;
-        reader.readAsDataURL(file);
-      });
-      setProgress(30);
+      // Step 1: get upload signature from our server (tiny request, no file data)
+      const sigRes = await fetch('/api/spa?resource=cloudinary_sign');
+      const sig    = await sigRes.json();
+      if(sig.error) throw new Error(sig.setup ? 'Cloudinary not configured — see Channel Settings tab' : sig.error);
 
-      const resp = await fetch('/api/spa?resource=upload_video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_data: base64, filename: file.name, title }),
+      setProgress(15);
+
+      // Step 2: upload file DIRECTLY from browser to Cloudinary (bypasses Vercel size limit)
+      const form = new FormData();
+      form.append('file',      file);
+      form.append('api_key',   sig.apiKey);
+      form.append('timestamp', sig.timestamp);
+      form.append('signature', sig.signature);
+      form.append('folder',    sig.folder);
+      form.append('eager',     sig.eager);
+      form.append('resource_type', 'video');
+
+      // Use XMLHttpRequest for real upload progress
+      const cloudUrl = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = e => {
+          if(e.lengthComputable) setProgress(15 + Math.round(e.loaded/e.total*75));
+        };
+        xhr.onload = () => {
+          const d = JSON.parse(xhr.responseText);
+          if(d.error) reject(new Error(d.error.message));
+          else resolve(d);
+        };
+        xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.open('POST', `https://api.cloudinary.com/v1_1/${sig.cloudName}/video/upload`);
+        xhr.send(form);
       });
-      setProgress(90);
-      const data = await resp.json();
-      if(!resp.ok) throw new Error(data.error || 'Upload failed');
+
+      setProgress(95);
+
+      // Step 3: save URL to our database
+      const thumb = cloudUrl.secure_url.replace(/\.[^.]+$/, '.jpg');
+      const saved = await fetch('/api/spa?resource=save_video', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ url: cloudUrl.secure_url, thumbnail: thumb, title, bytes: cloudUrl.bytes, duration: cloudUrl.duration }),
+      }).then(r=>r.json());
 
       setProgress(100);
       const origMB = (file.size/1048576).toFixed(1);
-      const newMB  = (data.original_size/1048576).toFixed(1);
-      pop(`✓ Uploaded! ${origMB}MB → ${newMB}MB on CDN`);
-      onUploaded(data);
+      const newMB  = (cloudUrl.bytes/1048576).toFixed(1);
+      pop(`✓ Uploaded! ${origMB}MB → ${newMB}MB (${Math.round((1-cloudUrl.bytes/file.size)*100)}% smaller)`);
+      onUploaded(saved);
       setFile(null); setPreview(null); setTitle(''); setProgress(0);
     } catch(e) {
-      pop(e.message, 'err');
-      setProgress(0);
+      pop(e.message,'err'); setProgress(0);
     }
     setUploading(false);
   };
 
   return (
     <div>
-      {/* Drop zone */}
       {!file&&(
-        <label style={{display:"block",border:`2px dashed ${G2}`,borderRadius:12,padding:"32px 20px",textAlign:"center",cursor:"pointer",
-          background:G1,transition:"border-color .2s"}}
+        <label style={{display:"block",border:`2px dashed ${G2}`,borderRadius:12,padding:"32px 20px",
+          textAlign:"center",cursor:"pointer",background:G1,transition:"border-color .2s"}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=PL}
           onMouseLeave={e=>e.currentTarget.style.borderColor=G2}>
-          <div style={{fontSize:36,marginBottom:8}}>🎬</div>
-          <div style={{fontWeight:700,fontSize:14,color:BK,marginBottom:4}}>Choose a video file</div>
-          <div style={{fontSize:12,color:G6}}>MP4, MOV, AVI, WebM • Any size (will be compressed)</div>
+          <div style={{fontSize:40,marginBottom:10}}>🎬</div>
+          <div style={{fontWeight:700,fontSize:14,color:BK,marginBottom:4}}>Tap to choose a video</div>
+          <div style={{fontSize:12,color:G6}}>MP4, MOV, AVI, WebM · Any size · Auto-compressed on upload</div>
           <input type="file" accept="video/*" onChange={pickFile} style={{display:"none"}}/>
         </label>
       )}
-
-      {/* Preview */}
       {file&&(
         <div>
-          <video src={preview} controls style={{width:"100%",borderRadius:10,maxHeight:280,background:"#000",marginBottom:12}}/>
-          <div style={{background:G1,borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:13}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{color:G6}}>Original size</span>
-              <span style={{fontWeight:700,color:fileSize>50*1048576?WA:OK}}>{fmt(fileSize)}</span>
+          <video src={preview} controls style={{width:"100%",borderRadius:10,maxHeight:260,background:"#000",marginBottom:12}}/>
+          <div style={{background:G1,borderRadius:9,padding:"10px 14px",marginBottom:12,fontSize:13}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+              <span style={{color:G6}}>Original file</span>
+              <span style={{fontWeight:700,color:fileSize>100*1048576?WA:G6}}>{fmtSz(fileSize)}</span>
             </div>
             <div style={{display:"flex",justifyContent:"space-between"}}>
-              <span style={{color:G6}}>After compression</span>
-              <span style={{fontWeight:700,color:PL}}>~{fmt(fileSize*0.15)} (estimated)</span>
+              <span style={{color:G6}}>Estimated after compression</span>
+              <span style={{fontWeight:700,color:OK}}>~{fmtSz(fileSize*0.12)}</span>
             </div>
           </div>
-          <Inp label="Video Title" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Full Body Massage Session"/>
-
-          {/* Progress bar */}
+          <Inp label="Title" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Full Body Massage Session"/>
           {uploading&&(
             <div style={{marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:G6,marginBottom:4}}>
-                <span>Uploading & compressing…</span><span>{progress}%</span>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:G6,marginBottom:5}}>
+                <span>{progress<20?"Getting upload token…":progress<90?"Uploading to CDN…":"Saving…"}</span>
+                <span style={{fontWeight:700,color:PL}}>{progress}%</span>
               </div>
-              <div style={{height:6,background:G2,borderRadius:99,overflow:"hidden"}}>
-                <div style={{height:"100%",width:progress+"%",background:`linear-gradient(90deg,${PL},${GOLD})`,borderRadius:99,transition:"width .3s"}}/>
+              <div style={{height:8,background:G2,borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:progress+"%",background:`linear-gradient(90deg,${PL},${GOLD})`,borderRadius:99,transition:"width .4s"}}/>
               </div>
             </div>
           )}
-
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>{setFile(null);setPreview(null);setTitle('');setProgress(0);}}
-              style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              disabled={uploading}
+              style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:uploading?.5:1}}>
               ✕ Cancel
             </button>
-            <button onClick={upload} disabled={uploading}
-              style={{flex:2,padding:"10px",borderRadius:9,border:"none",
+            <button onClick={upload} disabled={uploading||!title.trim()}
+              style={{flex:2,padding:"11px",borderRadius:9,border:"none",
                 background:uploading?"#aaa":`linear-gradient(135deg,${PLD},${PL})`,
                 color:WH,fontSize:13,fontWeight:700,cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
-              {uploading?`Uploading ${progress}%…`:"☁️ Upload & Compress"}
+              {uploading?`${progress}%…`:"☁️ Upload & Compress"}
             </button>
           </div>
         </div>

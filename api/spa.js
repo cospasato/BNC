@@ -926,76 +926,35 @@ module.exports = async function handler(req, res) {
       }
     }
 
-        // ── UPLOAD VIDEO (Cloudinary) ────────────────────────────────
-    if (resource === 'upload_video') {
-      if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-
+        // ── CLOUDINARY SIGNATURE (browser uploads directly to Cloudinary) ──
+    if (resource === 'cloudinary_sign') {
       const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
       const apiKey    = process.env.CLOUDINARY_API_KEY;
       const apiSecret = process.env.CLOUDINARY_API_SECRET;
-
       if (!cloudName || !apiKey || !apiSecret) {
-        return res.status(400).json({ error: 'Cloudinary not configured. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET to Vercel env vars.' });
+        return res.status(400).json({ error: 'Cloudinary not configured', setup: true });
       }
-
-      const { file_data, filename, title } = req.body || {};
-      if (!file_data) return res.status(400).json({ error: 'file_data required (base64)' });
-
-      // Build signed upload request to Cloudinary
+      const crypto    = require('crypto');
       const timestamp = Math.floor(Date.now() / 1000);
       const folder    = 'massagetz_videos';
-      const transformation = 'q_auto:good,vc_h264,br_800k'; // auto quality, H.264, 800kbps
-
-      // Sign the request
-      const crypto = require('crypto');
-      const sigStr = `folder=${folder}&timestamp=${timestamp}&transformation=${transformation}${apiSecret}`;
+      const eager     = 'q_auto:good,vc_h264';
+      const sigStr    = `eager=${eager}&folder=${folder}&timestamp=${timestamp}${apiSecret}`;
       const signature = crypto.createHash('sha1').update(sigStr).digest('hex');
+      return res.status(200).json({ timestamp, signature, apiKey, cloudName, folder, eager });
+    }
 
-      // Upload to Cloudinary
-      const formData = new URLSearchParams();
-      formData.append('file', file_data);
-      formData.append('api_key', apiKey);
-      formData.append('timestamp', timestamp);
-      formData.append('signature', signature);
-      formData.append('folder', folder);
-      formData.append('transformation', transformation);
-      formData.append('resource_type', 'video');
-
-      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData.toString(),
-      });
-      const upData = await upRes.json();
-
-      if (upData.error) return res.status(400).json({ error: upData.error.message });
-
-      // Save to videos table
-      await sql`CREATE TABLE IF NOT EXISTS videos (
-        id           TEXT PRIMARY KEY DEFAULT 'VID' || upper(substr(md5(random()::text),1,6)),
-        url          TEXT NOT NULL,
-        source       TEXT NOT NULL DEFAULT 'upload',
-        title        TEXT NOT NULL DEFAULT '',
-        thumbnail    TEXT,
-        published_at TIMESTAMPTZ,
-        active       BOOLEAN NOT NULL DEFAULT true,
-        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )`.catch(()=>{});
+    // ── SAVE UPLOADED VIDEO RECORD ───────────────────────────────
+    if (resource === 'save_video') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+      const { url, thumbnail, title, bytes, duration } = req.body || {};
+      if (!url) return res.status(400).json({ error: 'url required' });
       await sql`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail TEXT`.catch(()=>{});
       await sql`ALTER TABLE videos ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`.catch(()=>{});
-
       const rows = await sql`
         INSERT INTO videos (url, source, title, thumbnail)
-        VALUES (${upData.secure_url}, 'upload', ${title||filename||'Video'}, ${upData.secure_url.replace(/\.mp4$/, '.jpg')})
+        VALUES (${url}, 'upload', ${title||'Video'}, ${thumbnail||null})
         RETURNING *`;
-
-      return res.status(200).json({
-        ...rows[0],
-        original_size:    upData.bytes,
-        cloudinary_url:   upData.secure_url,
-        duration:         upData.duration,
-        format:           upData.format,
-      });
+      return res.status(201).json({ ...rows[0], bytes, duration });
     }
 
         return res.status(400).json({ error: `Unknown resource: ${resource}` });
