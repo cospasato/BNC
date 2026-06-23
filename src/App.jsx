@@ -19,7 +19,12 @@ const WA  = "#FF9500"; const WAB = "#FFF5E6";
 const IN  = "#5856D6"; const INB = "#F0F0FF";
 
 const fmt  = n => "TZS " + Number(n||0).toLocaleString();
-const td   = () => new Date().toISOString().split("T")[0];
+// Day starts at 06:00 — before 06:00 counts as previous day
+const td = () => {
+  const now = new Date();
+  if(now.getHours() < 6) now.setDate(now.getDate() - 1);
+  return now.toISOString().split("T")[0];
+};
 const fmtDate = d => d ? String(d).split("T")[0] : "—";
 const fmtTime = t => t ? String(t).slice(0,5) : "—";
 const fmtDT   = dt => dt ? new Date(dt).toLocaleString("en-TZ",{dateStyle:"short",timeStyle:"short"}) : "—";
@@ -1005,7 +1010,7 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:620}}>
                 <thead>
                   <tr>
-                    {H("Client")}
+                    {H("Masseuse")}
                     {H("Type")}
                     {H("Time In")}
                     {H("Time Out")}
@@ -1038,9 +1043,16 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
                     return(
                       <tr key={s.id} style={{background:rowBg,borderBottom:`1px solid ${G2}`}}>
                         <td style={{padding:"9px 10px"}}>
-                          <div style={{fontWeight:700,color:BK}}>{s.customer_name}</div>
-                          {s.customer_phone&&<div style={{fontSize:11,color:G4}}>{s.customer_phone}</div>}
-                          {th&&<div style={{fontSize:11,color:PL,marginTop:1}}>💆 {th.name}</div>}
+                          {th
+                            ?(<>
+                              <div style={{fontWeight:700,color:PL}}>💆 {th.name}</div>
+                              <div style={{fontSize:11,color:G4,marginTop:1}}>{s.customer_name}</div>
+                            </>)
+                            :(<>
+                              <div style={{color:G4,fontSize:12}}>Any</div>
+                              <div style={{fontSize:11,color:G6,marginTop:1}}>{s.customer_name}</div>
+                            </>)
+                          }
                         </td>
                         <td style={{padding:"9px 10px"}}>
                           <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99,
