@@ -88,6 +88,13 @@ export const api = {
   getFines:      (rid)  => g(`resource=fines${rid?'&recipient_id='+rid:''}`),
   createFine:    b      => p('resource=fines', b),
   deleteFine:    id     => d(`resource=fines&id=${id}`),
+  // Social settings
+  getSocialSettings:  ()  => g('resource=social_settings'),
+  saveSocialSettings: b   => p('resource=social_settings', b),
+  // Videos
+  getVideos:    ()     => g('resource=videos'),
+  createVideo:  b      => p('resource=videos', b),
+  deleteVideo:  id     => d(`resource=videos&id=${id}`),
   // Packages
   getPackages:    ()      => g('resource=packages'),
   createPackage:  b       => p('resource=packages', b),

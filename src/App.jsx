@@ -455,6 +455,7 @@ export default function App(){
     ["payments","Payments","💳",["Admin","Manager"]],
     ["commission","Commission","💵",["Admin","Manager"]],
     ["staff","Staff","👥",["Admin"]],
+    ["videos","M-Videos","▶️",["Admin","Manager"]],
   ];
   const userRole = user?.role||"Receptionist";
   const ADMIN_TABS = ALL_TABS.filter(([,,, roles])=>roles.includes(userRole)).map(([id,label,icon])=>[id,label,icon]);
@@ -483,6 +484,7 @@ export default function App(){
       />}
       {view==="customer"&&customer&&<CustomerPortal navTo={navTo} customer={customer} setCustomer={setCustomer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} custTab={custTab} setCustTab={setCustTab} custAppts={custAppts} custLoading={custLoading} loadCustAppts={loadCustAppts} therapists={therapists} setBD={setBD} initBD={initBD} resetBdText={resetBdText} pop={pop}/>}
       {view==="admin"&&user&&<AdminPortal navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} aTab={aTab} setATab={setATab} loading={loading} logout={logout} appts={appts} setAppts={setAppts} reception={reception} setReception={setReception} therapists={therapists} setTherapists={setTherapists} rooms={rooms} setRooms={setRooms} services={services} setServices={setServices} pricing={pricing} setPricing={setPricing} offers={offers} setOffers={setOffers} expenses={expenses} setExpenses={setExpenses} payMethods={payMethods} setPayMethods={setPayMethods} packages={packages} setPackages={setPackages} staff={staff} setStaff={setStaff} pop={pop} ADMIN_TABS={ADMIN_TABS}/>}
+      {view==="videos"&&<VideosPage navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>}
       {view==="payment_complete"&&<PaymentCompletePage customer={customer} navTo={navTo} pop={pop}/>}
       {view==="therapist" &&therapistUser&&<TherapistPortal therapistUser={therapistUser} setTherapistUser={setTherapistUser} therapistLogout={therapistLogout} pricing={pricing} services={services} rooms={rooms} pop={pop}/>}
       {/* Modals */}
@@ -3676,6 +3678,410 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 
 // ── THERAPIST GRID (marketplace) ──────────────────────────────────────────────
 
+// ── Helpers to extract embed URL ──────────────────────────────────────────────
+function getEmbedUrl(url, thumb) {
+  // YouTube
+  const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([A-Za-z0-9_-]{11})/);
+  if (ytMatch) return { type:'youtube', embedUrl:`https://www.youtube.com/embed/${ytMatch[1]}?rel=0`, thumb:thumb||`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg` };
+  // TikTok
+  const ttMatch = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/);
+  if (ttMatch) return { type:'tiktok', embedUrl:`https://www.tiktok.com/embed/v2/${ttMatch[1]}`, thumb:null };
+  // Instagram reel/post
+  if (url.includes('instagram.com')) {
+    const clean = url.split('?')[0].replace(/\/$/, '');
+    return { type:'instagram', embedUrl:`${clean}/embed/`, thumb:null };
+  }
+  // Facebook video
+  if (url.includes('facebook.com') || url.includes('fb.watch')) {
+    return { type:'facebook', embedUrl:`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&width=560`, thumb:null };
+  }
+  return { type:'unknown', embedUrl:url, thumb:null };
+}
+
+function getSourceIcon(source) {
+  if (source==='tiktok')    return { icon:'🎵', label:'TikTok',    color:'#010101' };
+  if (source==='instagram') return { icon:'📸', label:'Instagram', color:'#E1306C' };
+  if (source==='facebook')  return { icon:'👥', label:'Facebook',  color:'#1877F2' };
+  return                           { icon:'▶️', label:'YouTube',   color:'#FF0000' };
+}
+
+// ── Videos Admin Tab ─────────────────────────────────────────────────────────
+function VideosAdminTab({ pop }) {
+  const [videos,    setVideos]    = useState([]);
+  const [settings,  setSettings]  = useState({ yt_channel_id:'', yt_api_key:'', fb_page_url:'', ig_profile_url:'', tt_profile_url:'' });
+  const [loading,   setLoading]   = useState(true);
+  const [url,       setUrl]       = useState('');
+  const [title,     setTitle]     = useState('');
+  const [source,    setSource]    = useState('youtube');
+  const [saving,    setSaving]    = useState(false);
+  const [savingSet, setSavingSet] = useState(false);
+  const [tab,       setTab]       = useState('add');
+
+  useEffect(() => {
+    Promise.all([api.getVideos(), api.getSocialSettings()])
+      .then(([v, s]) => { setVideos(v); setSettings(ss=>({...ss,...s})); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleUrl = (val) => {
+    setUrl(val);
+    if (val.includes('tiktok'))         setSource('tiktok');
+    else if (val.includes('instagram')) setSource('instagram');
+    else if (val.includes('facebook') || val.includes('fb.watch')) setSource('facebook');
+    else                                setSource('youtube');
+  };
+
+  const add = async () => {
+    if (!url.trim()) return pop('Enter a URL','err');
+    setSaving(true);
+    try {
+      const v = await api.createVideo({ url:url.trim(), source, title:title.trim() });
+      setVideos(p => [v, ...p]);
+      setUrl(''); setTitle('');
+      pop('Video added ✓');
+    } catch(e) { pop(e.message,'err'); }
+    setSaving(false);
+  };
+
+  const saveSettings = async () => {
+    setSavingSet(true);
+    try {
+      await api.saveSocialSettings(settings);
+      pop('Settings saved ✓');
+    } catch(e) { pop(e.message,'err'); }
+    setSavingSet(false);
+  };
+
+  const del = async (v) => {
+    if (!window.confirm(`Remove "${v.title||v.url.slice(0,40)}"?`)) return;
+    try {
+      await api.deleteVideo(v.id);
+      setVideos(p => p.filter(x => x.id !== v.id));
+      pop('Removed');
+    } catch(e) { pop(e.message,'err'); }
+  };
+
+  return (
+    <div>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20,color:BK}}>▶️ M-Videos Manager</h2>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        {[["add","➕ Add Video"],["settings","⚙️ Channel Settings"],["list","📋 All Videos"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setTab(v)}
+            style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+              border:`1px solid ${tab===v?PL:G2}`,background:tab===v?PL:WH,color:tab===v?WH:G6}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* ── ADD VIDEO ── */}
+      {tab==='add'&&(
+        <Card>
+          <ST c="Add Video Link"/>
+          <div style={{background:G1,borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:13,color:G6}}>
+            Paste a video link from YouTube, TikTok, Instagram, or Facebook. YouTube videos from your channel are also auto-fetched if you configure the channel settings.
+          </div>
+          <Inp label="Video URL" value={url} onChange={e=>handleUrl(e.target.value)}
+            placeholder="https://youtube.com/watch?v=...   or tiktok / instagram / facebook link"/>
+          <Inp label="Title (optional)" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Relaxing Full Body Massage"/>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>
+              Platform (auto-detected from URL)
+            </label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+              {[["youtube","▶️ YouTube","#FF0000"],["tiktok","🎵 TikTok","#010101"],["instagram","📸 Instagram","#E1306C"],["facebook","👥 Facebook","#1877F2"]].map(([v,l,col])=>(
+                <button key={v} onClick={()=>setSource(v)}
+                  style={{padding:"8px 14px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${source===v?col:G2}`,background:source===v?col+"15":WH,color:source===v?col:G6}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Btn onClick={add} disabled={saving||!url.trim()} style={{width:"100%",justifyContent:"center"}}>
+            {saving?"Adding…":"+ Add Video"}
+          </Btn>
+        </Card>
+      )}
+
+      {/* ── CHANNEL SETTINGS ── */}
+      {tab==='settings'&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* YouTube */}
+          <Card>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+              <span style={{fontSize:20}}>▶️</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:15}}>YouTube Auto-Fetch</div>
+                <div style={{fontSize:12,color:G6}}>Latest videos pulled automatically from your channel</div>
+              </div>
+            </div>
+            <Inp label="YouTube Channel ID" value={settings.yt_channel_id} onChange={e=>setSettings(s=>({...s,yt_channel_id:e.target.value}))}
+              placeholder="UCxxxxxxxxxxxxxxxxxxxxxxxx"/>
+            <Inp label="YouTube API Key (from Google Cloud Console)" value={settings.yt_api_key} onChange={e=>setSettings(s=>({...s,yt_api_key:e.target.value}))}
+              placeholder="AIzaSy..."/>
+            <div style={{background:PLF,borderRadius:8,padding:"10px 12px",fontSize:12,color:PL,marginBottom:14}}>
+              <strong>How to get these:</strong><br/>
+              1. Go to <strong>console.cloud.google.com</strong> → Create project → Enable "YouTube Data API v3"<br/>
+              2. Create credentials → API Key → copy it above<br/>
+              3. Your Channel ID is in YouTube Studio → Settings → Channel → Advanced
+            </div>
+          </Card>
+
+          {/* TikTok */}
+          <Card>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+              <span style={{fontSize:20}}>🎵</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:15}}>TikTok</div>
+                <div style={{fontSize:12,color:G6}}>TikTok API requires business approval — add videos manually above</div>
+              </div>
+            </div>
+            <Inp label="Your TikTok Profile URL (for display)" value={settings.tt_profile_url} onChange={e=>setSettings(s=>({...s,tt_profile_url:e.target.value}))}
+              placeholder="https://tiktok.com/@youraccount"/>
+            <div style={{background:G1,borderRadius:8,padding:"10px 12px",fontSize:12,color:G6}}>
+              Paste each TikTok video link individually in "Add Video" tab. Open the video → Share → Copy link.
+            </div>
+          </Card>
+
+          {/* Instagram */}
+          <Card>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+              <span style={{fontSize:20}}>📸</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:15}}>Instagram</div>
+                <div style={{fontSize:12,color:G6}}>Instagram API requires Meta Business approval — add videos manually</div>
+              </div>
+            </div>
+            <Inp label="Your Instagram Profile URL (for display)" value={settings.ig_profile_url} onChange={e=>setSettings(s=>({...s,ig_profile_url:e.target.value}))}
+              placeholder="https://instagram.com/youraccount"/>
+            <div style={{background:G1,borderRadius:8,padding:"10px 12px",fontSize:12,color:G6}}>
+              Paste each Reel/video link individually. Open the post → Share → Copy link.
+            </div>
+          </Card>
+
+          {/* Facebook */}
+          <Card>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+              <span style={{fontSize:20}}>👥</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:15}}>Facebook Page</div>
+                <div style={{fontSize:12,color:G6}}>Add Facebook video links manually or auto-fetch with a Page token</div>
+              </div>
+            </div>
+            <Inp label="Facebook Page URL (for display)" value={settings.fb_page_url} onChange={e=>setSettings(s=>({...s,fb_page_url:e.target.value}))}
+              placeholder="https://facebook.com/yourpage"/>
+            <div style={{background:G1,borderRadius:8,padding:"10px 12px",fontSize:12,color:G6}}>
+              For each video: open it on Facebook → Share → Copy link, then paste in "Add Video" tab.
+            </div>
+          </Card>
+
+          <Btn onClick={saveSettings} disabled={savingSet} style={{width:"100%",justifyContent:"center"}}>
+            {savingSet?"Saving…":"💾 Save Settings"}
+          </Btn>
+        </div>
+      )}
+
+      {/* ── VIDEO LIST ── */}
+      {tab==='list'&&(
+        <div>
+          {loading&&<div style={{color:G4,textAlign:"center",padding:30}}>Loading…</div>}
+          {!loading&&videos.length===0&&(
+            <div style={{textAlign:"center",padding:40,color:G4,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>
+              No videos yet. Add your first video in the "Add Video" tab.
+            </div>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {videos.map(v => {
+              const { thumb } = getEmbedUrl(v.url, v.thumbnail);
+              const { icon, label, color } = getSourceIcon(v.source);
+              const actualThumb = v.thumbnail || thumb;
+              return (
+                <div key={v.id} style={{background:WH,borderRadius:12,border:`1px solid ${G2}`,padding:"10px 14px",
+                  display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:72,height:48,borderRadius:7,overflow:"hidden",flexShrink:0,
+                    background:G1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {actualThumb
+                      ?<img src={actualThumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      :<span style={{fontSize:24}}>{icon}</span>
+                    }
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13,color:BK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {v.title||v.url.slice(0,45)}
+                    </div>
+                    <div style={{display:"flex",gap:6,marginTop:3,alignItems:"center",flexWrap:"wrap"}}>
+                      <span style={{fontSize:11,fontWeight:700,color,background:color+"15",padding:"1px 7px",borderRadius:99}}>
+                        {icon} {label}
+                      </span>
+                      <span style={{fontSize:11,color:G4}}>
+                        {new Date(v.published_at||v.created_at).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"})}
+                      </span>
+                      {v._auto&&<span style={{fontSize:10,color:OK,background:OKB,padding:"1px 6px",borderRadius:99,fontWeight:700}}>AUTO</span>}
+                    </div>
+                  </div>
+                  {!v._auto&&(
+                    <button onClick={()=>del(v)}
+                      style={{background:"none",border:`1px solid ${ER}`,color:ER,borderRadius:7,padding:"5px 9px",
+                        cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>
+                      🗑
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Videos Public Page ────────────────────────────────────────────────────────
+function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, custLogout, setCustModal, setModal }) {
+  const [videos,   setVideos]   = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [filter,   setFilter]   = useState('all');
+  const [playing,  setPlaying]  = useState(null);
+
+  useEffect(() => {
+    // fetch_yt=1 triggers server-side YouTube channel fetch if configured
+    api.getVideos().then(v => { setVideos(v); setLoading(false); }).catch(() => setLoading(false));
+    // Also try with YouTube auto-fetch
+    fetch('/api/spa?resource=videos&fetch_yt=1')
+      .then(r=>r.json()).then(v=>{ if(Array.isArray(v)&&v.length) setVideos(v); })
+      .catch(()=>{});
+  }, []);
+
+  const shown = filter==='all' ? videos : videos.filter(v=>v.source===filter);
+
+  return (
+    <div style={{minHeight:"100vh",background:BK,paddingTop:62,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+      <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser}
+        therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal}/>
+
+      {/* Header */}
+      <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,padding:"28px 20px 20px",textAlign:"center"}}>
+        <div style={{fontSize:11,color:GOLD,letterSpacing:".2em",textTransform:"uppercase",marginBottom:8,fontWeight:700}}>
+          ✦ MASSAGE TZ ✦
+        </div>
+        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(24px,6vw,40px)",color:WH,margin:"0 0 6px"}}>
+          M-Videos
+        </h1>
+        <p style={{color:"rgba(255,255,255,.6)",fontSize:14,margin:"0 0 20px"}}>
+          Our latest videos — tutorials, sessions & more
+        </p>
+        {/* Filter tabs */}
+        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+          {[["all","🎬 All"],["youtube","▶️ YouTube"],["tiktok","🎵 TikTok"],["instagram","📸 Instagram"],["facebook","👥 Facebook"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setFilter(v)}
+              style={{padding:"7px 16px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                border:"none",
+                background:filter===v?GOLD:"rgba(255,255,255,.1)",
+                color:filter===v?BK:WH,transition:"all .2s"}}>
+              {l}
+              {v!=='all'&&videos.filter(x=>x.source===v).length>0&&(
+                <span style={{marginLeft:5,fontSize:11,opacity:.8}}>({videos.filter(x=>x.source===v).length})</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Video grid */}
+      <div style={{maxWidth:960,margin:"0 auto",padding:"24px 14px 60px"}}>
+        {loading&&(
+          <div style={{textAlign:"center",padding:60,color:"rgba(255,255,255,.4)"}}>Loading videos…</div>
+        )}
+        {!loading&&shown.length===0&&(
+          <div style={{textAlign:"center",padding:60,color:"rgba(255,255,255,.4)"}}>
+            No videos yet. Check back soon!
+          </div>
+        )}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,320px),1fr))",gap:16}}>
+          {shown.map(v => {
+            const { embedUrl, thumb } = getEmbedUrl(v.url);
+            const { icon, label, color } = getSourceIcon(v.source);
+            const isPlaying = playing === v.id;
+            return (
+              <div key={v.id} style={{background:"#111",borderRadius:14,overflow:"hidden",
+                boxShadow:"0 4px 20px rgba(0,0,0,.4)",transition:"transform .2s",cursor:"pointer"}}
+                onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                onMouseLeave={e=>e.currentTarget.style.transform=""}>
+                {/* Video embed or thumbnail */}
+                <div style={{paddingTop:"56.25%",position:"relative",background:"#000"}}>
+                  {isPlaying
+                    ? <iframe
+                        src={embedUrl + (v.source==='youtube'?'&autoplay=1':'')}
+                        style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                        title={v.title||"Video"}
+                      />
+                    : <div onClick={()=>setPlaying(v.id)}
+                        style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+                          alignItems:"center",justifyContent:"center",cursor:"pointer",
+                          background:thumb?"none":"linear-gradient(135deg,#1a1a2e,#4a1a3e)"}}>
+                        {thumb&&<img src={thumb} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/>}
+                        {/* Play button */}
+                        <div style={{position:"relative",zIndex:2,width:60,height:60,borderRadius:"50%",
+                          background:"rgba(255,255,255,.95)",display:"flex",alignItems:"center",justifyContent:"center",
+                          boxShadow:"0 4px 20px rgba(0,0,0,.5)",transition:"transform .2s"}}
+                          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
+                          onMouseLeave={e=>e.currentTarget.style.transform=""}>
+                          <span style={{fontSize:22,marginLeft:3}}>▶</span>
+                        </div>
+                        <div style={{position:"absolute",top:10,left:10,background:color,color:WH,
+                          fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:99}}>
+                          {icon} {label}
+                        </div>
+                      </div>
+                  }
+                  {isPlaying&&(
+                    <button onClick={()=>setPlaying(null)}
+                      style={{position:"absolute",top:8,right:8,zIndex:3,width:30,height:30,borderRadius:"50%",
+                        background:"rgba(0,0,0,.7)",border:"none",color:WH,fontSize:16,cursor:"pointer",
+                        display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {/* Info */}
+                <div style={{padding:"12px 14px"}}>
+                  <div style={{fontWeight:700,fontSize:14,color:WH,marginBottom:4,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {v.title||"MASSAGE TZ"}
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:11,fontWeight:700,color,background:color+"20",padding:"2px 8px",borderRadius:99}}>
+                      {icon} {label}
+                    </span>
+                    <span style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>
+                      {new Date(v.created_at).toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"})}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Footer CTA */}
+      <div style={{background:PLD,padding:"24px 20px",textAlign:"center"}}>
+        <button onClick={()=>navTo("book",1)}
+          style={{background:PL,color:WH,border:`2px solid ${GOLD}`,borderRadius:10,
+            padding:"11px 28px",fontSize:14,cursor:"pointer",fontWeight:700,fontFamily:"'Playfair Display',serif"}}>
+          Book a Session →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function NavBar({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal}){
 const isMobile = typeof window!=="undefined" && window.innerWidth<640;
 return (
@@ -3710,8 +4116,12 @@ return (
         </div>
       )}
       {!customer&&!user&&<button onClick={()=>setCustModal("login")} style={{background:PL,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>{isMobile?"Login":"My Account"}</button>}
-      
-      
+      <button onClick={()=>navTo("videos")}
+        style={{background:"transparent",color:GOLD,border:`1px solid ${GOLD}`,borderRadius:8,
+          padding:"7px 14px",fontSize:13,cursor:"pointer",fontWeight:700,fontFamily:"inherit",
+          display:"flex",alignItems:"center",gap:5}}>
+        {isMobile?"▶":"▶ M-Videos"}
+      </button>
     </div>
   </nav>
 );
@@ -3845,6 +4255,7 @@ function AdminPortal({navTo,customer,user,therapistUser,therapistLogout,custLogo
           {!loading&&aTab==="packages"&&<PackagesTab packages={packages} setPackages={setPackages} services={services} rooms={rooms} pop={pop}/>}
           {!loading&&aTab==="payments"&&<PaymentsTab payMethods={payMethods} setPayMethods={setPayMethods} pop={pop}/>}
           {!loading&&aTab==="commission"&&<CommissionTab therapists={therapists} setTherapists={setTherapists} staff={staff} setStaff={setStaff} user={user} pop={pop}/>}
+          {!loading&&aTab==="videos"&&<VideosAdminTab pop={pop}/> }
           {!loading&&aTab==="staff"&&user?.role==="Admin"&&<StaffTab staff={staff} setStaff={setStaff} pop={pop} currentUser={user}/>}
         </div>
       </div>

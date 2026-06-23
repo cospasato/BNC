@@ -826,7 +826,101 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ results });
     }
 
-    return res.status(400).json({ error: `Unknown resource: ${resource}` });
+    // ── VIDEOS ───────────────────────────────────────────────────
+    if (resource === 'videos') {
+      await sql`CREATE TABLE IF NOT EXISTS videos (
+        id           TEXT PRIMARY KEY DEFAULT 'VID' || upper(substr(md5(random()::text),1,6)),
+        url          TEXT NOT NULL,
+        source       TEXT NOT NULL DEFAULT 'youtube',
+        title        TEXT NOT NULL DEFAULT '',
+        thumbnail    TEXT,
+        published_at TIMESTAMPTZ,
+        active       BOOLEAN NOT NULL DEFAULT true,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`.catch(()=>{});
+      await sql`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail TEXT`.catch(()=>{});
+      await sql`ALTER TABLE videos ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`.catch(()=>{});
+
+      // ── GET: return manual videos + optionally fetch YouTube channel videos ──
+      if (req.method === 'GET') {
+        const { fetch_yt } = req.query;
+        let manual = await sql`SELECT * FROM videos WHERE active=true ORDER BY COALESCE(published_at, created_at) DESC`;
+
+        // Auto-fetch latest YouTube videos from configured channel
+        if (fetch_yt === '1' && process.env.YT_API_KEY && process.env.YT_CHANNEL_ID) {
+          try {
+            const channelId = process.env.YT_CHANNEL_ID;
+            const apiKey    = process.env.YT_API_KEY;
+            // Uploads playlist = channel ID with UC -> UU
+            const playlistId = channelId.replace(/^UC/, 'UU');
+            const ytRes = await fetch(
+              `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=20&key=${apiKey}`
+            );
+            const ytData = await ytRes.json();
+            const ytVideos = (ytData.items||[]).map(item => ({
+              id:           'YT_' + item.snippet.resourceId.videoId,
+              url:          `https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}`,
+              source:       'youtube',
+              title:        item.snippet.title,
+              thumbnail:    item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
+              published_at: item.snippet.publishedAt,
+              created_at:   item.snippet.publishedAt,
+              _auto:        true,
+            }));
+            // Merge: manual overrides auto (if same video URL exists manually, keep manual)
+            const manualUrls = new Set(manual.map(v=>v.url));
+            const merged = [
+              ...manual,
+              ...ytVideos.filter(v=>!manualUrls.has(v.url))
+            ].sort((a,b)=>new Date(b.published_at||b.created_at)-new Date(a.published_at||a.created_at));
+            return res.status(200).json(merged);
+          } catch(e) {
+            console.warn('YouTube fetch failed:', e.message);
+          }
+        }
+        return res.status(200).json(manual);
+      }
+
+      // ── POST: add manual video ──
+      if (req.method === 'POST') {
+        const { url, source, title, thumbnail, published_at } = req.body || {};
+        if (!url) return res.status(400).json({ error: 'url required' });
+        const src = source || (url.includes('tiktok') ? 'tiktok' : url.includes('instagram') ? 'instagram' : url.includes('facebook') ? 'facebook' : 'youtube');
+        const rows = await sql`
+          INSERT INTO videos (url, source, title, thumbnail, published_at)
+          VALUES (${url}, ${src}, ${title||''}, ${thumbnail||null}, ${published_at||null})
+          RETURNING *`;
+        return res.status(201).json(rows[0]);
+      }
+      if (req.method === 'DELETE' && id) {
+        await sql`UPDATE videos SET active=false WHERE id=${id}`;
+        return res.status(200).json({ success: true });
+      }
+    }
+
+    // ── SOCIAL SETTINGS ──────────────────────────────────────────
+    if (resource === 'social_settings') {
+      await sql`CREATE TABLE IF NOT EXISTS social_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL DEFAULT ''
+      )`.catch(()=>{});
+      if (req.method === 'GET') {
+        const rows = await sql`SELECT * FROM social_settings`;
+        const obj = {};
+        rows.forEach(r => obj[r.key] = r.value);
+        return res.status(200).json(obj);
+      }
+      if (req.method === 'POST') {
+        const settings = req.body || {};
+        for (const [key, value] of Object.entries(settings)) {
+          await sql`INSERT INTO social_settings(key,value) VALUES(${key},${value})
+                    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`;
+        }
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+        return res.status(400).json({ error: `Unknown resource: ${resource}` });
 
   } catch (err) {
     console.error('spa API error:', err.message, err.stack);
