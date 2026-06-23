@@ -929,7 +929,7 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <Badge s={a.status}/>
-                  {["cancelled","noShow"].includes(a.status)&&(
+                  {["cancelled","noShow"].includes(a.status)&&["Admin","Manager"].includes(user?.role)&&(
                     <button onClick={e=>{e.stopPropagation();delAppt(a);}}
                       title="Delete appointment"
                       style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:16,padding:"2px 4px",lineHeight:1}}>
@@ -1158,8 +1158,8 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
                 </button>
               ))}
             </div>
-            {/* Delete — only for cancelled or no-show */}
-            {["cancelled","noShow"].includes(selA.status)&&(
+            {/* Delete — Admin only, cancelled or no-show */}
+            {["cancelled","noShow"].includes(selA.status)&&["Admin","Manager"].includes(user?.role)&&(
               <button onClick={()=>delAppt(selA)}
                 style={{width:"100%",marginTop:10,padding:"10px",borderRadius:9,fontSize:13,fontWeight:700,
                   cursor:"pointer",fontFamily:"inherit",border:`2px solid ${ER}`,background:ERB,color:ER,
@@ -1624,18 +1624,20 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
                   {bal>0&&<span><span style={{color:G6}}>Due: </span><strong style={{color:ER}}>{fmt(bal)}</strong></span>}
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {/* Edit button — always visible */}
+                  {/* Edit button — Admin/Manager only */}
+                  {["Admin","Manager"].includes(user?.role)&&(
                   <button onClick={()=>openEdit(r)}
                     style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${IN}`,background:INB,color:IN,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                     ✏️ Edit
                   </button>
+                  )}
                   {isActive&&bal>0&&(
                     <button onClick={()=>{setCoModal({...r,bal});setPayAmt(String(bal));}}
                       style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${OK}`,background:OKB,color:OK,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       💵 Pay
                     </button>
                   )}
-                  {isActive&&(
+                  {isActive&&["Admin","Manager"].includes(user?.role)&&(
                     <button onClick={()=>{setCoModal({...r,bal});setPayAmt(bal>0?String(bal):"0");}}
                       style={{padding:"6px 12px",borderRadius:7,border:"none",background:ER,color:WH,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       🚪 End
@@ -1729,6 +1731,121 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
               style={{flex:2,padding:"12px",borderRadius:9,border:"none",background:`linear-gradient(135deg,#dc2626,#ef4444)`,
                 color:WH,fontSize:14,fontWeight:700,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit",opacity:saving?.7:1}}>
               {saving?"Ending…":"🚪 End Session"}
+            </button>
+          </div>
+        </Modal>
+        );
+      })()}
+
+      {/* ── EDIT SESSION MODAL ── */}
+      {editModal&&(()=>{
+        const ef = editForm;
+        const editSvcs = ef.services||[];
+        const editTotal = editSvcs.reduce((s,sv)=>s+Number(sv.price||0),0)||ef.total_amount;
+        return(
+        <Modal title="✏️ Edit Session" onClose={()=>setEditModal(null)} wide>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <Inp label="Client Name *" value={ef.customer_name} onChange={e=>setEditForm(f=>({...f,customer_name:e.target.value}))} placeholder="Jane Mwangi"/>
+            <Inp label="Phone" value={ef.customer_phone} onChange={e=>setEditForm(f=>({...f,customer_phone:e.target.value}))} placeholder="+255 7XX"/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".06em"}}>Gender</label>
+            <div style={{display:"flex",gap:8}}>
+              {[["male","👨 Male"],["female","👩 Female"],["other","⚧ Other"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setEditForm(f=>({...f,client_gender:v}))}
+                  style={{flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${ef.client_gender===v?PL:G2}`,background:ef.client_gender===v?PLF:WH,color:ef.client_gender===v?PL:G6}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <Sel label="Therapist" value={ef.therapist_id} onChange={e=>setEditForm(f=>({...f,therapist_id:e.target.value}))}>
+              <option value="">Any / Not assigned</option>
+              {therapists.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </Sel>
+            <Sel label="Room" value={ef.room_id} onChange={e=>setEditForm(f=>({...f,room_id:e.target.value}))}>
+              <option value="">No room / Outcall</option>
+              {rooms.filter(r=>r.active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+            </Sel>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".06em"}}>Service Type</label>
+            <div style={{display:"flex",gap:8}}>
+              {[["inhouse","🏢 In-House"],["outcall","🏠 Outcall"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setEditForm(f=>({...f,service_type:v}))}
+                  style={{flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${ef.service_type===v?PL:G2}`,background:ef.service_type===v?PLF:WH,color:ef.service_type===v?PL:G6}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>
+              Services ({editSvcs.length} selected)
+            </label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:editSvcs.length?10:0}}>
+              {services.filter(s=>s.active).map(sv=>{
+                const sel=editSvcs.find(s=>s.id===sv.id);
+                const pr=pricing?(pricing.find(p=>p.service_id===sv.id&&p.service_type===ef.service_type)?.price||0):0;
+                return(
+                  <button key={sv.id} onClick={()=>toggleEditSvc(sv)}
+                    style={{padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                      border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G6,
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                    <span>{sv.name}</span>
+                    {pr>0&&<span style={{fontSize:10,fontWeight:400,color:sel?PL:G4}}>{fmt(pr)}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {editSvcs.length>0&&(
+              <div style={{background:PLF,borderRadius:9,padding:"10px 14px",border:`1px solid ${PL}30`}}>
+                {editSvcs.map((s,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
+                    <span>{s.name}</span><span style={{fontWeight:700,color:PL}}>{fmt(s.price)}</span>
+                  </div>
+                ))}
+                <div style={{borderTop:`1px solid ${PL}30`,marginTop:6,paddingTop:6,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15,color:PL}}>
+                  <span>Total</span><span>{fmt(editTotal)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".06em"}}>Payment Method</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {(payMethods.length?payMethods:["Cash"]).map(pm=>(
+                <button key={pm} onClick={()=>setEditForm(f=>({...f,payment_method:pm}))}
+                  style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${ef.payment_method===pm?PL:G2}`,background:ef.payment_method===pm?PLF:WH,color:ef.payment_method===pm?PL:G6}}>
+                  {pm}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:7,textTransform:"uppercase",letterSpacing:".06em"}}>Status</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {[["inProgress","🟣 In Session"],["completed","✅ Completed"],["cancelled","❌ Cancelled"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setEditForm(f=>({...f,status:v}))}
+                  style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`2px solid ${ef.status===v?PL:G2}`,background:ef.status===v?PLF:WH,color:ef.status===v?PL:G6}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Txa label="Notes" value={ef.notes} onChange={e=>setEditForm(f=>({...f,notes:e.target.value}))} rows={2} placeholder="Session notes…"/>
+          <div style={{display:"flex",gap:10,marginTop:4}}>
+            <Btn v="ghost" onClick={()=>setEditModal(null)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
+            <button onClick={saveEdit} disabled={saving||!ef.customer_name}
+              style={{flex:2,padding:"12px",borderRadius:9,border:"none",
+                background:`linear-gradient(135deg,${PLD},${PL})`,color:WH,
+                fontSize:14,fontWeight:700,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit",opacity:saving?.7:1}}>
+              {saving?"Saving…":"💾 Save Changes"}
             </button>
           </div>
         </Modal>
