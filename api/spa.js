@@ -937,10 +937,11 @@ module.exports = async function handler(req, res) {
       const crypto    = require('crypto');
       const timestamp = Math.floor(Date.now() / 1000);
       const folder    = 'massagetz_videos';
-      const eager     = 'q_auto:good,vc_h264';
-      const sigStr    = `eager=${eager}&folder=${folder}&timestamp=${timestamp}${apiSecret}`;
+      // Signature must include ONLY params sent in the upload request, sorted alphabetically
+      // We send: folder, timestamp — that's it (keep it simple, no eager)
+      const sigStr = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
       const signature = crypto.createHash('sha1').update(sigStr).digest('hex');
-      return res.status(200).json({ timestamp, signature, apiKey, cloudName, folder, eager });
+      return res.status(200).json({ timestamp, signature, apiKey, cloudName, folder });
     }
 
     // ── SAVE UPLOADED VIDEO RECORD ───────────────────────────────

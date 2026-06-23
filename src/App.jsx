@@ -3760,10 +3760,10 @@ function UploadVideoWidget({ pop, onUploaded }) {
       const form = new FormData();
       form.append('file',      file);
       form.append('api_key',   sig.apiKey);
-      form.append('timestamp', sig.timestamp);
+      form.append('timestamp', String(sig.timestamp));
       form.append('signature', sig.signature);
       form.append('folder',    sig.folder);
-      form.append('eager',     sig.eager);
+      // Note: resource_type is NOT included in signature, sent separately
       form.append('resource_type', 'video');
 
       // Use XMLHttpRequest for real upload progress
