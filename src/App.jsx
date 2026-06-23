@@ -664,6 +664,18 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
   const [payAmt,setPayAmt]=useState("");
   const [payMethod,setPayMethod]=useState((payMethods||[])[0]||"Cash");
   const [saving,setSaving]=useState(false);
+  const [now,setNow]=useState(Date.now());
+  useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),1000); return()=>clearInterval(t); },[]);
+
+  // Upcoming bookings — confirmed/pending appointments today and future, sorted by date+time
+  const upcoming = appts
+    .filter(a=>["pending","confirmed"].includes(a.status) && (a.appt_date||"")>=""+today)
+    .sort((a,b)=>{
+      const da=(a.appt_date||"")+"T"+(a.appt_time||"00:00");
+      const db=(b.appt_date||"")+"T"+(b.appt_time||"00:00");
+      return da.localeCompare(db);
+    })
+    .slice(0,10);
 
   const openEdit = (r) => {
     const svcs = Array.isArray(r.services) ? r.services : (typeof r.services==="string" ? JSON.parse(r.services||"[]") : []);
@@ -787,8 +799,10 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
             {active.map(r=>{
               const th=therapists.find(t=>t.id===r.therapist_id);
               const rm=rooms.find(rm=>rm.id===r.room_id);
-              const elapsed=r.in_time?Math.floor((Date.now()-new Date(r.in_time))/60000):0;
-              const hrs=Math.floor(elapsed/60), mins=elapsed%60;
+              const elapsed=r.in_time?Math.floor((now-new Date(r.in_time))/1000):0;
+              const hrs=Math.floor(elapsed/3600);
+              const mins=Math.floor((elapsed%3600)/60);
+              const secs=elapsed%60;
               const svcs=Array.isArray(r.services)?r.services:(typeof r.services==="string"?JSON.parse(r.services||"[]"):[]);
               const bal=Number(r.total_amount||0)-Number(r.paid_amount||0);
               const isEditing=editSession===r.id;
@@ -801,8 +815,8 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
                       <div style={{fontSize:12,opacity:.8}}>{r.customer_phone||""}</div>
                     </div>
                     <div style={{textAlign:"right"}}>
-                      <div style={{background:"rgba(255,255,255,.2)",color:WH,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>
-                        🕐 {hrs>0?`${hrs}h `:""}${mins}m
+                      <div style={{background:"rgba(255,255,255,.15)",color:WH,padding:"5px 12px",borderRadius:99,fontSize:13,fontWeight:700,letterSpacing:".05em",fontVariantNumeric:"tabular-nums"}}>
+                        🕐 {hrs>0?String(hrs).padStart(2,"0")+":":""}{String(mins).padStart(2,"0")}:{String(secs).padStart(2,"0")}
                       </div>
                       <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:3}}>
                         In: {r.in_time?new Date(r.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"—"}
@@ -914,7 +928,52 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
         </div>
       )}
 
-      {/* Today's appointments */}
+      {/* ── UPCOMING BOOKINGS ── */}
+      {upcoming.length>0&&(
+        <div style={{marginBottom:20}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:700,color:BK,marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+            📅 Upcoming Bookings
+            <span style={{background:PLF,color:PL,borderRadius:99,fontSize:12,fontWeight:700,padding:"2px 10px"}}>{upcoming.length}</span>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {upcoming.map(a=>{
+              const th=therapists.find(t=>t.id===a.therapist_id);
+              const svcs=Array.isArray(a.services)?a.services.map(s=>s.name).join(" + "):"-";
+              const isToday=(a.appt_date||"").slice(0,10)===today;
+              const isTomorrow=(()=>{const d=new Date();d.setDate(d.getDate()+1);return(a.appt_date||"").slice(0,10)===d.toISOString().slice(0,10);})();
+              const dayLabel=isToday?"Today":isTomorrow?"Tomorrow":fmtDate(a.appt_date);
+              const apptTs=new Date((a.appt_date||"")+"T"+(a.appt_time||"00:00")).getTime();
+              const diff=Math.max(0,apptTs-now);
+              const dHrs=Math.floor(diff/3600000);
+              const dMins=Math.floor((diff%3600000)/60000);
+              const timeUntil=diff<=0?"Now":dHrs>=24?`${Math.floor(dHrs/24)}d ${dHrs%24}h`:dHrs>0?`${dHrs}h ${dMins}m`:`${dMins}m`;
+              const urgent=diff>0&&diff<3600000;
+              return(
+                <div key={a.id} style={{background:WH,borderRadius:12,border:`2px solid ${urgent?WA:G2}`,padding:"12px 14px",
+                  display:"flex",alignItems:"center",gap:12,boxShadow:urgent?`0 2px 12px ${WA}30`:"0 1px 4px rgba(0,0,0,.06)"}}>
+                  <div style={{flexShrink:0,textAlign:"center",background:urgent?WAB:PLF,borderRadius:10,padding:"8px 10px",minWidth:58}}>
+                    <div style={{fontWeight:700,fontSize:15,color:urgent?WA:PL}}>{fmtTime(a.appt_time)}</div>
+                    <div style={{fontSize:10,color:urgent?WA:G6,marginTop:2,fontWeight:600}}>{dayLabel}</div>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:14,color:BK}}>{a.customer_name}</div>
+                    <div style={{fontSize:12,color:G6,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {th?.name||"Any therapist"} · {svcs}
+                    </div>
+                    {a.service_type==="outcall"&&<span style={{fontSize:11,color:PL,fontWeight:600}}>🏠 Outcall</span>}
+                  </div>
+                  <div style={{flexShrink:0,textAlign:"right"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:urgent?WA:PL,fontVariantNumeric:"tabular-nums"}}>{timeUntil}</div>
+                    <div style={{fontSize:10,color:G4,marginTop:2}}>{diff<=0?"overdue":"away"}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Today's appointments summary */}
       {todayAppts.length>0&&(
         <Card>
           <ST c="Today's Appointments"/>
