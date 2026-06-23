@@ -843,14 +843,19 @@ module.exports = async function handler(req, res) {
 
       // ── GET: return manual videos + optionally fetch YouTube channel videos ──
       if (req.method === 'GET') {
-        const { fetch_yt } = req.query;
         let manual = await sql`SELECT * FROM videos WHERE active=true ORDER BY COALESCE(published_at, created_at) DESC`;
 
-        // Auto-fetch latest YouTube videos from configured channel
-        if (fetch_yt === '1' && process.env.YT_API_KEY && process.env.YT_CHANNEL_ID) {
+        // Auto-fetch latest YouTube videos from social_settings table
+        const ytSettings = await sql`SELECT key,value FROM social_settings WHERE key IN ('yt_api_key','yt_channel_id')`.catch(()=>[]);
+        const ytCfg = {};
+        ytSettings.forEach(r => ytCfg[r.key] = r.value);
+        const ytApiKey = ytCfg.yt_api_key || process.env.YT_API_KEY;
+        const ytChannelId = ytCfg.yt_channel_id || process.env.YT_CHANNEL_ID;
+
+        if (ytApiKey && ytChannelId) {
           try {
-            const channelId = process.env.YT_CHANNEL_ID;
-            const apiKey    = process.env.YT_API_KEY;
+            const channelId = ytChannelId;
+            const apiKey    = ytApiKey;
             // Uploads playlist = channel ID with UC -> UU
             const playlistId = channelId.replace(/^UC/, 'UU');
             const ytRes = await fetch(
@@ -875,7 +880,8 @@ module.exports = async function handler(req, res) {
             ].sort((a,b)=>new Date(b.published_at||b.created_at)-new Date(a.published_at||a.created_at));
             return res.status(200).json(merged);
           } catch(e) {
-            console.warn('YouTube fetch failed:', e.message);
+            console.warn('YouTube fetch failed:', e.message, e.stack);
+            manual = [...manual, { _ytError: e.message }].filter(v=>!v._ytError);
           }
         }
         return res.status(200).json(manual);

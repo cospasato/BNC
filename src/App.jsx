@@ -3946,14 +3946,33 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
   const [filter,   setFilter]   = useState('all');
   const [playing,  setPlaying]  = useState(null);
 
+  const observerRef = useRef(null);
+
   useEffect(() => {
-    // fetch_yt=1 triggers server-side YouTube channel fetch if configured
-    api.getVideos().then(v => { setVideos(v); setLoading(false); }).catch(() => setLoading(false));
-    // Also try with YouTube auto-fetch
-    fetch('/api/spa?resource=videos&fetch_yt=1')
-      .then(r=>r.json()).then(v=>{ if(Array.isArray(v)&&v.length) setVideos(v); })
-      .catch(()=>{});
+    // Load videos (server auto-fetches YouTube if configured)
+    fetch('/api/spa?resource=videos')
+      .then(r=>r.json())
+      .then(v=>{ if(Array.isArray(v)) { setVideos(v); setLoading(false); } })
+      .catch(()=>setLoading(false));
   }, []);
+
+  // Intersection Observer for scroll-to-play
+  useEffect(() => {
+    if(observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if(e.isIntersecting && e.intersectionRatio >= 0.7) {
+          const vid = e.target.dataset.vid;
+          if(vid) setPlaying(vid);
+        } else if(!e.isIntersecting) {
+          const vid = e.target.dataset.vid;
+          setPlaying(p => p===vid ? null : p);
+        }
+      });
+    }, { threshold:[0, 0.7] });
+    document.querySelectorAll('[data-vid]').forEach(el => observerRef.current.observe(el));
+    return () => observerRef.current?.disconnect();
+  }, [shown.map(v=>v.id).join(',')]);
 
   const shown = filter==='all' ? videos : videos.filter(v=>v.source===filter);
 
