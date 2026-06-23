@@ -1011,7 +1011,6 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
                     {H("Time Out")}
                     {H("Room")}
                     {H("Services")}
-                    {H("Total")}
                     {H("Paid")}
                     {H("Payment")}
                     {H("Status")}
@@ -1062,10 +1061,9 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
                             </div>
                           )}
                         </td>
-                        <td style={{padding:"9px 10px",fontWeight:700,color:BK,whiteSpace:"nowrap"}}>{fmt(s.total_amount||0)}</td>
                         <td style={{padding:"9px 10px",whiteSpace:"nowrap"}}>
                           <div style={{fontWeight:700,color:OK}}>{fmt(s.paid_amount||0)}</div>
-                          {bal>0&&<div style={{fontSize:11,color:ER}}>-{fmt(bal)}</div>}
+                          {bal>0&&<div style={{fontSize:11,color:ER}}>due {fmt(bal)}</div>}
                         </td>
                         <td style={{padding:"9px 10px"}}>
                           <span style={{fontSize:12,color:G6}}>{s.payment_method||"—"}</span>
@@ -1091,10 +1089,9 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
                         <td colSpan={6} style={{padding:"8px 10px",fontWeight:700,fontSize:13,color:G6}}>
                           Totals ({todaySessions.length} sessions)
                         </td>
-                        <td style={{padding:"8px 10px",fontWeight:700,color:BK}}>{fmt(totTotal)}</td>
                         <td style={{padding:"8px 10px"}}>
                           <div style={{fontWeight:700,color:OK}}>{fmt(totPaid)}</div>
-                          {totBal>0&&<div style={{fontSize:11,color:ER}}>-{fmt(totBal)}</div>}
+                          {totBal>0&&<div style={{fontSize:11,color:ER}}>due {fmt(totBal)}</div>}
                         </td>
                         <td colSpan={2}/>
                       </tr>
