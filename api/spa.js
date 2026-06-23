@@ -253,18 +253,32 @@ module.exports = async function handler(req, res) {
       }
       if (req.method === 'PUT' && id) {
         const { name, description, amenities, active, photos } = req.body || {};
-        const photosJson = photos !== undefined ? JSON.stringify(photos) : undefined;
+        // Only update photos if explicitly provided and non-empty
+        const photosJson = (photos && photos.length > 0) ? JSON.stringify(photos) : null;
         let rows;
         try {
-          rows = await sql`
-            UPDATE rooms SET
-              name        = COALESCE(${name        ?? null}, name),
-              description = COALESCE(${description ?? null}, description),
-              amenities   = COALESCE(${amenities   ?? null}, amenities),
-              photos_json = COALESCE(${photosJson  ?? null}, photos_json),
-              active      = COALESCE(${active      ?? null}, active)
-            WHERE id = ${id} RETURNING *`;
+          if (photosJson) {
+            // Update including photos
+            rows = await sql`
+              UPDATE rooms SET
+                name        = COALESCE(${name        ?? null}, name),
+                description = COALESCE(${description ?? null}, description),
+                amenities   = COALESCE(${amenities   ?? null}, amenities),
+                photos_json = ${photosJson},
+                active      = COALESCE(${active      ?? null}, active)
+              WHERE id = ${id} RETURNING *`;
+          } else {
+            // Update without touching photos
+            rows = await sql`
+              UPDATE rooms SET
+                name        = COALESCE(${name        ?? null}, name),
+                description = COALESCE(${description ?? null}, description),
+                amenities   = COALESCE(${amenities   ?? null}, amenities),
+                active      = COALESCE(${active      ?? null}, active)
+              WHERE id = ${id} RETURNING *`;
+          }
         } catch(e) {
+          console.error('Room update error:', e.message);
           rows = await sql`
             UPDATE rooms SET name=COALESCE(${name??null},name),active=COALESCE(${active??null},active)
             WHERE id=${id} RETURNING *`;

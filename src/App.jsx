@@ -1221,7 +1221,7 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
   );
 }
 
-function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,pop,user,offers}){
+function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,packages,pop,user,offers}){
   const [filter,setFilter]=useState("all");
   const [search,setSearch]=useState("");
   const [dateF,setDateF]=useState(td());
@@ -1365,14 +1365,15 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
 }
 
 
-function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,payMethods,pop,user}){
+function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,payMethods,packages,pop,user}){
   const [clientName,  setClientName]  = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [form, setForm] = useState({
     therapistId:"", roomId:"", serviceType:"inhouse",
     selServices:[], disc:0, discT:"pct", paid:0, method:"Cash", notes:"",
-    gender:"male"
+    gender:"male", bookingMode:"standard", packageId:""
   });
+  const [recBookMode, setRecBookMode] = useState("standard");
   const [step,    setStep]    = useState(1);
   const [coModal,    setCoModal]    = useState(null);
   const [editModal,  setEditModal]  = useState(null);
@@ -1405,24 +1406,29 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
   };
   const resetForm=()=>{
     setClientName("");setClientPhone("");
-    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:(payMethods||[])[0]||"Cash",notes:"",gender:"male"});
+    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:(payMethods||[])[0]||"Cash",notes:"",gender:"male",bookingMode:"standard",packageId:""});
+    setRecBookMode("standard");
     setStep(1);
   };
 
   const startSession=async()=>{
     if(!clientName.trim()) return pop("Client name required","err");
-    if(!form.selServices.length) return pop("Select at least one service","err");
+    const selPkg = recBookMode==="package" ? (packages||[]).find(p=>p.id===form.packageId) : null;
+    if(!selPkg && !form.selServices.length) return pop("Select at least one service or package","err");
+    const finalServices = selPkg ? (selPkg.services||[]) : form.selServices.map(s=>({...s,price:getPrice(s.id,roomId,form.serviceType)}));
+    const finalTotal    = selPkg ? selPkg.price : total;
+    const finalRoom     = selPkg?.room_id || form.roomId || null;
     setSaving(true);
     try{
       const r=await api.createReception({
         customer_name:clientName, customer_phone:clientPhone,
         client_gender:form.gender||"male",
-        therapist_id:form.therapistId||null, room_id:form.roomId||null,
+        therapist_id:form.therapistId||null, room_id:finalRoom,
         service_type:form.serviceType,
-        services:form.selServices.map(s=>({...s,price:getPrice(s.id,roomId,form.serviceType)})),
-        base_amount:base, discount:Number(form.disc||0), discount_type:form.discT,
-        total_amount:total, paid_amount:Number(form.paid||0),
-        payment_method:form.method, notes:form.notes,
+        services:finalServices,
+        base_amount:selPkg?selPkg.price:base, discount:selPkg?0:Number(form.disc||0), discount_type:form.discT,
+        total_amount:finalTotal, paid_amount:Number(form.paid||0),
+        payment_method:form.method, notes:(selPkg?`Package: ${selPkg.name}. `:"")+form.notes,
         status:"inProgress", staff_id:user?.id||null,
       });
       setReception(p=>[{...r,
@@ -1537,6 +1543,47 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
           {step===1&&(
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {/* Client name + phone */}
+              {/* Booking mode toggle — show only if packages exist */}
+              {packages&&packages.length>0&&(
+                <div style={{marginBottom:14}}>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Booking Type</label>
+                  <div style={{display:"flex",gap:0,background:G1,borderRadius:9,padding:3}}>
+                    {[["standard","💆 Services"],["package","🎁 Package"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setRecBookMode(v)}
+                        style={{flex:1,padding:"8px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",
+                          background:recBookMode===v?PL:"transparent",color:recBookMode===v?WH:G6,transition:"all .2s"}}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Package selector */}
+              {recBookMode==="package"&&packages&&packages.length>0&&(
+                <div style={{marginBottom:14}}>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Select Package *</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {packages.map(pkg=>(
+                      <div key={pkg.id} onClick={()=>setForm(f=>({...f,packageId:pkg.id}))}
+                        style={{border:`2px solid ${form.packageId===pkg.id?PL:G2}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",
+                          background:form.packageId===pkg.id?PLF:WH,transition:"all .15s"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div>
+                            <div style={{fontWeight:700,fontSize:14,color:form.packageId===pkg.id?PL:BK}}>{pkg.name}</div>
+                            {pkg.description&&<div style={{fontSize:12,color:G6,marginTop:2}}>{pkg.description}</div>}
+                            <div style={{fontSize:11,color:G4,marginTop:3}}>
+                              {pkg.masseuses>1?`💆 ${pkg.masseuses} masseuses · `:""}{pkg.duration_min}min
+                            </div>
+                          </div>
+                          <div style={{fontWeight:700,fontSize:16,color:PL,flexShrink:0,marginLeft:12}}>{fmt(pkg.price)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Gender selector */}
               <div style={{marginBottom:4}}>
                 <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Client Gender</label>
@@ -4219,68 +4266,107 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
             No videos yet. Check back soon!
           </div>
         )}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,320px),1fr))",gap:16}}>
-          {shown.map(v => {
-            const { embedUrl, thumb } = getEmbedUrl(v.url);
+        {/* ── PORTRAIT REEL GRID ── */}
+        <div style={{
+          display:"grid",
+          gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,200px),1fr))",
+          gap:10,
+        }}>
+          {shown.map((v, idx) => {
+            const { embedUrl, thumb } = getEmbedUrl(v.url, v.thumbnail);
             const { icon, label, color } = getSourceIcon(v.source);
+            const actualThumb = v.thumbnail || thumb;
             const isPlaying = playing === v.id;
+            const isYT = v.source === 'youtube';
             return (
-              <div key={v.id} style={{background:"#111",borderRadius:14,overflow:"hidden",
-                boxShadow:"0 4px 20px rgba(0,0,0,.4)",transition:"transform .2s",cursor:"pointer"}}
-                onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
-                onMouseLeave={e=>e.currentTarget.style.transform=""}>
-                {/* Video embed or thumbnail */}
-                <div style={{paddingTop:"56.25%",position:"relative",background:"#000"}}>
+              <div key={v.id} data-vid={v.id}
+                style={{borderRadius:12,overflow:"hidden",background:"#111",
+                  boxShadow:"0 4px 16px rgba(0,0,0,.5)",
+                  cursor:"pointer",position:"relative"}}>
+                {/* Portrait aspect ratio 9:16 */}
+                <div style={{paddingTop:"177.78%",position:"relative",background:"#000"}}>
                   {isPlaying
-                    ? <iframe
-                        src={embedUrl + (v.source==='youtube'?'&autoplay=1':'')}
-                        style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                        title={v.title||"Video"}
-                      />
-                    : <div onClick={()=>setPlaying(v.id)}
-                        style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
-                          alignItems:"center",justifyContent:"center",cursor:"pointer",
-                          background:thumb?"none":"linear-gradient(135deg,#1a1a2e,#4a1a3e)"}}>
-                        {thumb&&<img src={thumb} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/>}
-                        {/* Play button */}
-                        <div style={{position:"relative",zIndex:2,width:60,height:60,borderRadius:"50%",
-                          background:"rgba(255,255,255,.95)",display:"flex",alignItems:"center",justifyContent:"center",
-                          boxShadow:"0 4px 20px rgba(0,0,0,.5)",transition:"transform .2s"}}
-                          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
-                          onMouseLeave={e=>e.currentTarget.style.transform=""}>
-                          <span style={{fontSize:22,marginLeft:3}}>▶</span>
-                        </div>
-                        <div style={{position:"absolute",top:10,left:10,background:color,color:WH,
-                          fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:99}}>
+                    ? <>
+                        {/* YouTube: no controls, no title bar */}
+                        {isYT
+                          ? <iframe
+                              src={`${embedUrl}&autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3`}
+                              style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              title=""
+                            />
+                          : v.source==='upload'
+                          ? <video src={embedUrl} autoPlay controls playsInline
+                              style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",background:"#000"}}/>
+                          : <iframe
+                              src={embedUrl}
+                              style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                              allowFullScreen scrolling="no" frameBorder="0" title=""
+                            />
+                        }
+                        {/* Swipe hint + close */}
+                        <button onClick={e=>{e.stopPropagation();setPlaying(null);}}
+                          style={{position:"absolute",top:8,right:8,zIndex:10,width:28,height:28,
+                            borderRadius:"50%",background:"rgba(0,0,0,.6)",border:"none",
+                            color:WH,fontSize:14,cursor:"pointer",display:"flex",
+                            alignItems:"center",justifyContent:"center"}}>✕</button>
+                        {/* Swipe nav arrows */}
+                        {idx>0&&(
+                          <button onClick={e=>{e.stopPropagation();setPlaying(shown[idx-1].id);}}
+                            style={{position:"absolute",left:0,top:0,bottom:0,width:40,zIndex:9,
+                              background:"linear-gradient(to right,rgba(0,0,0,.4),transparent)",
+                              border:"none",color:WH,fontSize:22,cursor:"pointer",
+                              display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                        )}
+                        {idx<shown.length-1&&(
+                          <button onClick={e=>{e.stopPropagation();setPlaying(shown[idx+1].id);}}
+                            style={{position:"absolute",right:0,top:0,bottom:0,width:40,zIndex:9,
+                              background:"linear-gradient(to left,rgba(0,0,0,.4),transparent)",
+                              border:"none",color:WH,fontSize:22,cursor:"pointer",
+                              display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                        )}
+                      </>
+                    : /* Thumbnail / tap-to-play */
+                      <div onClick={()=>setPlaying(v.id)}
+                        style={{position:"absolute",inset:0,display:"flex",alignItems:"center",
+                          justifyContent:"center",
+                          background:actualThumb?"none":"linear-gradient(135deg,#1a1a2e,#4a1a3e)"}}>
+                        {actualThumb&&(
+                          <img src={actualThumb} alt="" style={{position:"absolute",inset:0,
+                            width:"100%",height:"100%",objectFit:"cover"}}/>
+                        )}
+                        {/* Source tag — top left */}
+                        <div style={{position:"absolute",top:8,left:8,zIndex:2,
+                          background:color,color:WH,fontSize:10,fontWeight:700,
+                          padding:"2px 8px",borderRadius:99,
+                          boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}>
                           {icon} {label}
                         </div>
+                        {/* Play button */}
+                        <div style={{position:"relative",zIndex:2,width:52,height:52,
+                          borderRadius:"50%",background:"rgba(0,0,0,.55)",
+                          border:"2.5px solid rgba(255,255,255,.9)",
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          boxShadow:"0 4px 16px rgba(0,0,0,.5)"}}>
+                          <span style={{fontSize:20,marginLeft:3,color:WH}}>▶</span>
+                        </div>
+                        {/* Title — only for non-YouTube (YouTube has no title) */}
+                        {!isYT&&v.title&&(
+                          <div style={{position:"absolute",bottom:0,left:0,right:0,
+                            background:"linear-gradient(to top,rgba(0,0,0,.8),transparent)",
+                            padding:"24px 10px 10px",zIndex:2}}>
+                            <div style={{color:WH,fontSize:12,fontWeight:700,
+                              overflow:"hidden",textOverflow:"ellipsis",
+                              display:"-webkit-box",WebkitLineClamp:2,
+                              WebkitBoxOrient:"vertical"}}>
+                              {v.title}
+                            </div>
+                          </div>
+                        )}
                       </div>
                   }
-                  {isPlaying&&(
-                    <button onClick={()=>setPlaying(null)}
-                      style={{position:"absolute",top:8,right:8,zIndex:3,width:30,height:30,borderRadius:"50%",
-                        background:"rgba(0,0,0,.7)",border:"none",color:WH,fontSize:16,cursor:"pointer",
-                        display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      ✕
-                    </button>
-                  )}
-                </div>
-                {/* Info */}
-                <div style={{padding:"12px 14px"}}>
-                  <div style={{fontWeight:700,fontSize:14,color:WH,marginBottom:4,
-                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {v.title||"MASSAGE TZ"}
-                  </div>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontSize:11,fontWeight:700,color,background:color+"20",padding:"2px 8px",borderRadius:99}}>
-                      {icon} {label}
-                    </span>
-                    <span style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>
-                      {new Date(v.created_at).toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"})}
-                    </span>
-                  </div>
                 </div>
               </div>
             );
@@ -4473,8 +4559,8 @@ function AdminPortal({navTo,customer,user,therapistUser,therapistLogout,custLogo
         <div style={{flex:1,padding:isDesktop?"28px 28px 60px":`${46+16}px 14px 60px`,paddingTop:isDesktop?"24px":"70px",maxWidth:isDesktop?900:"100%",overflowX:"hidden"}}>
           {loading&&<div style={{textAlign:"center",padding:40,color:G4}}>Loading…</div>}
           {!loading&&aTab==="dash"&&<DashTab appts={appts} reception={reception} therapists={therapists} rooms={rooms} pop={pop} setReception={setReception} payMethods={payMethods} services={services} pricing={pricing}/>}
-          {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user} offers={offers}/>}
-          {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} pop={pop} user={user}/>}
+          {!loading&&aTab==="appts"&&<ApptsTab appts={appts} setAppts={setAppts} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} packages={packages} pop={pop} user={user} offers={offers}/>}
+          {!loading&&aTab==="reception"&&<ReceptionTab reception={reception} setReception={setReception} therapists={therapists} rooms={rooms} services={services} pricing={pricing} payMethods={payMethods} packages={packages} pop={pop} user={user}/>}
           {!loading&&aTab==="therapists"&&<TherapistsTab therapists={therapists} setTherapists={setTherapists} pop={pop}/>}
           {!loading&&aTab==="rooms"&&<RoomsTab rooms={rooms} setRooms={setRooms} pop={pop}/>}
           {!loading&&aTab==="services"&&<ServicesTab services={services} setServices={setServices} pricing={pricing} setPricing={setPricing} rooms={rooms} pop={pop}/>}
