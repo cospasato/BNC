@@ -3680,21 +3680,34 @@ function PaymentCompletePage({ customer, navTo, pop }) {
 
 // ── Helpers to extract embed URL ──────────────────────────────────────────────
 function getEmbedUrl(url, thumb) {
+  if(!url) return { type:'unknown', embedUrl:'', thumb:null };
   // YouTube
   const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([A-Za-z0-9_-]{11})/);
-  if (ytMatch) return { type:'youtube', embedUrl:`https://www.youtube.com/embed/${ytMatch[1]}?rel=0`, thumb:thumb||`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg` };
-  // TikTok
-  const ttMatch = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/);
+  if (ytMatch) return { type:'youtube', embedUrl:`https://www.youtube.com/embed/${ytMatch[1]}?rel=0&modestbranding=1`, thumb:thumb||`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg` };
+
+  // TikTok — extract video ID from various URL formats
+  const ttMatch = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/) || url.match(/tiktok\.com\/t\/([\w]+)/);
   if (ttMatch) return { type:'tiktok', embedUrl:`https://www.tiktok.com/embed/v2/${ttMatch[1]}`, thumb:null };
-  // Instagram reel/post
+
+  // Instagram — must be a reel or post URL, strip query params
+  // Instagram embeds need the /embed appended (not /embed/)
   if (url.includes('instagram.com')) {
-    const clean = url.split('?')[0].replace(/\/$/, '');
-    return { type:'instagram', embedUrl:`${clean}/embed/`, thumb:null };
+    let clean = url.split('?')[0].replace(/\/+$/, '');
+    // Normalize: instagram.com/reel/XXX -> instagram.com/p/XXX (both work with /embed)
+    // The correct embed format is: https://www.instagram.com/p/CODE/embed/
+    const igMatch = clean.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/);
+    if (igMatch) {
+      return { type:'instagram', embedUrl:`https://www.instagram.com/p/${igMatch[1]}/embed/?cr=1&v=14`, thumb:null };
+    }
+    return { type:'instagram', embedUrl:`${clean}/embed/?cr=1&v=14`, thumb:null };
   }
-  // Facebook video
+
+  // Facebook — proper embed iframe URL
   if (url.includes('facebook.com') || url.includes('fb.watch')) {
-    return { type:'facebook', embedUrl:`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&width=560`, thumb:null };
+    const fbEmbed = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&width=560&height=315&appId`;
+    return { type:'facebook', embedUrl:fbEmbed, thumb:null };
   }
+
   return { type:'unknown', embedUrl:url, thumb:null };
 }
 
