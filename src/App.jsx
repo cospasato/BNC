@@ -665,6 +665,61 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
   const [payMethod,setPayMethod]=useState((payMethods||[])[0]||"Cash");
   const [saving,setSaving]=useState(false);
 
+  const openEdit = (r) => {
+    const svcs = Array.isArray(r.services) ? r.services : (typeof r.services==="string" ? JSON.parse(r.services||"[]") : []);
+    setEditForm({
+      id:          r.id,
+      customer_name:  r.customer_name||"",
+      customer_phone: r.customer_phone||"",
+      client_gender:  r.client_gender||"male",
+      therapist_id:   r.therapist_id||"",
+      room_id:        r.room_id||"",
+      service_type:   r.service_type||"inhouse",
+      services:       svcs,
+      notes:          r.notes||"",
+      paid_amount:    Number(r.paid_amount||0),
+      total_amount:   Number(r.total_amount||0),
+      payment_method: r.payment_method||payMethods[0]||"Cash",
+      status:         r.status||"completed",
+    });
+    setEditModal(r.id);
+  };
+
+  const saveEdit = async() => {
+    if(!editForm.customer_name) return pop("Client name required","err");
+    setSaving(true);
+    try{
+      const newTotal = editForm.services.reduce((s,sv)=>s+Number(sv.price||0),0) || editForm.total_amount;
+      const payload  = {
+        customer_name:  editForm.customer_name,
+        customer_phone: editForm.customer_phone,
+        client_gender:  editForm.client_gender,
+        therapist_id:   editForm.therapist_id||null,
+        room_id:        editForm.room_id||null,
+        service_type:   editForm.service_type,
+        services:       editForm.services,
+        notes:          editForm.notes,
+        total_amount:   newTotal,
+        payment_method: editForm.payment_method,
+        status:         editForm.status,
+      };
+      const r = await api.updateReception(editForm.id, payload);
+      setReception(p=>p.map(x=>x.id===editForm.id?{...x,...r}:x));
+      setEditModal(null);
+      pop("Session updated ✓");
+    }catch(e){ pop(e.message||"Failed","err"); }
+    setSaving(false);
+  };
+
+  const toggleEditSvc = (sv) => {
+    setEditForm(f => {
+      const ex = f.services.find(s=>s.id===sv.id);
+      const pr = pricing ? (pricing.find(p=>p.service_id===sv.id&&p.service_type===f.service_type)?.price||0) : 0;
+      const newSvcs = ex ? f.services.filter(s=>s.id!==sv.id) : [...f.services,{id:sv.id,name:sv.name,price:Number(pr)}];
+      return {...f, services:newSvcs};
+    });
+  };
+
   const checkout=async(id,extra,newSvcs,newTotal)=>{
     setSaving(true);
     try{
@@ -1144,12 +1199,13 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
     gender:"male"
   });
   const [step,    setStep]    = useState(1);
-  const [coModal, setCoModal] = useState(null);
-  const [editModal,setEditModal] = useState(null);
-  const [dateF,   setDateF]   = useState(td());
-  const [payAmt,  setPayAmt]  = useState("");
-  const [payMethod,setPayMethod] = useState((payMethods||[])[0]||"Cash");
-  const [saving,  setSaving]  = useState(false);
+  const [coModal,    setCoModal]    = useState(null);
+  const [editModal,  setEditModal]  = useState(null);
+  const [editForm,   setEditForm]   = useState({});
+  const [dateF,      setDateF]      = useState(td());
+  const [payAmt,     setPayAmt]     = useState("");
+  const [payMethod,  setPayMethod]  = useState((payMethods||[])[0]||"Cash");
+  const [saving,     setSaving]     = useState(false);
 
   const getPrice=(svcId,roomId,svcType)=>{
     const p=pricing.find(p=>p.service_id===svcId&&(p.room_id===roomId||p.room_type===roomId)&&p.service_type===svcType)
@@ -1201,6 +1257,61 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
       resetForm();pop("Session started ✓");
     }catch(e){pop(e.message||"Failed","err");}
     setSaving(false);
+  };
+
+  const openEdit = (r) => {
+    const svcs = Array.isArray(r.services) ? r.services : (typeof r.services==="string" ? JSON.parse(r.services||"[]") : []);
+    setEditForm({
+      id:          r.id,
+      customer_name:  r.customer_name||"",
+      customer_phone: r.customer_phone||"",
+      client_gender:  r.client_gender||"male",
+      therapist_id:   r.therapist_id||"",
+      room_id:        r.room_id||"",
+      service_type:   r.service_type||"inhouse",
+      services:       svcs,
+      notes:          r.notes||"",
+      paid_amount:    Number(r.paid_amount||0),
+      total_amount:   Number(r.total_amount||0),
+      payment_method: r.payment_method||payMethods[0]||"Cash",
+      status:         r.status||"completed",
+    });
+    setEditModal(r.id);
+  };
+
+  const saveEdit = async() => {
+    if(!editForm.customer_name) return pop("Client name required","err");
+    setSaving(true);
+    try{
+      const newTotal = editForm.services.reduce((s,sv)=>s+Number(sv.price||0),0) || editForm.total_amount;
+      const payload  = {
+        customer_name:  editForm.customer_name,
+        customer_phone: editForm.customer_phone,
+        client_gender:  editForm.client_gender,
+        therapist_id:   editForm.therapist_id||null,
+        room_id:        editForm.room_id||null,
+        service_type:   editForm.service_type,
+        services:       editForm.services,
+        notes:          editForm.notes,
+        total_amount:   newTotal,
+        payment_method: editForm.payment_method,
+        status:         editForm.status,
+      };
+      const r = await api.updateReception(editForm.id, payload);
+      setReception(p=>p.map(x=>x.id===editForm.id?{...x,...r}:x));
+      setEditModal(null);
+      pop("Session updated ✓");
+    }catch(e){ pop(e.message||"Failed","err"); }
+    setSaving(false);
+  };
+
+  const toggleEditSvc = (sv) => {
+    setEditForm(f => {
+      const ex = f.services.find(s=>s.id===sv.id);
+      const pr = pricing ? (pricing.find(p=>p.service_id===sv.id&&p.service_type===f.service_type)?.price||0) : 0;
+      const newSvcs = ex ? f.services.filter(s=>s.id!==sv.id) : [...f.services,{id:sv.id,name:sv.name,price:Number(pr)}];
+      return {...f, services:newSvcs};
+    });
   };
 
   const checkout=async(id,extra,newSvcs,newTotal)=>{
@@ -1513,6 +1624,11 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
                   {bal>0&&<span><span style={{color:G6}}>Due: </span><strong style={{color:ER}}>{fmt(bal)}</strong></span>}
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {/* Edit button — always visible */}
+                  <button onClick={()=>openEdit(r)}
+                    style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${IN}`,background:INB,color:IN,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    ✏️ Edit
+                  </button>
                   {isActive&&bal>0&&(
                     <button onClick={()=>{setCoModal({...r,bal});setPayAmt(String(bal));}}
                       style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${OK}`,background:OKB,color:OK,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
