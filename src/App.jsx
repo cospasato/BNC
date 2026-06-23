@@ -104,6 +104,63 @@ async function compressPhoto(file){
   });
 }
 
+
+// ── PWA Install Banner ──
+function InstallBanner() {
+  const [prompt, setPrompt] = useState(null);
+  const [show,   setShow]   = useState(false);
+  const [ios,    setIos]    = useState(false);
+
+  useEffect(() => {
+    // Detect iOS
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isIOS && !isStandalone) {
+      const dismissed = localStorage.getItem('pwa_dismissed');
+      if (!dismissed) setIos(true), setShow(true);
+    }
+    // Android / Chrome
+    const handler = (e) => { e.preventDefault(); setPrompt(e); setShow(true); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const install = async () => {
+    if (prompt) { prompt.prompt(); const r = await prompt.userChoice; if (r.outcome === 'accepted') setShow(false); }
+  };
+  const dismiss = () => { setShow(false); localStorage.setItem('pwa_dismissed', '1'); };
+
+  if (!show) return null;
+  return (
+    <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:3000,
+      background:'linear-gradient(135deg,#1A1A2E,#7B3F6E)',
+      padding:'14px 16px',boxShadow:'0 -4px 20px rgba(0,0,0,.3)',
+      display:'flex',alignItems:'center',gap:12}}>
+      <div style={{width:44,height:44,borderRadius:10,background:'#7B3F6E',
+        flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',
+        fontSize:22,fontWeight:900,color:'#C9A84C',fontFamily:"'Playfair Display',serif"}}>M</div>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:700,fontSize:14,color:'#fff'}}>Install MASSAGE TZ</div>
+        <div style={{fontSize:12,color:'rgba(255,255,255,.7)',marginTop:2}}>
+          {ios ? '📱 Tap the share icon → Add to Home Screen' : 'Add to your home screen for quick access'}
+        </div>
+      </div>
+      {!ios && (
+        <button onClick={install}
+          style={{background:'#C9A84C',color:'#1A1A2E',border:'none',borderRadius:8,
+            padding:'8px 14px',fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0}}>
+          Install
+        </button>
+      )}
+      <button onClick={dismiss}
+        style={{background:'rgba(255,255,255,.15)',color:'#fff',border:'none',
+          borderRadius:8,padding:'8px 10px',fontSize:14,cursor:'pointer',flexShrink:0}}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App(){
   // ── Session (persisted) ──
@@ -402,6 +459,7 @@ export default function App(){
   // ── ROOT RENDER ──
   return(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",minHeight:"100vh",background:G1}}>
+      <InstallBanner/>
       {view==="land"&&<Landing navTo={navTo} customer={customer} user={user} therapistUser={therapistUser} therapistLogout={therapistLogout} custLogout={custLogout} setCustModal={setCustModal} setModal={setModal} therapists={therapists} setBD={setBD} setBdName={()=>{}} initBD={initBD} resetBdText={resetBdText}/>}
       {view==="book"&&<BookingPortal
         therapists={therapists} rooms={rooms} services={services} pricing={pricing}
