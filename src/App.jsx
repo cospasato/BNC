@@ -3213,7 +3213,6 @@ function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,s
       <div style={{background:`linear-gradient(150deg,${BK} 0%,${PLD} 60%,${PL} 100%)`,padding:"36px 20px 28px",textAlign:"center"}}>
         <div style={{fontSize:11,color:GOLD,letterSpacing:".25em",textTransform:"uppercase",marginBottom:10,fontWeight:700}}>✦ Professional Massage & Spa ✦</div>
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(28px,7vw,48px)",color:WH,margin:"0 0 10px",lineHeight:1.15}}>MASSAGE TZ</h1>
-        <p style={{color:"rgba(255,255,255,.7)",fontSize:15,maxWidth:440,margin:"0 auto 20px",lineHeight:1.7}}>Professional massage at our studio or we come to you</p>
         <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:22}}>
           {[["🏢","In-House","Visit our studio"],["🏨","Outcall","We come to you"]].map(([ic,t,s])=>(
             <div key={t} onClick={()=>navTo("book",1)}

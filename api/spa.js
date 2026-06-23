@@ -1,5 +1,123 @@
 const { getDb, setCors, dbError } = require('./_db.js');
 
+// ── Notification system ──────────────────────────────────────────────────────
+// Supports multiple providers — configure via Vercel env vars
+
+async function sendNotification(message) {
+  const results = [];
+
+  // ── Option 0: CallMeBot (free, works!) ──
+  // Set: WA_PHONE (your number e.g. 255786203903), WA_API_KEY (from callmebot)
+  if (process.env.WA_PHONE && process.env.WA_API_KEY) {
+    try {
+      const phone  = process.env.WA_PHONE;
+      const apiKey = process.env.WA_API_KEY;
+      const r = await fetch(
+        `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(message)}&apikey=${apiKey}`
+      );
+      const text = await r.text();
+      const ok = text.toLowerCase().includes('message queued') || text.toLowerCase().includes('success');
+      results.push({ provider: 'callmebot', ok, response: text.slice(0, 100) });
+    } catch(e) { results.push({ provider: 'callmebot', ok: false, error: e.message }); }
+  }
+
+  // ── Option 1: Twilio WhatsApp (most reliable, free trial available) ──
+  // Set: TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM (+14155238886 for sandbox), TWILIO_TO (+255786203903)
+  if (process.env.TWILIO_SID && process.env.TWILIO_TOKEN) {
+    try {
+      const sid   = process.env.TWILIO_SID;
+      const token = process.env.TWILIO_TOKEN;
+      const from  = process.env.TWILIO_FROM || 'whatsapp:+14155238886';
+      const to    = process.env.TWILIO_TO   || `whatsapp:+${process.env.WA_PHONE}`;
+      const creds = Buffer.from(`${sid}:${token}`).toString('base64');
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: 'POST',
+        headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ From: from, To: to, Body: message })
+      });
+      const d = await r.json();
+      results.push({ provider: 'twilio', ok: !!d.sid, error: d.message });
+    } catch(e) { results.push({ provider: 'twilio', ok: false, error: e.message }); }
+  }
+
+  // ── Option 2: WhatsApp Business API (Meta official) ──
+  // Set: WA_TOKEN (permanent token from Meta), WA_PHONE_ID (Phone number ID from Meta), WA_TO (recipient number)
+  if (process.env.WA_TOKEN && process.env.WA_PHONE_ID) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v18.0/${process.env.WA_PHONE_ID}/messages`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: process.env.WA_TO || process.env.WA_PHONE,
+          type: 'text',
+          text: { body: message }
+        })
+      });
+      const d = await r.json();
+      results.push({ provider: 'meta', ok: !d.error, error: d.error?.message });
+    } catch(e) { results.push({ provider: 'meta', ok: false, error: e.message }); }
+  }
+
+  // ── Option 3: UltraMsg (easy setup, $9/mo or free trial) ──
+  // Set: ULTRAMSG_TOKEN, ULTRAMSG_INSTANCE, WA_TO (full number with country code)
+  if (process.env.ULTRAMSG_TOKEN && process.env.ULTRAMSG_INSTANCE) {
+    try {
+      const r = await fetch(`https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          token: process.env.ULTRAMSG_TOKEN,
+          to: process.env.WA_TO || process.env.WA_PHONE,
+          body: message
+        })
+      });
+      const d = await r.json();
+      results.push({ provider: 'ultramsg', ok: d.sent === 'true', error: d.error });
+    } catch(e) { results.push({ provider: 'ultramsg', ok: false, error: e.message }); }
+  }
+
+  // ── Option 4: WA-Automate / WaAPI.app ──
+  // Set: WAAPI_TOKEN, WAAPI_INSTANCE_ID, WA_TO
+  if (process.env.WAAPI_TOKEN && process.env.WAAPI_INSTANCE_ID) {
+    try {
+      const r = await fetch(`https://waapi.app/api/v1/instances/${process.env.WAAPI_INSTANCE_ID}/client/action/send-message`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.WAAPI_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: `${process.env.WA_TO || process.env.WA_PHONE}@c.us`, message })
+      });
+      const d = await r.json();
+      results.push({ provider: 'waapi', ok: d.status === 'success', error: d.message });
+    } catch(e) { results.push({ provider: 'waapi', ok: false, error: e.message }); }
+  }
+
+  if (results.length === 0) console.log('No notification provider configured.');
+  else console.log('Notification results:', JSON.stringify(results));
+  return results;
+}
+
+// Helper to build booking message
+function bookingMsg(type, data) {
+  const emoji = type === 'walkin' ? '🚪' : '📅';
+  const label = type === 'walkin' ? 'Walk-In Session' : 'New Booking';
+  const svcs  = (data.services||[]).map(s=>s.name).join(', ') || 'TBD';
+  const amt   = `TZS ${Number(data.total_amount||0).toLocaleString()}`;
+  const loc   = data.service_type === 'outcall' ? '🏠 Outcall' : '🏢 In-House';
+  const dt    = data.appt_date ? `${data.appt_date} at ${data.appt_time}` : 'Walk-in now';
+  const gender = data.client_gender === 'female' ? '👩 Female' : data.client_gender === 'other' ? '⚧ Other' : '👨 Male';
+  return (
+    `${emoji} *${label} — MASSAGE TZ*\n` +
+    `👤 ${data.customer_name}${data.customer_phone ? ' | ' + data.customer_phone : ''}\n` +
+    (type==='walkin' ? `${gender}\n` : '') +
+    `📋 ${svcs}\n` +
+    `📆 ${dt}\n` +
+    `${loc}\n` +
+    `💰 ${amt}\n` +
+    `💳 ${data.payment_method || 'TBD'}`
+  );
+}
+
+
 module.exports = async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -700,7 +818,15 @@ module.exports = async function handler(req, res) {
       }
     }
 
-        return res.status(400).json({ error: `Unknown resource: ${resource}` });
+        // ── TEST NOTIFICATION ────────────────────────────────────────
+    if (resource === 'test_notify') {
+      const results = await sendNotification(
+        '✅ *MASSAGE TZ Notification Test*\nYour notification system is working correctly!'
+      );
+      return res.status(200).json({ results });
+    }
+
+    return res.status(400).json({ error: `Unknown resource: ${resource}` });
 
   } catch (err) {
     console.error('spa API error:', err.message, err.stack);
