@@ -3961,6 +3961,9 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
 
   const observerRef = useRef(null);
 
+  // shown must be declared BEFORE useEffect that uses it
+  const shown = filter==='all' ? videos : videos.filter(v=>v.source===filter);
+
   useEffect(() => {
     // Load videos (server auto-fetches YouTube if configured)
     fetch('/api/spa?resource=videos')
@@ -3986,8 +3989,6 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
     document.querySelectorAll('[data-vid]').forEach(el => observerRef.current.observe(el));
     return () => observerRef.current?.disconnect();
   }, [shown.map(v=>v.id).join(',')]);
-
-  const shown = filter==='all' ? videos : videos.filter(v=>v.source===filter);
 
   return (
     <div style={{minHeight:"100vh",background:BK,paddingTop:62,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
