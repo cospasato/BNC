@@ -88,6 +88,9 @@ export const api = {
   getFines:      (rid)  => g(`resource=fines${rid?'&recipient_id='+rid:''}`),
   createFine:    b      => p('resource=fines', b),
   deleteFine:    id     => d(`resource=fines&id=${id}`),
+  // Page views
+  trackView:    page    => p('resource=pageviews', { page }),
+  getViews:     (days)  => g(`resource=pageviews${days?'&days='+days:''}`),
   // Social settings
   getSocialSettings:  ()  => g('resource=social_settings'),
   saveSocialSettings: b   => p('resource=social_settings', b),

@@ -668,6 +668,8 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
 
   const [editSession,setEditSession]=useState(null);
   const [coModal,setCoModal]=useState(null);
+  const [views,setViews]=useState(null);
+  useEffect(()=>{ api.getViews(30).then(v=>setViews(v)).catch(()=>{}); },[]);
   const [payAmt,setPayAmt]=useState("");
   const [payMethod,setPayMethod]=useState((payMethods||[])[0]||"Cash");
   const [saving,setSaving]=useState(false);
@@ -773,6 +775,33 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
         <KPI label="Today's Appts" value={todayAppts.length}    color={IN} icon="📅"/>
         <KPI label="Pending"       value={pending.length}       color={WA} icon="⏳"/>
       </div>
+
+      {/* Page Views */}
+      {views&&(
+        <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"14px 16px",marginBottom:16}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:BK,marginBottom:12}}>👁 Website Visitors (Last 30 Days)</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
+            <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
+              <div style={{fontSize:24,fontWeight:700,color:PL}}>{views.total.toLocaleString()}</div>
+              <div style={{fontSize:11,color:G6,marginTop:3}}>Total Views</div>
+            </div>
+            <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
+              <div style={{fontSize:24,fontWeight:700,color:OK}}>{views.today.toLocaleString()}</div>
+              <div style={{fontSize:11,color:G6,marginTop:3}}>Today</div>
+            </div>
+            <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
+              <div style={{fontSize:24,fontWeight:700,color:IN}}>{views.unique.toLocaleString()}</div>
+              <div style={{fontSize:11,color:G6,marginTop:3}}>Unique Visitors</div>
+            </div>
+            {views.by_page?.length>0&&(
+              <div style={{textAlign:"center",background:PLF,borderRadius:10,padding:"12px 8px",border:`1px solid ${PL}20`}}>
+                <div style={{fontSize:24,fontWeight:700,color:PL}}>{(views.by_page.find(p=>p.page==='videos')?.count||0).toLocaleString()}</div>
+                <div style={{fontSize:11,color:G6,marginTop:3}}>M-Videos Views</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── DAILY INCOME BREAKDOWN ── */}
       <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,marginBottom:20,overflow:"hidden"}}>
@@ -4197,6 +4226,8 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
   // shown must be declared BEFORE useEffect that uses it
   const shown = filter==='all' ? videos : videos.filter(v=>v.source===filter);
 
+  useEffect(() => { api.trackView('videos').catch(()=>{}); }, []);
+
   useEffect(() => {
     // Load videos (server auto-fetches YouTube if configured)
     fetch('/api/spa?resource=videos')
@@ -4239,6 +4270,23 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
         <p style={{color:"rgba(255,255,255,.6)",fontSize:14,margin:"0 0 20px"}}>
           Our latest videos — tutorials, sessions & more
         </p>
+        {/* Share page button */}
+        <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+          <button onClick={()=>{
+            const url = window.location.origin + '/#videos';
+            if(navigator.share) {
+              navigator.share({ title:'MASSAGE TZ — M-Videos', url, text:'Watch our massage videos' }).catch(()=>{});
+            } else {
+              navigator.clipboard?.writeText(url).then(()=>alert('Link copied!')).catch(()=>alert(url));
+            }
+          }}
+            style={{display:"flex",alignItems:"center",gap:7,padding:"9px 20px",borderRadius:20,
+              background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.25)",
+              color:WH,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            📤 Share M-Videos
+          </button>
+        </div>
+
         {/* Filter tabs */}
         <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
           {[["all","🎬 All"],["youtube","▶️ YouTube"],["tiktok","🎵 TikTok"],["instagram","📸 Instagram"],["facebook","👥 Facebook"]].map(([v,l])=>(
@@ -4365,6 +4413,24 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                             </div>
                           </div>
                         )}
+                        {/* Share button — bottom right of thumbnail */}
+                        <button onClick={e=>{
+                          e.stopPropagation();
+                          const shareUrl = v.url;
+                          const shareText = `Check out this video from MASSAGE TZ: ${v.title||''}`;
+                          if(navigator.share) {
+                            navigator.share({ title:v.title||'MASSAGE TZ', url:shareUrl, text:shareText }).catch(()=>{});
+                          } else {
+                            navigator.clipboard?.writeText(shareUrl).then(()=>alert('Link copied!')).catch(()=>alert(shareUrl));
+                          }
+                        }}
+                          style={{position:"absolute",bottom:8,right:8,zIndex:3,
+                            width:30,height:30,borderRadius:"50%",
+                            background:"rgba(0,0,0,.55)",border:"1px solid rgba(255,255,255,.3)",
+                            color:WH,fontSize:13,cursor:"pointer",
+                            display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          📤
+                        </button>
                       </div>
                   }
                 </div>
@@ -4443,6 +4509,7 @@ return (
 }
 
 function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,setCustModal,setModal,therapists,setBD,initBD,resetBdText}){
+  useEffect(()=>{ api.trackView('home').catch(()=>{}); },[]);
   return(
     <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",paddingTop:62}}>
       <NavBar navTo={navTo} customer={customer} user={user} therapistUser={therapistUser}

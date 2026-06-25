@@ -987,6 +987,45 @@ module.exports = async function handler(req, res) {
       return res.status(201).json({ ...rows[0], bytes, duration });
     }
 
+        // ── PAGE VIEWS ANALYTICS ─────────────────────────────────────
+    if (resource === 'pageviews') {
+      await sql`CREATE TABLE IF NOT EXISTS pageviews (
+        id         SERIAL PRIMARY KEY,
+        page       TEXT NOT NULL DEFAULT 'home',
+        ip_hash    TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`.catch(()=>{});
+
+      if (req.method === 'POST') {
+        // Record a page view
+        const { page } = req.body || {};
+        const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
+        const crypto = require('crypto');
+        const ipHash = crypto.createHash('sha256').update(ip).digest('hex').slice(0,16);
+        await sql`INSERT INTO pageviews (page, ip_hash) VALUES (${page||'home'}, ${ipHash})`;
+        return res.status(200).json({ ok: true });
+      }
+
+      if (req.method === 'GET') {
+        // Return stats
+        const { days } = req.query;
+        const daysBack = parseInt(days||'30');
+        const [total, today, unique, byPage] = await Promise.all([
+          sql`SELECT COUNT(*) as count FROM pageviews WHERE created_at > NOW() - INTERVAL '${sql.unsafe(String(daysBack))} days'`,
+          sql`SELECT COUNT(*) as count FROM pageviews WHERE created_at::date = CURRENT_DATE`,
+          sql`SELECT COUNT(DISTINCT ip_hash) as count FROM pageviews WHERE created_at > NOW() - INTERVAL '${sql.unsafe(String(daysBack))} days'`,
+          sql`SELECT page, COUNT(*) as count FROM pageviews WHERE created_at > NOW() - INTERVAL '${sql.unsafe(String(daysBack))} days' GROUP BY page ORDER BY count DESC LIMIT 10`,
+        ]);
+        return res.status(200).json({
+          total:      Number(total[0].count),
+          today:      Number(today[0].count),
+          unique:     Number(unique[0].count),
+          by_page:    byPage,
+        });
+      }
+    }
+
         return res.status(400).json({ error: `Unknown resource: ${resource}` });
 
   } catch (err) {
