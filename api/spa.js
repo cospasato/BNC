@@ -1008,20 +1008,23 @@ module.exports = async function handler(req, res) {
       }
 
       if (req.method === 'GET') {
-        // Return stats
+        // Return stats — use parameterized date math, not sql.unsafe
         const { days } = req.query;
-        const daysBack = parseInt(days||'30');
-        const [total, today, unique, byPage] = await Promise.all([
-          sql`SELECT COUNT(*) as count FROM pageviews WHERE created_at > NOW() - INTERVAL '${sql.unsafe(String(daysBack))} days'`,
-          sql`SELECT COUNT(*) as count FROM pageviews WHERE created_at::date = CURRENT_DATE`,
-          sql`SELECT COUNT(DISTINCT ip_hash) as count FROM pageviews WHERE created_at > NOW() - INTERVAL '${sql.unsafe(String(daysBack))} days'`,
-          sql`SELECT page, COUNT(*) as count FROM pageviews WHERE created_at > NOW() - INTERVAL '${sql.unsafe(String(daysBack))} days' GROUP BY page ORDER BY count DESC LIMIT 10`,
+        const daysBack = Math.min(365, Math.max(1, parseInt(days||'30')));
+        const cutoff = new Date(Date.now() - daysBack * 86400000).toISOString();
+        const today  = new Date().toISOString().slice(0,10);
+
+        const [total, todayCount, unique, byPage] = await Promise.all([
+          sql`SELECT COUNT(*) as count FROM pageviews WHERE created_at >= ${cutoff}`,
+          sql`SELECT COUNT(*) as count FROM pageviews WHERE created_at::date = ${today}::date`,
+          sql`SELECT COUNT(DISTINCT ip_hash) as count FROM pageviews WHERE created_at >= ${cutoff}`,
+          sql`SELECT page, COUNT(*) as count FROM pageviews WHERE created_at >= ${cutoff} GROUP BY page ORDER BY count DESC LIMIT 10`,
         ]);
         return res.status(200).json({
-          total:      Number(total[0].count),
-          today:      Number(today[0].count),
-          unique:     Number(unique[0].count),
-          by_page:    byPage,
+          total:   Number(total[0].count),
+          today:   Number(todayCount[0].count),
+          unique:  Number(unique[0].count),
+          by_page: byPage,
         });
       }
     }

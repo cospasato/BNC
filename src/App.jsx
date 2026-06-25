@@ -668,8 +668,8 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
 
   const [editSession,setEditSession]=useState(null);
   const [coModal,setCoModal]=useState(null);
-  const [views,setViews]=useState(null);
-  useEffect(()=>{ api.getViews(30).then(v=>setViews(v)).catch(()=>{}); },[]);
+  const [views,setViews]=useState({total:0,today:0,unique:0,by_page:[]});
+  useEffect(()=>{ api.getViews(30).then(v=>{ if(v&&v.total!==undefined) setViews(v); }).catch(()=>{}); },[]);
   const [payAmt,setPayAmt]=useState("");
   const [payMethod,setPayMethod]=useState((payMethods||[])[0]||"Cash");
   const [saving,setSaving]=useState(false);
@@ -777,8 +777,7 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
       </div>
 
       {/* Page Views */}
-      {views&&(
-        <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"14px 16px",marginBottom:16}}>
+      <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"14px 16px",marginBottom:16}}>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:BK,marginBottom:12}}>👁 Website Visitors (Last 30 Days)</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
             <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
@@ -800,8 +799,7 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
               </div>
             )}
           </div>
-        </div>
-      )}
+      </div>
 
       {/* ── DAILY INCOME BREAKDOWN ── */}
       <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,marginBottom:20,overflow:"hidden"}}>
@@ -1337,8 +1335,44 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
 
       {sel&&selA&&(
         <Modal title="Appointment Details" onClose={()=>{setSel(null);setPayAmt("");}} wide>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-            {[["Client",selA.customer_name],["Phone",selA.customer_phone],["Date",fmtDate(selA.appt_date)],["Time",fmtTime(selA.appt_time)],["Type",selA.service_type],["Therapist",therapists.find(t=>t.id===selA.therapist_id)?.name||"Any"],["Room",rooms.find(r=>r.id===selA.room_id)?.name||"—"],["Total",fmt(selA.total_amount)],["Paid",fmt(selA.paid_amount)],["Balance",fmt(Number(selA.total_amount)-Number(selA.paid_amount))]].map(([k,v])=>(
+          {/* Client card with call buttons */}
+          <div style={{background:PLF,borderRadius:12,padding:"14px 16px",marginBottom:14,border:`1px solid ${PL}20`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:16,color:BK}}>{selA.customer_name}</div>
+                {selA.customer_phone&&(
+                  <div style={{fontSize:14,color:G6,marginTop:2}}>{selA.customer_phone}</div>
+                )}
+                {selA.customer_email&&(
+                  <div style={{fontSize:12,color:G4,marginTop:2}}>{selA.customer_email}</div>
+                )}
+              </div>
+              {/* Call & WhatsApp buttons */}
+              {selA.customer_phone&&(
+                <div style={{display:"flex",gap:7,flexShrink:0}}>
+                  <a href={`tel:${selA.customer_phone.replace(/\s+/g,"")}`}
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:9,
+                      background:"#1565C0",color:WH,textDecoration:"none",fontSize:13,fontWeight:700,
+                      boxShadow:"0 2px 8px rgba(21,101,192,.3)"}}>
+                    📞 Call
+                  </a>
+                  <a href={`https://wa.me/${selA.customer_phone.replace(/[^0-9]/g,"")}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:9,
+                      background:"#25D366",color:WH,textDecoration:"none",fontSize:13,fontWeight:700,
+                      boxShadow:"0 2px 8px rgba(37,211,102,.3)"}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    Chat
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+            {[["Date",fmtDate(selA.appt_date)],["Time",fmtTime(selA.appt_time)],["Type",selA.service_type],["Therapist",therapists.find(t=>t.id===selA.therapist_id)?.name||"Any"],["Room",rooms.find(r=>r.id===selA.room_id)?.name||"—"],["Total",fmt(selA.total_amount)],["Paid",fmt(selA.paid_amount)],["Balance",fmt(Number(selA.total_amount)-Number(selA.paid_amount))]].map(([k,v])=>(
               <div key={k} style={{padding:"8px 10px",background:G1,borderRadius:8,fontSize:12}}>
                 <div style={{color:G6,marginBottom:2}}>{k}</div><div style={{fontWeight:700}}>{v}</div>
               </div>
@@ -4416,12 +4450,19 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                         {/* Share button — bottom right of thumbnail */}
                         <button onClick={e=>{
                           e.stopPropagation();
-                          const shareUrl = v.url;
-                          const shareText = `Check out this video from MASSAGE TZ: ${v.title||''}`;
+                          // Use branded domain URL, not Cloudinary/raw source URL
+                          const baseUrl = window.location.origin;
+                          // For uploaded videos use domain/videos#ID, for social links use original
+                          const brandedUrl = v.source==='upload'
+                            ? `${baseUrl}/#videos`
+                            : v.url; // YouTube/TikTok/Instagram — already branded
+                          const shareText = v.title
+                            ? `${v.title} — MASSAGE TZ`
+                            : 'Watch our massage videos — MASSAGE TZ';
                           if(navigator.share) {
-                            navigator.share({ title:v.title||'MASSAGE TZ', url:shareUrl, text:shareText }).catch(()=>{});
+                            navigator.share({ title:v.title||'MASSAGE TZ', url:brandedUrl, text:shareText }).catch(()=>{});
                           } else {
-                            navigator.clipboard?.writeText(shareUrl).then(()=>alert('Link copied!')).catch(()=>alert(shareUrl));
+                            navigator.clipboard?.writeText(brandedUrl).then(()=>alert('Link copied! ' + brandedUrl)).catch(()=>{});
                           }
                         }}
                           style={{position:"absolute",bottom:8,right:8,zIndex:3,
