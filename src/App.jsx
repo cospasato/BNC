@@ -218,7 +218,7 @@ export default function App(){
     if(h >= 24) h = 0;
     return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
   };
-  const initBD = {date:td(),time:defaultTime(),serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"Cash",disc:0,discT:"pct",outcallAddr:"",offerId:"",bookingMode:"standard",packageId:"",advancePct:10,guestMode:false};
+  const initBD = {date:td(),time:defaultTime(),serviceType:"inhouse",therapistId:"",roomId:"",services:[],name:"",phone:"",email:"",notes:"",method:"PesaPal",disc:0,discT:"pct",outcallAddr:"",offerId:"",bookingMode:"standard",packageId:"",advancePct:10,guestMode:false};
   // Separate stable state for text inputs (prevents focus-loss on re-render)
   const [bdName,  setBdName]  = useState("");
   const [bdPhone, setBdPhone] = useState("");
@@ -403,7 +403,7 @@ export default function App(){
             method:"POST", headers:{"Content-Type":"application/json"},
             body: JSON.stringify({
               appointment_id: created.id,
-              amount:         bD.serviceType==="outcall" ? Math.round(finalTotal*(bD.advancePct||10)/100) : finalTotal,
+              amount:         Math.round(finalTotal*(bD.advancePct||10)/100), // always advance for customer bookings
               customer_name:  cName,
               customer_email: cEmail,
               customer_phone: cPhone,
@@ -5143,11 +5143,17 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                 </div>
               </div>
             </Card>
-            {/* Outcall advance payment selector */}
-            {(customer||bD.guestMode)&&bD.serviceType==="outcall"&&(
-              <Card style={{border:`1px solid ${WA}40`,marginBottom:0}}>
-                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:4}}>🏠 Advance Payment</div>
-                <div style={{fontSize:12,color:G6,marginBottom:12}}>Select how much to pay in advance (min 10%)</div>
+            {/* Advance payment — required for BOTH inhouse and outcall online bookings */}
+            {(customer||bD.guestMode)&&(
+              <Card style={{border:`2px solid ${PL}30`,marginBottom:0}}>
+                <div style={{fontWeight:700,fontSize:15,fontFamily:"'Playfair Display',serif",marginBottom:4}}>
+                  {bD.serviceType==="outcall"?"🏠 Outcall Advance Payment":"💳 Advance Booking Payment"}
+                </div>
+                <div style={{fontSize:12,color:G6,marginBottom:12}}>
+                  {bD.serviceType==="outcall"
+                    ?"Select how much to pay in advance to confirm your outcall booking (min 10%)"
+                    :"Pay at least 10% now to confirm your booking. Balance paid on arrival."}
+                </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:12}}>
                   {[10,25,50,75,100].map(pct=>(
                     <button key={pct} onClick={()=>setBD(d=>({...d,advancePct:pct}))}
@@ -5169,7 +5175,8 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                   </div>
                   {(bD.advancePct||10)<100&&(
                     <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:G4,marginTop:3}}>
-                      <span>Remaining on arrival</span><span>{fmt(bTotal-Math.round(bTotal*(bD.advancePct||10)/100))}</span>
+                      <span>{bD.serviceType==="outcall"?"Remaining on arrival":"Balance due on arrival"}</span>
+                      <span>{fmt(bTotal-Math.round(bTotal*(bD.advancePct||10)/100))}</span>
                     </div>
                   )}
                 </div>
@@ -5194,16 +5201,9 @@ const isMobile = typeof window!=="undefined" && window.innerWidth<640;
                   </div>
                 </div>
 
-                {/* Pay on arrival */}
-                <div style={{fontSize:12,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Or pay on arrival</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-                  {(payMethods.length?payMethods:["Cash"]).map(pm=>(
-                    <button key={pm} onClick={()=>setBD(d=>({...d,method:pm}))}
-                      style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                        border:`2px solid ${bD.method===pm?PL:G2}`,background:bD.method===pm?PLF:WH,color:bD.method===pm?PL:G6}}>
-                      {pm}
-                    </button>
-                  ))}
+                {/* Online payment required — no pay on arrival for customer bookings */}
+                <div style={{background:OKB,borderRadius:8,padding:"10px 12px",fontSize:12,color:OK,fontWeight:600}}>
+                  ✓ You will be redirected to PesaPal to pay the advance. Your booking is confirmed after payment.
                 </div>
               </Card>
             )}
