@@ -15,7 +15,7 @@ const PESAPAL_BASE = process.env.PESAPAL_ENV === 'live'
   ? 'https://pay.pesapal.com/v3'
   : 'https://cybqa.pesapal.com/pesapalv3';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.vercel.app';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}` || 'https://massagetz.com';
 
 // ── Get PesaPal auth token ──────────────────────────────────
 async function getToken() {

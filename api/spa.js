@@ -402,9 +402,11 @@ module.exports = async function handler(req, res) {
     // ── APPOINTMENTS ──────────────────────────────────────────
     if (resource === 'appointments') {
       if (req.method === 'GET') {
-        const { date, therapist_id, status: sf } = req.query;
+        const { date, therapist_id, status: sf, id: apptId } = req.query;
         let rows;
-        if (date && therapist_id)
+        if (apptId)
+          rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.id=${apptId} LIMIT 1`;
+        else if (date && therapist_id)
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.appt_date=${date} AND a.therapist_id=${therapist_id} ORDER BY a.appt_time`;
         else if (date)
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.appt_date=${date} ORDER BY a.appt_time`;
@@ -412,7 +414,7 @@ module.exports = async function handler(req, res) {
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.status=${sf} ORDER BY a.appt_date DESC, a.appt_time`;
         else
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id ORDER BY a.appt_date DESC, a.appt_time DESC LIMIT 200`;
-        return res.status(200).json(rows);
+        return res.status(200).json(apptId ? (rows[0]||null) : rows);
       }
       if (req.method === 'POST') {
         const { customer_id, customer_name, customer_phone, customer_email, therapist_id, room_id,

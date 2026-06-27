@@ -3725,61 +3725,189 @@ function StaffTab({staff,setStaff,pop,currentUser}){
 
 // ── PAYMENT COMPLETE PAGE ─────────────────────────────────────
 function PaymentCompletePage({ customer, navTo, pop }) {
-  const [status, setStatus] = useState("checking"); // checking | completed | failed | pending
-  const [apptId, setApptId] = useState(null);
+  const [status,    setStatus]    = useState("checking");
+  const [appt,      setAppt]      = useState(null);
+  const [payInfo,   setPayInfo]   = useState(null);
+  const [retrying,  setRetrying]  = useState(false);
 
   useEffect(()=>{
-    const params   = new URLSearchParams(window.location.search);
-    const aid      = params.get("appt");
-    const trackId  = params.get("OrderTrackingId") || params.get("order_tracking_id");
-    setApptId(aid);
+    const params  = new URLSearchParams(window.location.search);
+    const aid     = params.get("appt");
+    const trackId = params.get("OrderTrackingId") || params.get("order_tracking_id");
 
-    if(!trackId || !aid) { setStatus("pending"); return; }
+    if(!aid) { setStatus("pending"); return; }
 
-    fetch(`/api/pesapal?action=status&order_tracking_id=${trackId}&appointment_id=${aid}`)
-      .then(r=>r.json())
-      .then(d=>{
-        if(d.status==="Completed")  setStatus("completed");
-        else if(d.status==="Failed" || d.status==="Invalid") setStatus("failed");
-        else setStatus("pending");
-      })
-      .catch(()=>setStatus("pending"));
+    // Fetch payment status + appointment details in parallel
+    const checkStatus = trackId
+      ? fetch(`/api/pesapal?action=status&order_tracking_id=${trackId}&appointment_id=${aid}`).then(r=>r.json())
+      : Promise.resolve({ status:"pending" });
+    const fetchAppt = fetch(`/api/spa?resource=appointments&id=${aid}`).then(r=>r.json()).catch(()=>null);
+
+    Promise.all([checkStatus, fetchAppt]).then(([pay, apptData])=>{
+      setPayInfo(pay);
+      if(Array.isArray(apptData)) setAppt(apptData[0]||null);
+      else if(apptData?.id) setAppt(apptData);
+
+      if(pay.status==="Completed")               setStatus("completed");
+      else if(["Failed","Invalid"].includes(pay.status)) setStatus("failed");
+      else                                               setStatus("pending");
+    }).catch(()=>setStatus("pending"));
   },[]);
 
-  const CONFIG = {
-    checking:  { icon:"⏳", color:WA, bg:WAB, title:"Checking payment…",       msg:"Please wait while we verify your payment." },
-    completed: { icon:"✅", color:OK, bg:OKB, title:"Payment Successful!",      msg:"Your booking is confirmed. We'll see you soon!" },
-    failed:    { icon:"❌", color:ER, bg:ERB, title:"Payment Failed",           msg:"Your payment was not completed. Please try again or choose a different method." },
-    pending:   { icon:"⏳", color:WA, bg:WAB, title:"Booking Received",         msg:"Your appointment is booked. Payment can be completed at the venue." },
+  const retry = () => {
+    setRetrying(true);
+    const params  = new URLSearchParams(window.location.search);
+    const aid     = params.get("appt");
+    const trackId = params.get("OrderTrackingId") || params.get("order_tracking_id");
+    if(!trackId||!aid){ setRetrying(false); return; }
+    fetch(`/api/pesapal?action=status&order_tracking_id=${trackId}&appointment_id=${aid}`)
+      .then(r=>r.json()).then(d=>{
+        setPayInfo(d);
+        if(d.status==="Completed") setStatus("completed");
+        else if(["Failed","Invalid"].includes(d.status)) setStatus("failed");
+        setRetrying(false);
+      }).catch(()=>setRetrying(false));
   };
-  const cfg = CONFIG[status] || CONFIG.pending;
+
+  const svcs = appt ? (Array.isArray(appt.services)?appt.services:(typeof appt.services==="string"?JSON.parse(appt.services||"[]"):[])) : [];
 
   return(
-    <div style={{minHeight:"100vh",background:G1,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{background:WH,borderRadius:16,padding:"40px 32px",maxWidth:460,width:"100%",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,.1)"}}>
-        <div style={{width:72,height:72,borderRadius:"50%",background:cfg.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 20px"}}>
-          {cfg.icon}
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${BK},${PLD} 60%,${PL})`,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"24px 14px 40px",paddingTop:80}}>
+      <div style={{width:"100%",maxWidth:480}}>
+
+        {/* Status badge */}
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{
+            width:80,height:80,borderRadius:"50%",margin:"0 auto 16px",
+            background:status==="completed"?OKB:status==="failed"?ERB:WAB,
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,
+            boxShadow:`0 4px 24px ${status==="completed"?OK:status==="failed"?ER:WA}40`
+          }}>
+            {status==="checking"?"⏳":status==="completed"?"✅":status==="failed"?"❌":"⏳"}
+          </div>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:WH,marginBottom:6}}>
+            {status==="checking"?"Verifying Payment…":status==="completed"?"Payment Confirmed!":status==="failed"?"Payment Failed":"Booking Received"}
+          </h1>
+          <p style={{color:"rgba(255,255,255,.7)",fontSize:14}}>
+            {status==="completed"?"Your booking is confirmed and paid. See you soon! 💆"
+              :status==="failed"?"Your payment was not completed. Please try again."
+              :status==="checking"?"Please wait a moment…"
+              :"Your booking is saved. Complete payment before arrival."}
+          </p>
         </div>
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:cfg.color,marginBottom:10}}>{cfg.title}</h2>
-        <p style={{color:G6,fontSize:15,lineHeight:1.7,marginBottom:24}}>{cfg.msg}</p>
-        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
-          {customer&&(
-            <button onClick={()=>{ window.history.pushState({},"","/"); navTo("customer"); }}
-              style={{padding:"11px 22px",borderRadius:9,border:"none",background:PL,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              View My Bookings
+
+        {/* Booking details card */}
+        {appt&&(
+          <div style={{background:WH,borderRadius:16,overflow:"hidden",marginBottom:16,boxShadow:"0 8px 32px rgba(0,0,0,.25)"}}>
+            {/* Header */}
+            <div style={{background:`linear-gradient(135deg,${PLD},${PL})`,padding:"14px 18px"}}>
+              <div style={{color:"rgba(255,255,255,.7)",fontSize:11,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>Booking Reference</div>
+              <div style={{color:WH,fontWeight:700,fontSize:13,fontFamily:"monospace"}}>{appt.id}</div>
+            </div>
+            <div style={{padding:"16px 18px"}}>
+              {/* Client */}
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${G1}`}}>
+                <div style={{width:42,height:42,borderRadius:"50%",background:PLF,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:18,color:PL,flexShrink:0}}>
+                  {(appt.customer_name||"?")[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15,color:BK}}>{appt.customer_name}</div>
+                  {appt.customer_phone&&<div style={{fontSize:13,color:G6}}>{appt.customer_phone}</div>}
+                </div>
+                <div style={{marginLeft:"auto",flexShrink:0}}>
+                  <span style={{
+                    padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700,
+                    background:status==="completed"?OKB:WAB,
+                    color:status==="completed"?OK:WA
+                  }}>
+                    {status==="completed"?"✓ Paid":"Pending"}
+                  </span>
+                </div>
+              </div>
+              {/* Details grid */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                {[
+                  ["📅 Date",    fmtDate(appt.appt_date)],
+                  ["🕐 Time",    fmtTime(appt.appt_time)],
+                  ["📍 Type",    appt.service_type==="outcall"?"🏠 Outcall":"🏢 In-House"],
+                  ["💳 Method",  payInfo?.method||appt.payment_method||"—"],
+                ].map(([k,v])=>(
+                  <div key={k} style={{background:G1,borderRadius:8,padding:"9px 12px"}}>
+                    <div style={{fontSize:11,color:G4,marginBottom:2}}>{k}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:BK}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Services */}
+              {svcs.length>0&&(
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Services</div>
+                  {svcs.map((s,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"5px 0",borderBottom:`1px solid ${G1}`}}>
+                      <span>{s.name}</span>
+                      <span style={{fontWeight:700}}>{fmt(s.price||0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Payment summary */}
+              <div style={{background:status==="completed"?OKB:G1,borderRadius:10,padding:"12px 14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                  <span style={{color:G6}}>Total booking</span>
+                  <span style={{fontWeight:700}}>{fmt(appt.total_amount)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}>
+                  <span style={{color:G6}}>Paid now</span>
+                  <span style={{color:OK}}>{fmt(payInfo?.amount||appt.paid_amount||0)}</span>
+                </div>
+                {Number(appt.total_amount)>Number(payInfo?.amount||appt.paid_amount||0)&&(
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:4,paddingTop:4,borderTop:`1px solid ${G2}`}}>
+                    <span style={{color:G6}}>Balance on arrival</span>
+                    <span style={{fontWeight:700,color:WA}}>{fmt(Number(appt.total_amount)-Number(payInfo?.amount||appt.paid_amount||0))}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {status==="checking"&&(
+            <button onClick={retry} disabled={retrying}
+              style={{padding:"13px",borderRadius:10,border:"none",background:PL,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {retrying?"Checking…":"🔄 Check Payment Status"}
             </button>
           )}
-          <button onClick={()=>{ window.history.pushState({},"","/"); navTo("land"); }}
-            style={{padding:"11px 22px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-            Back to Home
+          {status==="failed"&&(
+            <button onClick={()=>{window.history.pushState({},"","/");navTo("book");}}
+              style={{padding:"13px",borderRadius:10,border:"none",background:ER,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              🔄 Try Again
+            </button>
+          )}
+          {customer&&(
+            <button onClick={()=>{window.history.pushState({},"","/");navTo("customer");}}
+              style={{padding:"13px",borderRadius:10,border:"none",background:PL,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              📋 View My Bookings
+            </button>
+          )}
+          <button onClick={()=>{window.history.pushState({},"","/");navTo("land");}}
+            style={{padding:"13px",borderRadius:10,border:"2px solid rgba(255,255,255,.3)",background:"transparent",color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            🏠 Back to Home
           </button>
+          {/* WhatsApp confirmation */}
+          {status==="completed"&&appt?.customer_phone&&(
+            <a href={`https://wa.me/255786203903?text=Hello%20MASSAGE%20TZ%2C%20I%20just%20paid%20for%20my%20booking%20on%20${encodeURIComponent(fmtDate(appt.appt_date))}%20at%20${encodeURIComponent(fmtTime(appt.appt_time))}.%20Reference%3A%20${appt.id}`}
+              target="_blank" rel="noopener noreferrer"
+              style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px",borderRadius:10,
+                background:"#25D366",color:WH,textDecoration:"none",fontSize:14,fontWeight:700}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Confirm via WhatsApp
+            </a>
+          )}
         </div>
-        {status==="failed"&&(
-          <button onClick={()=>{ window.history.pushState({},"","/"); navTo("book"); }}
-            style={{marginTop:12,padding:"11px 22px",borderRadius:9,border:`1px solid ${PL}`,background:PLF,color:PL,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
-            Try Booking Again
-          </button>
-        )}
       </div>
     </div>
   );
