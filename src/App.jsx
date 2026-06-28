@@ -174,6 +174,11 @@ export default function App(){
   const [customer,setCustomer] = useState(()=>{try{const s=localStorage.getItem("spa_customer");return s?JSON.parse(s):null;}catch{return null;}});
   const [view,setView]         = useState(()=>{
     try{
+      // Check URL path first — PesaPal redirects to /payment-complete?appt=XXX
+      if(typeof window!=="undefined"){
+        const path=window.location.pathname;
+        if(path==="/payment-complete"||path.startsWith("/payment-complete")) return "payment_complete";
+      }
       if(localStorage.getItem("spa_staff"))     return "admin";
       if(localStorage.getItem("spa_therapist")) return "therapist";
       if(localStorage.getItem("spa_customer"))  return "customer";
@@ -1372,7 +1377,7 @@ function ApptsTab({appts,setAppts,therapists,rooms,services,pricing,payMethods,p
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-            {[["Date",fmtDate(selA.appt_date)],["Time",fmtTime(selA.appt_time)],["Type",selA.service_type],["Therapist",therapists.find(t=>t.id===selA.therapist_id)?.name||"Any"],["Room",rooms.find(r=>r.id===selA.room_id)?.name||"—"],["Total",fmt(selA.total_amount)],["Paid",fmt(selA.paid_amount)],["Balance",fmt(Number(selA.total_amount)-Number(selA.paid_amount))]].map(([k,v])=>(
+            {[["Date",fmtDate(selA.appt_date)],["Time",fmtTime(selA.appt_time)],["Type",selA.service_type==="outcall"?"🏠 Outcall":"🏢 In-House"],["Therapist",therapists.find(t=>t.id===selA.therapist_id)?.name||"Any"],["Room",rooms.find(r=>r.id===selA.room_id)?.name||"—"],["Method",selA.payment_method||"—"],["Total",fmt(selA.total_amount)],["Advance Paid",fmt(selA.paid_amount)],["Balance Due",fmt(Math.max(0,Number(selA.total_amount)-Number(selA.paid_amount)))]].map(([k,v])=>(
               <div key={k} style={{padding:"8px 10px",background:G1,borderRadius:8,fontSize:12}}>
                 <div style={{color:G6,marginBottom:2}}>{k}</div><div style={{fontWeight:700}}>{v}</div>
               </div>
@@ -2766,11 +2771,12 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
   const filteredAppts=appts.filter(inRange);
   const filteredExp=expenses.filter(e=>inRange({appt_date:e.expense_date}));
 
-  const totRev=filtered.reduce((s,a)=>s+Number(a.paid_amount||0),0);
+  const totPaid=filtered.reduce((s,a)=>s+Number(a.paid_amount||0),0);  // advance collected
+  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount||0),0);  // total bookings value
+  const totRev=totPaid;  // revenue = what was collected
   const totExp=filteredExp.reduce((s,e)=>s+Number(e.amount||0),0);
   const net=totRev-totExp;
-  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount||0),0);
-  const outstanding=totInvoiced-totRev;
+  const outstanding=Math.max(0,totInvoiced-totPaid);  // balance still to collect on arrival
 
   // gender breakdown (reception only)
   const genderCounts={male:0,female:0,other:0};
@@ -3059,7 +3065,19 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
 function PaymentsTab({payMethods,setPayMethods,pop}){
   const [name,setName]=useState("");
   const [dbMethods,setDbMethods]=useState([]);
+  const [payments,setPayments]=useState([]);
+  const [ptab,setPtab]=useState("methods");
+  const [loadingP,setLoadingP]=useState(false);
+
   useEffect(()=>{ api.getPayMethods().then(r=>setDbMethods(r)).catch(()=>{}); },[]);
+
+  useEffect(()=>{
+    if(ptab!=="list") return;
+    setLoadingP(true);
+    fetch("/api/spa?resource=payments_list")
+      .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setPayments(d); setLoadingP(false); })
+      .catch(()=>setLoadingP(false));
+  },[ptab]);
 
   const add=async()=>{
     if(!name.trim()) return;
@@ -3089,6 +3107,7 @@ function PaymentsTab({payMethods,setPayMethods,pop}){
           <Btn onClick={add} disabled={!name.trim()} style={{flexShrink:0,marginTop:0}}>Add</Btn>
         </div>
       </Card>
+      )}
     </div>
   );
 }

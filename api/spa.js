@@ -118,6 +118,9 @@ function bookingMsg(type, data) {
 }
 
 
+// Increase body size limit for room photo uploads (base64 images)
+module.exports.config = { api: { bodyParser: { sizeLimit: '10mb' } } };
+
 module.exports = async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -402,7 +405,7 @@ module.exports = async function handler(req, res) {
     // ── APPOINTMENTS ──────────────────────────────────────────
     if (resource === 'appointments') {
       if (req.method === 'GET') {
-        const { date, therapist_id, status: sf, id: apptId } = req.query;
+        const { date, therapist_id, status: sf, id: apptId, include_past } = req.query;
         let rows;
         if (apptId)
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.id=${apptId} LIMIT 1`;
@@ -410,8 +413,10 @@ module.exports = async function handler(req, res) {
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.appt_date=${date} AND a.therapist_id=${therapist_id} ORDER BY a.appt_time`;
         else if (date)
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.appt_date=${date} ORDER BY a.appt_time`;
-        else if (sf)
+        else if (sf && sf !== 'all')
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.status=${sf} ORDER BY a.appt_date DESC, a.appt_time`;
+        else if (include_past === '1')
+          rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id ORDER BY a.appt_date DESC, a.appt_time DESC LIMIT 500`;
         else
           rows = await sql`SELECT a.*, t.name AS therapist_name, r.name AS room_name FROM appointments a LEFT JOIN therapists t ON t.id=a.therapist_id LEFT JOIN rooms r ON r.id=a.room_id ORDER BY a.appt_date DESC, a.appt_time DESC LIMIT 200`;
         return res.status(200).json(apptId ? (rows[0]||null) : rows);
@@ -550,6 +555,26 @@ module.exports = async function handler(req, res) {
     }
 
     // ── PAYMENT METHODS ───────────────────────────────────────
+    // ── PAYMENTS LIST ────────────────────────────────────────────
+    if (resource === 'payments_list') {
+      if (req.method === 'GET') {
+        await sql`CREATE TABLE IF NOT EXISTS payments (
+          id SERIAL PRIMARY KEY, appointment_id TEXT, amount NUMERIC,
+          status TEXT, pesapal_order_id TEXT, redirect_url TEXT,
+          paid_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW()
+        )`.catch(()=>{});
+        const { limit: lim } = req.query;
+        const rows = await sql`
+          SELECT p.*, a.customer_name, a.appt_date, a.appt_time, a.customer_phone
+          FROM payments p
+          LEFT JOIN appointments a ON a.id = p.appointment_id
+          ORDER BY p.created_at DESC
+          LIMIT ${parseInt(lim||'100')}
+        `.catch(()=>[]);
+        return res.status(200).json(rows);
+      }
+    }
+
     if (resource === 'payment_methods') {
       if (req.method === 'GET') {
         const rows = await sql`SELECT * FROM payment_methods ORDER BY sort_order ASC, name ASC`;
