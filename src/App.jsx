@@ -4748,10 +4748,10 @@ function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,s
           {/* Map embed — Google Maps iframe for Mikocheni */}
           <div style={{borderRadius:16,overflow:"hidden",border:"2px solid rgba(255,255,255,.08)",marginBottom:20,boxShadow:"0 8px 32px rgba(0,0,0,.4)"}}>
             <iframe
-              src="https://maps.google.com/maps?q=20+Mikocheni+Ruvu+Street,+Mikocheni,+Dar+es+Salaam,+Tanzania&t=&z=17&ie=UTF8&iwloc=&output=embed"
+              src="https://maps.google.com/maps?q=The+Body+Melody+Wellness+SPA+Mikocheni+Dar+es+Salaam+Tanzania&t=&z=17&ie=UTF8&iwloc=&output=embed"
               width="100%" height="300" style={{border:"none",display:"block"}}
               allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-              title="Bodymelody Massage — 20 Mikocheni Ruvu Street"
+              title="The Body Melody Wellness SPA — Mikocheni"
             />
           </div>
 
@@ -4767,11 +4767,14 @@ function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,s
               </svg>
               Open in Google Maps
             </a>
-            <a href="https://waze.com/ul?q=20+Mikocheni+Ruvu+Street+Dar+es+Salaam+Tanzania&ll=-6.7637,39.2453"
+            <a href="https://bolt.eu/en-tz/rides/"
               target="_blank" rel="noopener noreferrer"
               style={{display:"inline-flex",alignItems:"center",gap:8,padding:"11px 22px",borderRadius:10,
-                background:"#05C8F7",color:WH,textDecoration:"none",fontSize:14,fontWeight:700}}>
-              🚗 Open in Waze
+                background:"#34D186",color:WH,textDecoration:"none",fontSize:14,fontWeight:700}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14.5 2L6 13h7l-3.5 9L22 9h-7.5L14.5 2z"/>
+              </svg>
+              Book a Bolt
             </a>
           </div>
 
