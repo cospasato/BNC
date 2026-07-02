@@ -69,7 +69,9 @@ export const api = {
 
   // Expenses
   getExpenses:    () => g('resource=expenses'),
-  createExpense:  b  => p('resource=expenses', b),
+  createExpense:  b       => p('resource=expenses', b),
+  updateExpense:  (id,b)  => pt(`resource=expenses&id=${id}`, b),
+  deleteExpense:  id      => d(`resource=expenses&id=${id}`),
 
   // Payment methods
   getPayMethods:    ()      => g('resource=payment_methods'),

@@ -174,10 +174,11 @@ export default function App(){
   const [customer,setCustomer] = useState(()=>{try{const s=localStorage.getItem("spa_customer");return s?JSON.parse(s):null;}catch{return null;}});
   const [view,setView]         = useState(()=>{
     try{
-      // Check URL path first — PesaPal redirects to /payment-complete?appt=XXX
+      // Check URL path first
       if(typeof window!=="undefined"){
         const path=window.location.pathname;
         if(path==="/payment-complete"||path.startsWith("/payment-complete")) return "payment_complete";
+        if(path==="/videos"||path.startsWith("/videos")) return "videos";
       }
       if(localStorage.getItem("spa_staff"))     return "admin";
       if(localStorage.getItem("spa_therapist")) return "therapist";
@@ -2791,22 +2792,51 @@ function OffersTab({offers,setOffers,pop}){
 }
 
 function ExpensesTab({expenses,setExpenses,pop,user}){
-  const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({category:"",description:"",amount:"",expense_date:td()});
+  const [modal,   setModal]   = useState(false);
+  const [editExp, setEditExp] = useState(null); // expense being edited
+  const [form,    setForm]    = useState({category:"",description:"",amount:"",expense_date:td()});
+  const [saving,  setSaving]  = useState(false);
   const CATS=["Supplies","Rent","Utilities","Salaries","Marketing","Equipment","Other"];
+  const isAdmin = ["Admin","Manager"].includes(user?.role);
 
-  const save=async()=>{
+  const openAdd  = () => { setEditExp(null); setForm({category:"",description:"",amount:"",expense_date:td()}); setModal(true); };
+  const openEdit = (e) => { setEditExp(e); setForm({category:e.category||"",description:e.description||"",amount:String(e.amount||""),expense_date:e.expense_date||td()}); setModal(true); };
+
+  const save = async () => {
     if(!form.category||!form.amount) return;
-    try{ const u=await api.createExpense({...form,amount:Number(form.amount),staff_id:user?.id}); setExpenses(p=>[u,...p]); setModal(false); pop("Expense recorded"); }catch(e){pop(e.message,"err");}
+    setSaving(true);
+    try {
+      if(editExp) {
+        const u = await api.updateExpense(editExp.id, {...form, amount:Number(form.amount)});
+        setExpenses(p=>p.map(x=>x.id===editExp.id?u:x));
+        pop("Expense updated");
+      } else {
+        const u = await api.createExpense({...form, amount:Number(form.amount), staff_id:user?.id});
+        setExpenses(p=>[u,...p]);
+        pop("Expense recorded");
+      }
+      setModal(false);
+    } catch(e) { pop(e.message,"err"); }
+    setSaving(false);
   };
+
+  const del = async (e) => {
+    if(!window.confirm(`Delete expense "${e.description||e.category}" (${fmt(e.amount)})?`)) return;
+    try {
+      await api.deleteExpense(e.id);
+      setExpenses(p=>p.filter(x=>x.id!==e.id));
+      pop("Expense deleted");
+    } catch(err) { pop(err.message,"err"); }
+  };
+
   const total=expenses.reduce((s,e)=>s+Number(e.amount),0);
-  const byCat=CATS.map(c=>({cat:c,total:expenses.filter(e=>e.category===c).reduce((s,e)=>s+Number(e.amount),0)})).filter(x=>x.total>0);
+  const byCat=CATS.map(cat=>({cat,total:expenses.filter(e=>e.category===cat).reduce((s,e)=>s+Number(e.amount),0)})).filter(x=>x.total>0);
 
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,margin:0}}>Expenses</h2>
-        <Btn onClick={()=>setModal(true)}>+ Add Expense</Btn>
+        <Btn onClick={openAdd}>+ Add Expense</Btn>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
         <KPI label="Total Expenses" value={fmt(total)} color={ER} icon="💸"/>
@@ -2826,20 +2856,36 @@ function ExpensesTab({expenses,setExpenses,pop,user}){
           ))}
         </Card>
       )}
-      {expenses.slice(0,50).map(e=>(
-        <div key={e.id} style={{background:WH,borderRadius:10,border:`1px solid ${G2}`,padding:"11px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:13}}>{e.description}</div>
+      {expenses.length===0&&(
+        <div style={{textAlign:"center",padding:30,color:G4,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>No expenses recorded yet</div>
+      )}
+      {expenses.slice(0,100).map(e=>(
+        <div key={e.id} style={{background:WH,borderRadius:10,border:`1px solid ${G2}`,padding:"11px 14px",marginBottom:8,
+          display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.description||"—"}</div>
             <div style={{fontSize:11,color:G6,marginTop:2}}>{e.category} · {fmtDate(e.expense_date)}</div>
           </div>
-          <div style={{fontWeight:700,fontSize:14,color:ER}}>{fmt(e.amount)}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            <span style={{fontWeight:700,fontSize:14,color:ER}}>{fmt(e.amount)}</span>
+            {isAdmin&&(<>
+              <button onClick={()=>openEdit(e)}
+                style={{background:INB,border:`1px solid ${IN}`,color:IN,borderRadius:7,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                ✏️
+              </button>
+              <button onClick={()=>del(e)}
+                style={{background:ERB,border:`1px solid ${ER}`,color:ER,borderRadius:7,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                🗑
+              </button>
+            </>)}
+          </div>
         </div>
       ))}
       {modal&&(
-        <Modal title="Add Expense" onClose={()=>setModal(false)}>
+        <Modal title={editExp?"Edit Expense":"Add Expense"} onClose={()=>setModal(false)}>
           <Sel label="Category" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
             <option value="">Select category…</option>
-            {CATS.map(c=><option key={c} value={c}>{c}</option>)}
+            {CATS.map(cat=><option key={cat} value={cat}>{cat}</option>)}
           </Sel>
           <Inp label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="What was purchased?"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
@@ -2848,7 +2894,9 @@ function ExpensesTab({expenses,setExpenses,pop,user}){
           </div>
           <div style={{display:"flex",gap:10}}>
             <Btn v="ghost" onClick={()=>setModal(false)} style={{flex:1,justifyContent:"center"}}>Cancel</Btn>
-            <Btn onClick={save} disabled={!form.category||!form.amount} style={{flex:1,justifyContent:"center"}}>Save Expense</Btn>
+            <Btn onClick={save} disabled={saving||!form.category||!form.amount} style={{flex:1,justifyContent:"center"}}>
+              {saving?"Saving…":editExp?"Update Expense":"Save Expense"}
+            </Btn>
           </div>
         </Modal>
       )}
@@ -4874,11 +4922,14 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
         {/* Share page button */}
         <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
           <button onClick={()=>{
-            const url = window.location.origin + '/#videos';
+            const url = window.location.origin + '/videos';
+            const shareData = { title:'MASSAGE TZ — M-Videos', url, text:'Watch our latest massage videos 🎬' };
             if(navigator.share) {
-              navigator.share({ title:'MASSAGE TZ — M-Videos', url, text:'Watch our massage videos' }).catch(()=>{});
+              navigator.share(shareData).catch(()=>{});
             } else {
-              navigator.clipboard?.writeText(url).then(()=>alert('Link copied!')).catch(()=>alert(url));
+              navigator.clipboard?.writeText(url)
+                .then(()=>{ const el=document.createElement('div');el.textContent='✓ Link copied! '+url;el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1A1A2E;color:#C9A84C;padding:10px 20px;border-radius:10px;font-weight:700;z-index:9999;font-size:13px;';document.body.appendChild(el);setTimeout(()=>el.remove(),3000); })
+                .catch(()=>alert(url));
             }
           }}
             style={{display:"flex",alignItems:"center",gap:7,padding:"9px 20px",borderRadius:20,
