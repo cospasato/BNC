@@ -1997,17 +1997,20 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
                     ✏️ Edit
                   </button>
                   )}
-                  {/* Delete / approve delete */}
-                  {r.status==="pending_delete"&&user?.role==="Admin"&&(
-                    <button onClick={()=>approveDelete(r)}
+                  {/* Delete buttons */}
+                  {user?.role==="Admin"&&(
+                    <button onClick={()=>requestDelete(r)}
                       style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${ER}`,background:ERB,color:ER,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                      🗑 Approve Delete
+                      🗑 Delete
                     </button>
                   )}
-                  {r.status!=="pending_delete"&&(
+                  {user?.role!=="Admin"&&r.status==="pending_delete"&&(
+                    <span style={{padding:"4px 10px",borderRadius:7,fontSize:11,fontWeight:700,background:WAB,color:WA}}>⏳ Pending Deletion</span>
+                  )}
+                  {user?.role!=="Admin"&&r.status!=="pending_delete"&&(
                     <button onClick={()=>requestDelete(r)}
                       style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${ER}`,background:"none",color:ER,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                      🗑 {user?.role==="Admin"?"Delete":"Request Delete"}
+                      🗑 Request Delete
                     </button>
                   )}
                   {isActive&&bal>0&&(
@@ -2848,7 +2851,7 @@ function ExpensesTab({expenses,setExpenses,pop,user}){
 function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
   const [df,setDf]=useState("");
   const [dt,setDt]=useState("");
-  const [tab,setTab]=useState("financial");
+  const [tab,setTab]=useState("overview");
 
   const allRev=[...appts,...reception];
   const inRange=r=>{
@@ -2860,113 +2863,203 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
   const filteredAppts=appts.filter(inRange);
   const filteredExp=expenses.filter(e=>inRange({appt_date:e.expense_date}));
 
-  const totPaid=filtered.reduce((s,a)=>s+Number(a.paid_amount||0),0);  // advance collected
-  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount||0),0);  // total bookings value
-  const totRev=totPaid;  // revenue = what was collected
+  // Core metrics
+  const totPaid=filtered.reduce((s,a)=>s+Number(a.paid_amount||0),0);
+  const totInvoiced=filtered.reduce((s,a)=>s+Number(a.total_amount||0),0);
+  const totRev=totPaid;
   const totExp=filteredExp.reduce((s,e)=>s+Number(e.amount||0),0);
   const net=totRev-totExp;
-  const outstanding=Math.max(0,totInvoiced-totPaid);  // balance still to collect on arrival
+  const outstanding=Math.max(0,totInvoiced-totPaid);
+  const completedSessions=filtered.filter(a=>a.status==="completed").length;
+  const cancelledSessions=filtered.filter(a=>["cancelled","noShow"].includes(a.status)).length;
+  const avgTicket=completedSessions>0?Math.round(totPaid/completedSessions):0;
+  const totalSessions=filtered.length;
 
-  // gender breakdown (reception only)
+  // Breakdowns
   const genderCounts={male:0,female:0,other:0};
   filteredRec.forEach(r=>{const g=r.client_gender||"male";genderCounts[g]=(genderCounts[g]||0)+1;});
   const totalGender=Object.values(genderCounts).reduce((a,b)=>a+b,0);
 
   const byMethod=payMethods.map(m=>({method:m,total:filtered.filter(a=>a.payment_method===m).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>a.payment_method===m).length})).filter(x=>x.total>0);
-  const byTherapist=therapists.map(t=>({...t,rev:filtered.filter(a=>a.therapist_id===t.id).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>a.therapist_id===t.id).length})).sort((a,b)=>b.rev-a.rev);
-  const byService=services.map(sv=>({...sv,rev:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).length})).filter(x=>x.rev>0).sort((a,b)=>b.rev-a.rev);
-  const byServiceType={inhouse:filtered.filter(a=>a.service_type!=="outcall").length,outcall:filtered.filter(a=>a.service_type==="outcall").length};
-  const byExpCat=[...new Set(filteredExp.map(e=>e.category||"General"))].map(cat=>({cat,total:filteredExp.filter(e=>(e.category||"General")===cat).reduce((s,e)=>s+Number(e.amount||0),0)})).sort((a,b)=>b.total-a.total);
+  const byTherapist=therapists.map(t=>({...t,rev:filtered.filter(a=>a.therapist_id===t.id).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>a.therapist_id===t.id).length,sessions:filteredRec.filter(r=>r.therapist_id===t.id).length})).sort((a,b)=>b.rev-a.rev);
+  const byService=services.map(sv=>({...sv,rev:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).reduce((s,a)=>s+Number(a.paid_amount||0),0),count:filtered.filter(a=>(a.services||[]).find(s=>s.id===sv.id)).length})).filter(x=>x.count>0).sort((a,b)=>b.rev-a.rev);
+  const byServiceType={inhouse:filtered.filter(a=>a.service_type!=="outcall"),outcall:filtered.filter(a=>a.service_type==="outcall")};
+  const byExpCat=[...new Set(filteredExp.map(e=>e.category||"General"))].map(cat=>({cat,total:filteredExp.filter(e=>(e.category||"General")===cat).reduce((s,e)=>s+Number(e.amount||0),0),count:filteredExp.filter(e=>(e.category||"General")===cat).length})).sort((a,b)=>b.total-a.total);
 
-  const presets=[["Today",td(),td()],["This Week",(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10);})(),(()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().slice(0,10);})()],["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})(),new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().slice(0,10)],["All Time","",""]];
+  // Hourly distribution (from reception)
+  const byHour=Array.from({length:24},(_,h)=>({h,count:filteredRec.filter(r=>r.in_time&&new Date(r.in_time).getHours()===h).length}));
+  const peakHour=byHour.reduce((mx,h)=>h.count>mx.count?h:mx,{h:0,count:0});
 
-  const Bar=({pct,color})=>(
-    <div style={{height:6,background:G1,borderRadius:99,overflow:"hidden",marginTop:4}}>
-      <div style={{height:"100%",width:pct+"%",background:color||PL,borderRadius:99,transition:"width .4s"}}/>
+  // Daily revenue (last 14 days within range)
+  const last14=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()-13+i);return d.toISOString().slice(0,10);});
+  const dailyRev=last14.map(d=>({d,rev:allRev.filter(a=>(a.appt_date||a.in_time||"").slice(0,10)===d).reduce((s,a)=>s+Number(a.paid_amount||0),0)}));
+  const maxDayRev=Math.max(...dailyRev.map(x=>x.rev),1);
+
+  // Cancellation rate
+  const cancelRate=totalSessions>0?Math.round(cancelledSessions/totalSessions*100):0;
+
+  // Repeat clients
+  const freq={};filteredRec.forEach(r=>{const k=(r.customer_name||"").toLowerCase().trim();freq[k]=(freq[k]||0)+1;});
+  const repeatClients=Object.entries(freq).filter(([,n])=>n>1).sort((a,b)=>b[1]-a[1]);
+  const repeatRate=totalGender>0?Math.round((totalGender-Object.keys(freq).length)/totalGender*100):0;
+
+  // Outcall vs inhouse revenue
+  const inhouseRev=byServiceType.inhouse.reduce((s,a)=>s+Number(a.paid_amount||0),0);
+  const outcallRev=byServiceType.outcall.reduce((s,a)=>s+Number(a.paid_amount||0),0);
+
+  const Bar=({pct,color,h})=>(
+    <div style={{height:h||6,background:G1,borderRadius:99,overflow:"hidden",marginTop:4}}>
+      <div style={{height:"100%",width:Math.min(100,pct)+"%",background:color||PL,borderRadius:99,transition:"width .5s"}}/>
     </div>
   );
 
+  const presets=[["Today",td(),td()],["This Week",(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10);})(),(()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().slice(0,10);})()],["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})(),new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().slice(0,10)],["All Time","",""]];
+
+  const TABS=[["overview","📊 Overview"],["financial","💰 Financial"],["clients","👥 Clients"],["therapists","💆 Therapists"],["services","📋 Services"],["time","⏰ Time Analysis"],["expenses","📤 Expenses"]];
+
   return(
     <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:16,color:BK}}>Reports</h2>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:16,color:BK}}>Reports & Analytics</h2>
 
       {/* Date range */}
-      <Card style={{marginBottom:16}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+      <Card style={{marginBottom:14}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
           {presets.map(([l,f,t])=>(
             <button key={l} onClick={()=>{setDf(f);setDt(t);}}
-              style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,
-                border:`1px solid ${df===f&&dt===t?PL:G2}`,background:df===f&&dt===t?PLF:WH,
-                color:df===f&&dt===t?PL:G6,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+              style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                border:`1px solid ${df===f&&dt===t?PL:G2}`,background:df===f&&dt===t?PLF:WH,color:df===f&&dt===t?PL:G6}}>{l}</button>
           ))}
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <Inp label="From" type="date" value={df} onChange={e=>setDf(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
           <Inp label="To"   type="date" value={dt} onChange={e=>setDt(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
-          {(df||dt)&&<button onClick={()=>{setDf("");setDt("");}} style={{padding:"8px 12px",borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontSize:12,fontFamily:"inherit"}}>✕ Clear</button>}
+          {(df||dt)&&<button onClick={()=>{setDf("");setDt("");}} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontSize:12,fontFamily:"inherit"}}>✕ Clear</button>}
         </div>
       </Card>
 
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-        {[["financial","💰 Financial"],["clients","👥 Clients"],["therapists","💆 Therapists"],["services","📋 Services"],["expenses","📤 Expenses"]].map(([id,label])=>(
+        {TABS.map(([id,label])=>(
           <button key={id} onClick={()=>setTab(id)}
-            style={{padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:700,
-              border:`1px solid ${tab===id?PL:G2}`,background:tab===id?PL:WH,color:tab===id?WH:G6,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+              border:`1px solid ${tab===id?PL:G2}`,background:tab===id?PL:WH,color:tab===id?WH:G6}}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* ── FINANCIAL ── */}
-      {tab==="financial"&&(
+      {/* ── OVERVIEW ── */}
+      {tab==="overview"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
-            <KPI label="Total Revenue"  value={fmt(totRev)}  color={PL}           icon="💰"/>
-            <KPI label="Total Expenses" value={fmt(totExp)}  color={ER}           icon="📤"/>
-            <KPI label="Net Profit"     value={fmt(net)}     color={net>=0?OK:ER} icon="📈"/>
-            <KPI label="Outstanding"    value={fmt(outstanding)} color={WA}       icon="⏳"/>
-            <KPI label="Appointments"   value={filteredAppts.filter(a=>a.status==="completed").length} color={IN} icon="✅"/>
-            <KPI label="Walk-ins"       value={filteredRec.filter(r=>r.status==="completed").length} color={G6} icon="🚪"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+            <KPI label="Revenue Collected" value={fmt(totRev)}       color={PL}           icon="💰"/>
+            <KPI label="Total Invoiced"    value={fmt(totInvoiced)}  color={IN}           icon="🧾"/>
+            <KPI label="Net Profit"        value={fmt(net)}          color={net>=0?OK:ER} icon="📈"/>
+            <KPI label="Outstanding"       value={fmt(outstanding)}  color={WA}           icon="⏳"/>
+            <KPI label="Total Sessions"    value={totalSessions}     color={PL}           icon="💆"/>
+            <KPI label="Completed"         value={completedSessions} color={OK}           icon="✅"/>
+            <KPI label="Cancelled/NoShow"  value={cancelledSessions} color={ER}           icon="❌"/>
+            <KPI label="Avg Ticket"        value={fmt(avgTicket)}    color={GOLD}         icon="🎫"/>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Card>
-              <ST c="Payment Methods"/>
-              {byMethod.length===0&&<div style={{color:G4,fontSize:13}}>No payment data</div>}
-              {byMethod.map((m,i)=>(
-                <div key={i} style={{marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                    <span style={{color:G6}}>{m.method}</span>
-                    <div style={{textAlign:"right"}}>
-                      <span style={{fontWeight:700}}>{fmt(m.total)}</span>
-                      <span style={{fontSize:11,color:G4,marginLeft:6}}>{totRev>0?Math.round(m.total/totRev*100):0}%</span>
-                    </div>
-                  </div>
-                  <Bar pct={totRev>0?Math.round(m.total/totRev*100):0}/>
+
+          {/* Daily revenue sparkline */}
+          <Card>
+            <ST c="Daily Revenue — Last 14 Days"/>
+            <div style={{display:"flex",alignItems:"flex-end",gap:3,height:60,marginBottom:6}}>
+              {dailyRev.map((d,i)=>(
+                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <div style={{width:"100%",background:d.rev>0?PL:G1,borderRadius:"3px 3px 0 0",
+                    height:Math.max(2,Math.round(d.rev/maxDayRev*55)),
+                    opacity:d.rev>0?1:.3,transition:"height .3s"}}/>
                 </div>
               ))}
-              {byMethod.length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${G2}`,display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700}}><span>Total</span><span style={{color:PL}}>{fmt(totRev)}</span></div>}
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:G4}}>
+              <span>{dailyRev[0]?.d.slice(5)}</span><span>{dailyRev[6]?.d.slice(5)}</span><span>{dailyRev[13]?.d.slice(5)}</span>
+            </div>
+          </Card>
+
+          {/* Quick stats grid */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Card>
+              <ST c="Session Types"/>
+              {[["🏢 In-House",byServiceType.inhouse.length,inhouseRev,"#1565C0"],["🏠 Outcall",byServiceType.outcall.length,outcallRev,"#7B3F6E"]].map(([l,n,r,col])=>(
+                <div key={l} style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                    <span style={{fontWeight:600}}>{l}</span>
+                    <span style={{color:col,fontWeight:700}}>{fmt(r)}</span>
+                  </div>
+                  <div style={{fontSize:11,color:G4}}>{n} sessions</div>
+                  <Bar pct={totalSessions>0?Math.round(n/totalSessions*100):0} color={col}/>
+                </div>
+              ))}
             </Card>
             <Card>
-              <ST c="Summary"/>
-              {[["Invoiced",fmt(totInvoiced),G6],["Collected",fmt(totRev),OK],["Outstanding",fmt(outstanding),outstanding>0?ER:G4],["Expenses",fmt(totExp),ER],["Net Profit",fmt(net),net>=0?OK:ER],["Sessions",String(filtered.length),PL]].map(([k,v,col])=>(
-                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+              <ST c="Performance"/>
+              {[["Cancellation rate",cancelRate+"%",cancelRate>20?ER:cancelRate>10?WA:OK],
+                ["Collection rate",totInvoiced>0?Math.round(totRev/totInvoiced*100)+"%":"—",OK],
+                ["Repeat clients",repeatClients.length+" clients",PL],
+                ["Avg sessions/day",totalSessions>0?(totalSessions/Math.max(1,(df&&dt?(new Date(dt)-new Date(df))/86400000+1:30))).toFixed(1):"—",IN],
+              ].map(([k,v,col])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
                   <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:col}}>{v}</span>
                 </div>
               ))}
             </Card>
           </div>
-          <Card>
-            <ST c="Service Type Breakdown"/>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              {[["🏢 In-House",byServiceType.inhouse,"#1565C0"],["🏠 Outcall",byServiceType.outcall,"#7B3F6E"]].map(([l,n,col])=>(
-                <div key={l} style={{background:col+"10",borderRadius:10,padding:"14px",textAlign:"center",border:`1px solid ${col}20`}}>
-                  <div style={{fontSize:28,fontWeight:700,color:col}}>{n}</div>
-                  <div style={{fontSize:12,color:G6,marginTop:4}}>{l} sessions</div>
-                  <div style={{fontSize:11,color:G4}}>{filtered.length>0?Math.round(n/filtered.length*100):0}%</div>
+        </div>
+      )}
+
+      {/* ── FINANCIAL ── */}
+      {tab==="financial"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+            <KPI label="Collected"   value={fmt(totRev)}      color={PL} icon="💰"/>
+            <KPI label="Invoiced"    value={fmt(totInvoiced)} color={IN} icon="🧾"/>
+            <KPI label="Outstanding" value={fmt(outstanding)} color={WA} icon="⏳"/>
+            <KPI label="Expenses"    value={fmt(totExp)}      color={ER} icon="📤"/>
+            <KPI label="Net Profit"  value={fmt(net)}         color={net>=0?OK:ER} icon="📈"/>
+            <KPI label="Avg Ticket"  value={fmt(avgTicket)}   color={GOLD} icon="🎫"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <Card>
+              <ST c="Payment Methods"/>
+              {byMethod.length===0&&<div style={{color:G4,fontSize:13}}>No data</div>}
+              {byMethod.map((m,i)=>(
+                <div key={i} style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                    <span style={{fontWeight:600}}>{m.method}</span>
+                    <div style={{textAlign:"right"}}>
+                      <span style={{fontWeight:700}}>{fmt(m.total)}</span>
+                      <span style={{fontSize:11,color:G4,marginLeft:6}}>{totRev>0?Math.round(m.total/totRev*100):0}% · {m.count}x</span>
+                    </div>
+                  </div>
+                  <Bar pct={totRev>0?Math.round(m.total/totRev*100):0}/>
                 </div>
               ))}
-            </div>
+            </Card>
+            <Card>
+              <ST c="In-House vs Outcall Revenue"/>
+              {[["🏢 In-House",inhouseRev,"#1565C0"],["🏠 Outcall",outcallRev,"#7B3F6E"]].map(([l,v,col])=>(
+                <div key={l} style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                    <span style={{fontWeight:600}}>{l}</span><span style={{fontWeight:700,color:col}}>{fmt(v)}</span>
+                  </div>
+                  <Bar pct={totRev>0?Math.round(v/totRev*100):0} color={col}/>
+                </div>
+              ))}
+            </Card>
+          </div>
+          <Card>
+            <ST c="P&L Summary"/>
+            {[["Total Invoiced",fmt(totInvoiced),G6],["Collected",fmt(totRev),PL],["Outstanding",fmt(outstanding),WA],
+              ["Total Expenses",fmt(totExp),ER],["Gross Profit",fmt(totRev-totExp),net>=0?OK:ER],
+              ["Completed Sessions",completedSessions,IN],["Cancelled/No-Show",cancelledSessions,ER],
+              ["Average Ticket",fmt(avgTicket),GOLD]].map(([k,v,col])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:col}}>{v}</span>
+              </div>
+            ))}
           </Card>
         </div>
       )}
@@ -2974,51 +3067,51 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
       {/* ── CLIENTS ── */}
       {tab==="clients"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
-            <KPI label="Total Clients" value={filteredRec.length} color={PL} icon="👥"/>
-            <KPI label="Male"   value={genderCounts.male}   color={"#1565C0"} icon="👨"/>
-            <KPI label="Female" value={genderCounts.female} color={"#e91e63"} icon="👩"/>
-            {genderCounts.other>0&&<KPI label="Other" value={genderCounts.other} color={G6} icon="⚧"/>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+            <KPI label="Total Walk-ins"   value={filteredRec.length}      color={PL}  icon="🚪"/>
+            <KPI label="Unique Clients"   value={Object.keys(freq).length} color={IN}  icon="👤"/>
+            <KPI label="Repeat Clients"   value={repeatClients.length}     color={OK}  icon="🔄"/>
+            <KPI label="Male"             value={genderCounts.male}        color={"#1565C0"} icon="👨"/>
+            <KPI label="Female"           value={genderCounts.female}      color={"#e91e63"} icon="👩"/>
           </div>
-          <Card>
-            <ST c="Gender Breakdown (Walk-ins)"/>
-            {totalGender===0&&<div style={{color:G4,fontSize:13}}>No walk-in data</div>}
-            {[["👨 Male",genderCounts.male,"#1565C0"],["👩 Female",genderCounts.female,"#e91e63"],["⚧ Other",genderCounts.other,"#6A1B9A"]].filter(x=>x[1]>0).map(([l,n,col])=>(
-              <div key={l} style={{marginBottom:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
-                  <span style={{fontWeight:600}}>{l}</span>
-                  <span><strong>{n}</strong> <span style={{color:G4,fontSize:11}}>({totalGender>0?Math.round(n/totalGender*100):0}%)</span></span>
-                </div>
-                <Bar pct={totalGender>0?Math.round(n/totalGender*100):0} color={col}/>
-              </div>
-            ))}
-          </Card>
-          <Card>
-            <ST c="Repeat Clients"/>
-            {(()=>{
-              const freq={};
-              filteredRec.forEach(r=>{const k=(r.customer_name||"").toLowerCase();freq[k]=(freq[k]||0)+1;});
-              const sorted=Object.entries(freq).filter(([,n])=>n>1).sort((a,b)=>b[1]-a[1]).slice(0,10);
-              return sorted.length===0
-                ?<div style={{color:G4,fontSize:13}}>No repeat clients in this period</div>
-                :sorted.map(([name,count],i)=>(
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                    <span style={{textTransform:"capitalize",fontWeight:600}}>{name}</span>
-                    <span style={{background:PLF,color:PL,padding:"2px 9px",borderRadius:99,fontSize:12,fontWeight:700}}>{count}x</span>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <Card>
+              <ST c="Gender Breakdown"/>
+              {[["👨 Male",genderCounts.male,"#1565C0"],["👩 Female",genderCounts.female,"#e91e63"],["⚧ Other",genderCounts.other,"#6A1B9A"]].filter(x=>x[1]>0).map(([l,n,col])=>(
+                <div key={l} style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                    <span style={{fontWeight:600}}>{l}</span>
+                    <span><strong>{n}</strong><span style={{color:G4,fontSize:11}}> ({totalGender>0?Math.round(n/totalGender*100):0}%)</span></span>
                   </div>
-                ));
-            })()}
-          </Card>
-          <Card>
-            <ST c="Walk-ins by Service Type"/>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              {[["🏢 In-House",filteredRec.filter(r=>r.service_type!=="outcall").length,"#1565C0"],["🏠 Outcall",filteredRec.filter(r=>r.service_type==="outcall").length,"#7B3F6E"]].map(([l,n,col])=>(
-                <div key={l} style={{background:col+"10",borderRadius:10,padding:"14px",textAlign:"center"}}>
-                  <div style={{fontSize:26,fontWeight:700,color:col}}>{n}</div>
-                  <div style={{fontSize:12,color:G6,marginTop:4}}>{l}</div>
+                  <Bar pct={totalGender>0?Math.round(n/totalGender*100):0} color={col}/>
                 </div>
               ))}
-            </div>
+            </Card>
+            <Card>
+              <ST c="Client Stats"/>
+              {[["Unique clients",Object.keys(freq).length,PL],
+                ["Repeat clients",repeatClients.length,OK],
+                ["Single-visit",Object.values(freq).filter(n=>n===1).length,G6],
+                ["Repeat rate",repeatRate+"%",OK],
+              ].map(([k,v,col])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                  <span style={{color:G6}}>{k}</span><span style={{fontWeight:700,color:col}}>{v}</span>
+                </div>
+              ))}
+            </Card>
+          </div>
+          <Card>
+            <ST c="Top Repeat Clients"/>
+            {repeatClients.length===0&&<div style={{color:G4,fontSize:13}}>No repeat clients yet</div>}
+            {repeatClients.slice(0,15).map(([name,count],i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:i===1?"#aaa":G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i<2?WH:G6}}>{i+1}</div>
+                  <span style={{textTransform:"capitalize",fontWeight:600}}>{name}</span>
+                </div>
+                <span style={{background:PLF,color:PL,padding:"2px 9px",borderRadius:99,fontSize:12,fontWeight:700}}>{count}x</span>
+              </div>
+            ))}
           </Card>
         </div>
       )}
@@ -3036,25 +3129,30 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
                   <div style={{width:24,height:24,borderRadius:"50%",background:i===0?GOLD:i===1?"#aaa":G2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i<2?WH:G6,flexShrink:0}}>{i+1}</div>
                   {t.photo?<img src={t.photo} alt="" style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
                     :<div style={{width:36,height:36,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,flexShrink:0}}>{t.name?.[0]}</div>}
-                  <div style={{flex:1,minWidth:0}}>
+                  <div style={{flex:1}}>
                     <div style={{fontSize:13,fontWeight:700}}>{t.name}</div>
                     <Bar pct={Math.round(t.rev/maxR*100)} color={i===0?GOLD:PL}/>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontSize:13,fontWeight:700,color:PL}}>{fmt(t.rev)}</div>
-                    <div style={{fontSize:11,color:G6}}>{t.count} sessions</div>
+                    <div style={{fontSize:11,color:G6}}>{t.count+t.sessions} sessions</div>
                   </div>
                 </div>
               );
             })}
           </Card>
           <Card>
-            <ST c="Therapist Session Count"/>
-            {byTherapist.filter(t=>t.count>0).map((t,i)=>(
-              <div key={t.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
-                <span style={{fontWeight:600}}>{t.name}</span>
+            <ST c="Therapist Session Breakdown"/>
+            {byTherapist.filter(t=>t.count+t.sessions>0).map((t,i)=>(
+              <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <span style={{color:G6}}>{t.count} sessions</span>
+                  {t.photo?<img src={t.photo} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover"}}/>
+                    :<div style={{width:28,height:28,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:700,fontSize:12}}>{t.name?.[0]}</div>}
+                  <span style={{fontWeight:600}}>{t.name}</span>
+                </div>
+                <div style={{display:"flex",gap:12,fontSize:12}}>
+                  <span style={{color:G6}}>📅 {t.count} appts</span>
+                  <span style={{color:G6}}>🚪 {t.sessions} walk-ins</span>
                   <span style={{fontWeight:700,color:PL}}>{fmt(t.rev)}</span>
                 </div>
               </div>
@@ -3067,7 +3165,7 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
       {tab==="services"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <Card>
-            <ST c="Popular Services"/>
+            <ST c="Most Popular Services"/>
             {byService.length===0&&<div style={{color:G4,fontSize:13}}>No data</div>}
             {byService.map((sv,i)=>{
               const maxR=byService[0]?.rev||1;
@@ -3080,7 +3178,7 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
                     </div>
                     <div style={{textAlign:"right"}}>
                       <span style={{fontWeight:700,color:PL}}>{fmt(sv.rev)}</span>
-                      <span style={{fontSize:11,color:G4,marginLeft:6}}>{sv.count} sessions</span>
+                      <span style={{fontSize:11,color:G4,marginLeft:6}}>{sv.count} bookings</span>
                     </div>
                   </div>
                   <Bar pct={Math.round(sv.rev/maxR*100)} color={i===0?GOLD:PL}/>
@@ -3088,17 +3186,76 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
               );
             })}
           </Card>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Card>
+              <ST c="In-House Services"/>
+              <div style={{textAlign:"center",padding:"14px 0"}}>
+                <div style={{fontSize:28,fontWeight:700,color:"#1565C0"}}>{byServiceType.inhouse.length}</div>
+                <div style={{fontSize:13,color:G6}}>sessions · {fmt(inhouseRev)}</div>
+              </div>
+            </Card>
+            <Card>
+              <ST c="Outcall Services"/>
+              <div style={{textAlign:"center",padding:"14px 0"}}>
+                <div style={{fontSize:28,fontWeight:700,color:PL}}>{byServiceType.outcall.length}</div>
+                <div style={{fontSize:13,color:G6}}>sessions · {fmt(outcallRev)}</div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ── TIME ANALYSIS ── */}
+      {tab==="time"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <Card>
-            <ST c="Service Type Revenue"/>
+            <ST c="Busiest Hours (Walk-ins)"/>
+            <div style={{fontSize:12,color:G6,marginBottom:10}}>Peak hour: {peakHour.count>0?`${peakHour.h}:00–${peakHour.h+1}:00 (${peakHour.count} sessions)`:"-"}</div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:2,height:70}}>
+              {byHour.filter((_,i)=>i>=6&&i<=23).map(h=>(
+                <div key={h.h} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <div style={{width:"100%",background:h.count===peakHour.count&&h.count>0?GOLD:h.count>0?PL:G1,borderRadius:"2px 2px 0 0",
+                    height:Math.max(2,Math.round(h.count/(peakHour.count||1)*60)),transition:"height .3s"}}/>
+                  <div style={{fontSize:8,color:G4}}>{h.h}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <ST c="Sessions by Day of Week"/>
             {(()=>{
-              const inRev=filtered.filter(a=>a.service_type!=="outcall").reduce((s,a)=>s+Number(a.paid_amount||0),0);
-              const outRev=filtered.filter(a=>a.service_type==="outcall").reduce((s,a)=>s+Number(a.paid_amount||0),0);
-              return(
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  {[["🏢 In-House",inRev,"#1565C0"],["🏠 Outcall",outRev,"#7B3F6E"]].map(([l,v,col])=>(
-                    <div key={l} style={{background:col+"10",borderRadius:10,padding:"14px",textAlign:"center"}}>
-                      <div style={{fontSize:14,color:G6,marginBottom:4}}>{l}</div>
-                      <div style={{fontSize:20,fontWeight:700,color:col}}>{fmt(v)}</div>
+              const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+              const byday=days.map((d,i)=>({d,count:filteredRec.filter(r=>r.in_time&&new Date(r.in_time).getDay()===i).length}));
+              const maxD=Math.max(...byday.map(x=>x.count),1);
+              return byday.map((d,i)=>(
+                <div key={i} style={{marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:2}}>
+                    <span style={{fontWeight:600,color:i===0||i===6?PL:BK}}>{d.d}</span>
+                    <span style={{color:G6}}>{d.count} sessions</span>
+                  </div>
+                  <Bar pct={Math.round(d.count/maxD*100)} color={i===0||i===6?GOLD:PL}/>
+                </div>
+              ));
+            })()}
+          </Card>
+          <Card>
+            <ST c="Session Duration Analysis"/>
+            {(()=>{
+              const durations=filteredRec.filter(r=>r.in_time&&r.out_time).map(r=>(new Date(r.out_time)-new Date(r.in_time))/60000);
+              const avg=durations.length?Math.round(durations.reduce((a,b)=>a+b,0)/durations.length):0;
+              const under60=durations.filter(d=>d<60).length;
+              const hrs1_2=durations.filter(d=>d>=60&&d<120).length;
+              const over2hrs=durations.filter(d=>d>=120).length;
+              return durations.length===0
+                ?<div style={{color:G4,fontSize:13}}>No completed sessions with check-in/out times</div>
+                :(
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                    <span style={{color:G6}}>Average duration</span><span style={{fontWeight:700,color:PL}}>{avg} min</span>
+                  </div>
+                  {[["Under 1 hour",under60],["1–2 hours",hrs1_2],["Over 2 hours",over2hrs]].map(([l,n])=>(
+                    <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+                      <span style={{color:G6}}>{l}</span><span style={{fontWeight:700}}>{n}</span>
                     </div>
                   ))}
                 </div>
@@ -3111,10 +3268,11 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
       {/* ── EXPENSES ── */}
       {tab==="expenses"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
             <KPI label="Total Expenses" value={fmt(totExp)} color={ER} icon="📤"/>
             <KPI label="Net Profit"     value={fmt(net)}    color={net>=0?OK:ER} icon="📈"/>
             <KPI label="Expense Count"  value={filteredExp.length} color={G6} icon="🧾"/>
+            <KPI label="Profit Margin"  value={totRev>0?Math.round(net/totRev*100)+"%":"—"} color={net>=0?OK:ER} icon="📊"/>
           </div>
           <Card>
             <ST c="Expenses by Category"/>
@@ -3125,7 +3283,7 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
                 <div key={i} style={{marginBottom:12}}>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:2}}>
                     <span style={{fontWeight:600}}>{e.cat}</span>
-                    <span><strong style={{color:ER}}>{fmt(e.total)}</strong> <span style={{color:G4,fontSize:11}}>({pct}%)</span></span>
+                    <span><strong style={{color:ER}}>{fmt(e.total)}</strong><span style={{color:G4,fontSize:11,marginLeft:5}}>{pct}% · {e.count}x</span></span>
                   </div>
                   <Bar pct={pct} color={ER}/>
                 </div>
@@ -3133,10 +3291,10 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
             })}
           </Card>
           <Card>
-            <ST c="Expense Log"/>
+            <ST c="Recent Expenses"/>
             {filteredExp.length===0&&<div style={{color:G4,fontSize:13}}>No expenses</div>}
             {filteredExp.slice().reverse().slice(0,20).map((e,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${G1}`,fontSize:13}}>
                 <div>
                   <div style={{fontWeight:600}}>{e.description||"Expense"}</div>
                   <div style={{fontSize:11,color:G4}}>{e.category||"General"} · {fmtDate(e.expense_date)}</div>
@@ -3159,7 +3317,6 @@ function PaymentsTab({payMethods,setPayMethods,pop}){
   const [loadingP,setLoadingP]=useState(false);
 
   useEffect(()=>{ api.getPayMethods().then(r=>setDbMethods(r)).catch(()=>{}); },[]);
-
   useEffect(()=>{
     if(ptab!=="list") return;
     setLoadingP(true);
@@ -3176,26 +3333,82 @@ function PaymentsTab({payMethods,setPayMethods,pop}){
     if(pm.name==="Cash") return pop("Cash cannot be removed","err");
     try{ await api.deletePayMethod(pm.id); setDbMethods(p=>p.filter(x=>x.id!==pm.id)); setPayMethods(p=>p.filter(x=>x!==pm.name)); pop("Removed"); }catch(e){pop(e.message,"err");}
   };
+  const totPesaPal=payments.filter(p=>p.status==="completed").reduce((s,p)=>s+Number(p.amount||0),0);
 
   return(
     <div>
-      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:20}}>Payment Methods</h2>
-      <Card>
-        <ST c="Active Methods"/>
-        {(dbMethods.length?dbMethods:payMethods.map(n=>({name:n}))).map((pm,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${G1}`,fontSize:14}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{width:8,height:8,borderRadius:"50%",background:OK,display:"inline-block"}}/>
-              <span style={{fontWeight:600}}>{pm.name||pm}</span>
-            </div>
-            {(pm.name||pm)!=="Cash"&&pm.id&&<button onClick={()=>del(pm)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,fontWeight:700}}>Remove</button>}
-          </div>
+      <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:16,color:BK}}>Payments</h2>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        {[["methods","⚙️ Methods"],["list","📋 Payments List"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setPtab(v)}
+            style={{padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+              border:`1px solid ${ptab===v?PL:G2}`,background:ptab===v?PL:WH,color:ptab===v?WH:G6}}>
+            {l}
+          </button>
         ))}
-        <div style={{display:"flex",gap:10,marginTop:16}}>
-          <Inp label="" value={name} onChange={e=>setName(e.target.value)} placeholder="Add new method (e.g. Cheque)" style={{marginBottom:0,flex:1}}/>
-          <Btn onClick={add} disabled={!name.trim()} style={{flexShrink:0,marginTop:0}}>Add</Btn>
+      </div>
+
+      {ptab==="methods"&&(
+        <Card>
+          <ST c="Active Payment Methods"/>
+          {(dbMethods.length?dbMethods:payMethods.map(n=>({name:n}))).map((pm,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${G1}`,fontSize:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{width:8,height:8,borderRadius:"50%",background:OK,display:"inline-block"}}/>
+                <span style={{fontWeight:600}}>{pm.name||pm}</span>
+              </div>
+              {(pm.name||pm)!=="Cash"&&pm.id&&<button onClick={()=>del(pm)} style={{background:"none",border:"none",color:ER,cursor:"pointer",fontSize:13,fontWeight:700}}>Remove</button>}
+            </div>
+          ))}
+          <div style={{display:"flex",gap:10,marginTop:16}}>
+            <Inp label="" value={name} onChange={e=>setName(e.target.value)} placeholder="Add new method (e.g. Cheque)" style={{marginBottom:0,flex:1}}/>
+            <Btn onClick={add} disabled={!name.trim()} style={{flexShrink:0,marginTop:0}}>Add</Btn>
+          </div>
+        </Card>
+      )}
+
+      {ptab==="list"&&(
+        <div>
+          {totPesaPal>0&&(
+            <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,.6)",marginBottom:2}}>Total PesaPal Collections</div>
+                <div style={{fontSize:22,fontWeight:700,color:GOLD}}>{fmt(totPesaPal)}</div>
+              </div>
+              <div style={{fontSize:32}}>💳</div>
+            </div>
+          )}
+          {loadingP&&<div style={{color:G4,textAlign:"center",padding:30}}>Loading…</div>}
+          {!loadingP&&payments.length===0&&(
+            <div style={{color:G4,textAlign:"center",padding:30,background:WH,borderRadius:12,border:`1px solid ${G2}`}}>
+              No PesaPal payments recorded yet
+            </div>
+          )}
+          {payments.map((p,i)=>{
+            const isPaid=p.status==="completed";
+            return(
+              <div key={i} style={{background:WH,borderRadius:12,border:`1px solid ${G2}`,padding:"12px 16px",marginBottom:10,
+                display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,
+                  background:isPaid?OKB:WAB,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+                  {isPaid?"✅":"⏳"}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14,color:BK}}>{p.customer_name||"Client"}</div>
+                  <div style={{fontSize:12,color:G6,marginTop:2}}>
+                    {fmtDate(p.appt_date)}{p.appt_time?" · "+fmtTime(p.appt_time):""}{p.customer_phone?" · "+p.customer_phone:""}
+                  </div>
+                  <div style={{fontSize:11,color:G4,marginTop:1,fontFamily:"monospace"}}>{p.pesapal_order_id||p.appointment_id}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontWeight:700,fontSize:16,color:isPaid?OK:G6}}>{fmt(p.amount)}</div>
+                  <div style={{fontSize:11,color:isPaid?OK:WA,fontWeight:600,marginTop:2}}>{isPaid?"Paid":p.status}</div>
+                  <div style={{fontSize:10,color:G4,marginTop:1}}>{fmtDate(p.paid_at||p.created_at)}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </Card>
       )}
     </div>
   );
@@ -5066,10 +5279,11 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
       const avColor={available:OK,outcall_only:WA,unavailable:ER};
       const avLabel={available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"};
       return(
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"16px 12px",overflowY:"auto"}}
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center",overflowY:"auto"}}
         onClick={e=>e.target===e.currentTarget&&setViewTh(null)}>
-        <div style={{background:WH,borderRadius:20,width:"100%",maxWidth:520,boxShadow:"0 20px 60px rgba(0,0,0,.3)",overflow:"hidden"}}>
-          <div style={{paddingTop:"70%",position:"relative",background:vPhotos[0]?BK:`linear-gradient(135deg,${PLD},${PL})`}}>
+        <div style={{background:WH,borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,boxShadow:"0 -8px 40px rgba(0,0,0,.4)",overflow:"hidden",maxHeight:"95vh",display:"flex",flexDirection:"column"}}>
+          {/* Portrait photo — 4:5 ratio */}
+          <div style={{paddingTop:"125%",position:"relative",flexShrink:0,background:vPhotos[0]?BK:`linear-gradient(135deg,${PLD},${PL})`}}>
             {vPhotos.length>0
               ? vPhotos.map((src,i)=>(
                   <img key={i} src={src} alt={viewTh.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top",opacity:i===thPhotoIdx?1:0,transition:"opacity .3s"}}/>
@@ -5093,13 +5307,13 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
             </div>
           </div>
           {vPhotos.length>1&&(
-            <div style={{display:"flex",gap:6,padding:"8px 12px",background:G1,overflowX:"auto"}}>
+            <div style={{display:"flex",gap:6,padding:"8px 12px",background:"#000",overflowX:"auto",flexShrink:0}}>
               {vPhotos.map((src,i)=>(
-                <img key={i} src={src} onClick={()=>setThPhotoIdx(i)} alt="" style={{width:56,height:44,objectFit:"cover",objectPosition:"top",borderRadius:6,cursor:"pointer",flexShrink:0,border:`2px solid ${i===thPhotoIdx?PL:"transparent"}`,opacity:i===thPhotoIdx?1:.6,transition:"all .15s"}}/>
+                <img key={i} src={src} onClick={()=>setThPhotoIdx(i)} alt="" style={{width:52,height:70,objectFit:"cover",objectPosition:"top",borderRadius:6,cursor:"pointer",flexShrink:0,border:`2px solid ${i===thPhotoIdx?GOLD:"transparent"}`,opacity:i===thPhotoIdx?1:.55,transition:"all .15s"}}/>
               ))}
             </div>
           )}
-          <div style={{padding:"18px 20px 24px"}}>
+          <div style={{padding:"18px 20px 24px",overflowY:"auto"}}>
             <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
               {viewTh.availability&&<span style={{background:`${avColor[viewTh.availability]||G4}18`,color:avColor[viewTh.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{avLabel[viewTh.availability]||viewTh.availability}</span>}
               <span style={{background:OKB,color:OK,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
