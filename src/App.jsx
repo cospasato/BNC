@@ -235,6 +235,15 @@ export default function App(){
   const [pendingBook,setPendingBook] = useState(false); // auth gate at confirm
 
   // ── Load data ──
+  // Listen for therapist availability changes from DashTab
+  useEffect(()=>{
+    const handler = e => {
+      setTherapists(p=>p.map(t=>t.id===e.detail.id?{...t,availability:e.detail.availability}:t));
+    };
+    document.addEventListener("therapist_av_change", handler);
+    return ()=>document.removeEventListener("therapist_av_change", handler);
+  },[]);
+
   const loadPublic = useCallback(async()=>{
     const safe = async (fn, fallback) => { try{ return await fn(); }catch{ return fallback; } };
     const [th,rm,sv,pk] = await Promise.all([
@@ -740,10 +749,38 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
   const toggleEditSvc = (sv) => {
     setEditForm(f => {
       const ex = f.services.find(s=>s.id===sv.id);
-      const pr = pricing ? (pricing.find(p=>p.service_id===sv.id&&p.service_type===f.service_type)?.price||0) : 0;
-      const newSvcs = ex ? f.services.filter(s=>s.id!==sv.id) : [...f.services,{id:sv.id,name:sv.name,price:Number(pr)}];
-      return {...f, services:newSvcs};
+      const pr = pricing ? Number(pricing.find(p=>p.service_id===sv.id&&p.service_type===(f.service_type||"inhouse"))?.price||pricing.find(p=>p.service_id===sv.id)?.price||0) : 0;
+      const newSvcs = ex ? f.services.filter(s=>s.id!==sv.id) : [...f.services,{id:sv.id,name:sv.name,price:pr}];
+      const newTotal = newSvcs.reduce((s,svc)=>s+Number(svc.price||0),0);
+      return {...f, services:newSvcs, total_amount:newTotal};
     });
+  };
+
+  const [deleteId, setDeleteId] = useState(null);
+
+  const requestDelete = (r) => {
+    if(user?.role==="Admin") {
+      // Admin can delete directly
+      if(!window.confirm(`Delete session for ${r.customer_name}? This cannot be undone.`)) return;
+      api.deleteReception(r.id).then(()=>{
+        setReception(p=>p.filter(x=>x.id!==r.id));
+        pop("Session deleted");
+      }).catch(e=>pop(e.message,"err"));
+    } else {
+      // Non-admin: mark as pending_delete, needs admin approval
+      api.updateReception(r.id,{status:"pending_delete"}).then(r2=>{
+        setReception(p=>p.map(x=>x.id===r.id?{...x,...r2}:x));
+        pop("Deletion requested — awaiting Admin approval");
+      }).catch(e=>pop(e.message,"err"));
+    }
+  };
+
+  const approveDelete = (r) => {
+    if(!window.confirm(`Approve deletion of session for ${r.customer_name}?`)) return;
+    api.deleteReception(r.id).then(()=>{
+      setReception(p=>p.filter(x=>x.id!==r.id));
+      pop("Session deleted");
+    }).catch(e=>pop(e.message,"err"));
   };
 
   const checkout=async(id,extra,newSvcs,newTotal)=>{
@@ -1437,7 +1474,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
   const [clientName,  setClientName]  = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [form, setForm] = useState({
-    therapistId:"", roomId:"", serviceType:"inhouse",
+    therapistIds:[], roomId:"", serviceType:"inhouse",
     selServices:[], disc:0, discT:"pct", paid:0, method:"Cash", notes:"",
     gender:"male", bookingMode:"standard", packageId:""
   });
@@ -1474,7 +1511,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
   };
   const resetForm=()=>{
     setClientName("");setClientPhone("");
-    setForm({therapistId:"",roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:(payMethods||[])[0]||"Cash",notes:"",gender:"male",bookingMode:"standard",packageId:""});
+    setForm({therapistIds:[],roomId:"",serviceType:"inhouse",selServices:[],disc:0,discT:"pct",paid:0,method:(payMethods||[])[0]||"Cash",notes:"",gender:"male",bookingMode:"standard",packageId:""});
     setRecBookMode("standard");
     setStep(1);
   };
@@ -1491,7 +1528,7 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
       const r=await api.createReception({
         customer_name:clientName, customer_phone:clientPhone,
         client_gender:form.gender||"male",
-        therapist_id:form.therapistId||null, room_id:finalRoom,
+        therapist_id:(form.therapistIds||[])[0]||null, therapist_ids:form.therapistIds||[], room_id:finalRoom,
         service_type:form.serviceType,
         services:finalServices,
         base_amount:selPkg?selPkg.price:base, discount:selPkg?0:Number(form.disc||0), discount_type:form.discT,
@@ -1557,10 +1594,38 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
   const toggleEditSvc = (sv) => {
     setEditForm(f => {
       const ex = f.services.find(s=>s.id===sv.id);
-      const pr = pricing ? (pricing.find(p=>p.service_id===sv.id&&p.service_type===f.service_type)?.price||0) : 0;
-      const newSvcs = ex ? f.services.filter(s=>s.id!==sv.id) : [...f.services,{id:sv.id,name:sv.name,price:Number(pr)}];
-      return {...f, services:newSvcs};
+      const pr = pricing ? Number(pricing.find(p=>p.service_id===sv.id&&p.service_type===(f.service_type||"inhouse"))?.price||pricing.find(p=>p.service_id===sv.id)?.price||0) : 0;
+      const newSvcs = ex ? f.services.filter(s=>s.id!==sv.id) : [...f.services,{id:sv.id,name:sv.name,price:pr}];
+      const newTotal = newSvcs.reduce((s,svc)=>s+Number(svc.price||0),0);
+      return {...f, services:newSvcs, total_amount:newTotal};
     });
+  };
+
+  const [deleteId, setDeleteId] = useState(null);
+
+  const requestDelete = (r) => {
+    if(user?.role==="Admin") {
+      // Admin can delete directly
+      if(!window.confirm(`Delete session for ${r.customer_name}? This cannot be undone.`)) return;
+      api.deleteReception(r.id).then(()=>{
+        setReception(p=>p.filter(x=>x.id!==r.id));
+        pop("Session deleted");
+      }).catch(e=>pop(e.message,"err"));
+    } else {
+      // Non-admin: mark as pending_delete, needs admin approval
+      api.updateReception(r.id,{status:"pending_delete"}).then(r2=>{
+        setReception(p=>p.map(x=>x.id===r.id?{...x,...r2}:x));
+        pop("Deletion requested — awaiting Admin approval");
+      }).catch(e=>pop(e.message,"err"));
+    }
+  };
+
+  const approveDelete = (r) => {
+    if(!window.confirm(`Approve deletion of session for ${r.customer_name}?`)) return;
+    api.deleteReception(r.id).then(()=>{
+      setReception(p=>p.filter(x=>x.id!==r.id));
+      pop("Session deleted");
+    }).catch(e=>pop(e.message,"err"));
   };
 
   const checkout=async(id,extra,newSvcs,newTotal)=>{
@@ -1690,12 +1755,23 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                   <div>
-                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Therapist</label>
-                    <select value={form.therapistId} onChange={e=>setForm(f=>({...f,therapistId:e.target.value}))}
-                      style={{width:"100%",padding:"9px 11px",border:`2px solid ${form.therapistId?PL:G2}`,borderRadius:8,fontSize:13,outline:"none",fontFamily:"inherit",background:WH,boxSizing:"border-box",cursor:"pointer"}}>
-                      <option value="">🎲 Any Available</option>
-                      {therapists.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
+                    <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>
+                      💆 Masseuse(s) <span style={{color:PL}}>{form.therapistIds?.length>0?`(${form.therapistIds.length} selected)`:""}</span>
+                    </label>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {therapists.filter(t=>t.active).map(t=>{
+                        const sel=(form.therapistIds||[]).includes(t.id);
+                        return(
+                          <button key={t.id} onClick={()=>setForm(f=>({...f,therapistIds:sel?(f.therapistIds||[]).filter(id=>id!==t.id):[...(f.therapistIds||[]),t.id]}))}
+                            style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                              border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G6,
+                              display:"flex",alignItems:"center",gap:5}}>
+                            {t.photo&&<img src={t.photo} style={{width:20,height:20,borderRadius:"50%",objectFit:"cover"}}/>}
+                            {t.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div>
                     <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Room</label>
@@ -1920,6 +1996,19 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
                     style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${IN}`,background:INB,color:IN,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                     ✏️ Edit
                   </button>
+                  )}
+                  {/* Delete / approve delete */}
+                  {r.status==="pending_delete"&&user?.role==="Admin"&&(
+                    <button onClick={()=>approveDelete(r)}
+                      style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${ER}`,background:ERB,color:ER,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      🗑 Approve Delete
+                    </button>
+                  )}
+                  {r.status!=="pending_delete"&&(
+                    <button onClick={()=>requestDelete(r)}
+                      style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${ER}`,background:"none",color:ER,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      🗑 {user?.role==="Admin"?"Delete":"Request Delete"}
+                    </button>
                   )}
                   {isActive&&bal>0&&(
                     <button onClick={()=>{setCoModal({...r,bal});setPayAmt(String(bal));}}
@@ -4767,7 +4856,7 @@ function Landing({navTo,customer,user,therapistUser,therapistLogout,custLogout,s
               </svg>
               Open in Google Maps
             </a>
-            <a href="https://bolt.eu/en-tz/rides/"
+            <a href="bolt://ride" onClick={e=>{e.preventDefault();const app=navigator.userAgent.toLowerCase().includes("iphone")?"https://apps.apple.com/app/bolt-request-a-ride/id675033630":"https://play.google.com/store/apps/details?id=ee.mtakso.client";try{window.location.href="bolt://";setTimeout(()=>window.open(app,"_blank"),1500);}catch{window.open(app,"_blank");}}}
               target="_blank" rel="noopener noreferrer"
               style={{display:"inline-flex",alignItems:"center",gap:8,padding:"11px 22px",borderRadius:10,
                 background:"#34D186",color:WH,textDecoration:"none",fontSize:14,fontWeight:700}}>
@@ -6100,7 +6189,7 @@ function TherapistCommissionTab({ therapistUser, data }) {
 
 // ── THERAPIST PORTAL ──────────────────────────────────────────────────────────
 function TherapistPortal({ therapistUser, setTherapistUser, therapistLogout, pricing, services, rooms, pop }) {
-  const [tab, setTab] = useState("profile");
+  const [tab, setTab] = useState("status"); // Start on availability page
   const [data, setData] = useState(therapistUser);
   const [saving, setSaving] = useState(false);
 

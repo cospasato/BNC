@@ -468,6 +468,7 @@ module.exports = async function handler(req, res) {
     // ── RECEPTION LOG ─────────────────────────────────────────
     if (resource === 'reception') {
       await sql`ALTER TABLE reception_log ADD COLUMN IF NOT EXISTS client_gender TEXT NOT NULL DEFAULT 'male'`.catch(()=>{});
+      await sql`ALTER TABLE reception_log ADD COLUMN IF NOT EXISTS therapist_ids TEXT DEFAULT '[]'`.catch(()=>{});
       if (req.method === 'GET') {
         const { date } = req.query;
         const rows = date

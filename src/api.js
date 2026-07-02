@@ -58,6 +58,7 @@ export const api = {
   // Reception log
   getReception:    (date='') => g(`resource=reception${date?'&date='+date:''}`),
   createReception: b         => p('resource=reception', b),
+  deleteReception:  id      => d(`resource=reception&id=${id}`),
   updateReception: (id,b)    => pt(`resource=reception&id=${id}`, b),
 
   // Staff
