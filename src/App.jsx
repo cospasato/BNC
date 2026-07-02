@@ -1677,46 +1677,6 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {/* Client name + phone */}
               {/* Booking mode toggle — show only if packages exist */}
-              {packages&&packages.length>0&&(
-                <div style={{marginBottom:14}}>
-                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Booking Type</label>
-                  <div style={{display:"flex",gap:0,background:G1,borderRadius:9,padding:3}}>
-                    {[["standard","💆 Services"],["package","🎁 Package"]].map(([v,l])=>(
-                      <button key={v} onClick={()=>setRecBookMode(v)}
-                        style={{flex:1,padding:"8px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",
-                          background:recBookMode===v?PL:"transparent",color:recBookMode===v?WH:G6,transition:"all .2s"}}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Package selector */}
-              {recBookMode==="package"&&packages&&packages.length>0&&(
-                <div style={{marginBottom:14}}>
-                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Select Package *</label>
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {packages.map(pkg=>(
-                      <div key={pkg.id} onClick={()=>setForm(f=>({...f,packageId:pkg.id}))}
-                        style={{border:`2px solid ${form.packageId===pkg.id?PL:G2}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",
-                          background:form.packageId===pkg.id?PLF:WH,transition:"all .15s"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <div>
-                            <div style={{fontWeight:700,fontSize:14,color:form.packageId===pkg.id?PL:BK}}>{pkg.name}</div>
-                            {pkg.description&&<div style={{fontSize:12,color:G6,marginTop:2}}>{pkg.description}</div>}
-                            <div style={{fontSize:11,color:G4,marginTop:3}}>
-                              {pkg.masseuses>1?`💆 ${pkg.masseuses} masseuses · `:""}{pkg.duration_min}min
-                            </div>
-                          </div>
-                          <div style={{fontWeight:700,fontSize:16,color:PL,flexShrink:0,marginLeft:12}}>{fmt(pkg.price)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Gender selector */}
               <div style={{marginBottom:4}}>
                 <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Client Gender</label>
@@ -1807,66 +1767,114 @@ function ReceptionTab({reception,setReception,therapists,rooms,services,pricing,
             </div>
           )}
 
-          {/* ── STEP 2: Services ── */}
+          {/* ── STEP 2: Services & Packages ── */}
           {step===2&&(
             <div>
               {/* Summary bar */}
               <div style={{background:PLF,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
                 <span style={{background:PL,color:WH,padding:"2px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>{clientName}</span>
-                {form.therapistId&&<span style={{background:WH,color:PL,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${PL}30`}}>
-                  💆 {therapists.find(t=>t.id===form.therapistId)?.name}
-                </span>}
-                {form.roomId&&<span style={{background:WH,color:G6,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${G2}`}}>
-                  🛏 {rooms.find(r=>r.id===form.roomId)?.name}
-                </span>}
-                <span style={{background:WH,color:G6,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${G2}`}}>
-                  {form.serviceType==="outcall"?"🏠 Outcall":"🏢 In-House"}
-                </span>
+                {(form.therapistIds||[]).length>0&&therapists.filter(t=>(form.therapistIds||[]).includes(t.id)).map(t=>(
+                  <span key={t.id} style={{background:WH,color:PL,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${PL}30`}}>💆 {t.name}</span>
+                ))}
+                {form.roomId&&<span style={{background:WH,color:G6,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${G2}`}}>🛏 {rooms.find(r=>r.id===form.roomId)?.name}</span>}
+                <span style={{background:WH,color:G6,padding:"2px 10px",borderRadius:99,fontSize:12,border:`1px solid ${G2}`}}>{form.serviceType==="outcall"?"🏠 Outcall":"🏢 In-House"}</span>
               </div>
 
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>
-                Select Services *
-              </label>
-              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
-                {services.filter(s=>s.active).map(sv=>{
-                  const price=getPrice(sv.id,roomId,form.serviceType);
-                  const sel=form.selServices.find(s=>s.id===sv.id);
-                  return(
-                    <button key={sv.id} onClick={()=>toggleSvc(sv)}
-                      style={{padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-                        border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G8,
-                        display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:100,transition:"all .15s",
-                        boxShadow:sel?`0 0 0 3px ${PL}20`:"none"}}>
-                      <span>{sv.name}</span>
-                      <span style={{fontSize:12,color:sel?PL:G4,fontWeight:400}}>{price>0?fmt(price):"—"}</span>
+              {/* Mode toggle */}
+              {packages&&packages.length>0&&(
+                <div style={{display:"flex",gap:0,background:G1,borderRadius:9,padding:3,marginBottom:14}}>
+                  {[["standard","💆 Individual Services"],["package","🎁 Package Deal"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>{setRecBookMode(v);if(v==="standard")setForm(f=>({...f,packageId:""}));else setForm(f=>({...f,selServices:[]}));}}
+                      style={{flex:1,padding:"9px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",
+                        background:recBookMode===v?PL:"transparent",color:recBookMode===v?WH:G6,transition:"all .2s"}}>
+                      {l}
                     </button>
-                  );
-                })}
-              </div>
-
-              {form.selServices.length>0&&(
-                <div style={{background:PLF,borderRadius:10,padding:"12px 14px",marginBottom:14,border:`1px solid ${PL}30`}}>
-                  <div style={{fontSize:12,fontWeight:700,color:PL,marginBottom:8}}>Selected ({form.selServices.length})</div>
-                  {form.selServices.map(s=>(
-                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
-                      <span>{s.name}</span><span style={{fontWeight:700,color:PL}}>{fmt(getPrice(s.id,roomId,form.serviceType))}</span>
-                    </div>
                   ))}
-                  <div style={{borderTop:`1px solid ${PL}30`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
-                    <span>Subtotal</span><span style={{color:PL}}>{fmt(base)}</span>
-                  </div>
                 </div>
               )}
 
-              <div style={{display:"flex",gap:10}}>
+              {/* PACKAGES */}
+              {recBookMode==="package"&&packages&&packages.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                  {packages.map(pkg=>{
+                    const pkgSvcs=pkg.services||[];
+                    const selected=form.packageId===pkg.id;
+                    return(
+                      <div key={pkg.id} onClick={()=>setForm(f=>({...f,packageId:pkg.id}))}
+                        style={{border:`2px solid ${selected?PL:G2}`,borderRadius:12,padding:"14px",cursor:"pointer",
+                          background:selected?PLF:WH,transition:"all .15s",boxShadow:selected?`0 0 0 3px ${PL}20`:"none"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:700,fontSize:15,color:selected?PL:BK}}>{pkg.name}</div>
+                            {pkg.description&&<div style={{fontSize:12,color:G6,marginTop:2}}>{pkg.description}</div>}
+                            <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
+                              {pkg.masseuses>1&&<span style={{fontSize:11,color:G6,background:G1,padding:"2px 7px",borderRadius:99}}>💆 {pkg.masseuses} masseuses</span>}
+                              {pkg.duration_min&&<span style={{fontSize:11,color:G6,background:G1,padding:"2px 7px",borderRadius:99}}>⏱ {pkg.duration_min}min</span>}
+                              {pkgSvcs.length>0&&<span style={{fontSize:11,color:G6,background:G1,padding:"2px 7px",borderRadius:99}}>{pkgSvcs.map(s=>s.name).join(", ")}</span>}
+                            </div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontWeight:700,fontSize:18,color:selected?PL:BK}}>{fmt(pkg.price)}</div>
+                            {selected&&<div style={{fontSize:11,color:OK,fontWeight:700,marginTop:2}}>✓ Selected</div>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* INDIVIDUAL SERVICES */}
+              {recBookMode==="standard"&&(
+                <>
+                  <label style={{display:"block",fontSize:11,fontWeight:700,color:G8,marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>
+                    Select Services *
+                  </label>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+                    {services.filter(s=>s.active).map(sv=>{
+                      const price=getPrice(sv.id,roomId,form.serviceType);
+                      const sel=form.selServices.find(s=>s.id===sv.id);
+                      return(
+                        <button key={sv.id} onClick={()=>toggleSvc(sv)}
+                          style={{padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                            border:`2px solid ${sel?PL:G2}`,background:sel?PLF:WH,color:sel?PL:G8,
+                            display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:100,
+                            boxShadow:sel?`0 0 0 3px ${PL}20`:"none",transition:"all .15s"}}>
+                          <span>{sv.name}</span>
+                          <span style={{fontSize:12,color:sel?PL:G4,fontWeight:400}}>{price>0?fmt(price):"—"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {form.selServices.length>0&&(
+                    <div style={{background:PLF,borderRadius:10,padding:"12px 14px",marginBottom:14,border:`1px solid ${PL}30`}}>
+                      <div style={{fontSize:12,fontWeight:700,color:PL,marginBottom:8}}>Selected ({form.selServices.length})</div>
+                      {form.selServices.map(s=>(
+                        <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                          <span>{s.name}</span><span style={{fontWeight:700,color:PL}}>{fmt(getPrice(s.id,roomId,form.serviceType))}</span>
+                        </div>
+                      ))}
+                      <div style={{borderTop:`1px solid ${PL}30`,marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
+                        <span>Subtotal</span><span style={{color:PL}}>{fmt(base)}</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div style={{display:"flex",gap:10,marginTop:4}}>
                 <button onClick={()=>setStep(1)}
                   style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   ← Back
                 </button>
-                <button onClick={()=>{if(!form.selServices.length)return pop("Select at least one service","err");setStep(3);}}
-                  disabled={!form.selServices.length}
-                  style={{flex:2,padding:"10px",borderRadius:9,border:"none",background:form.selServices.length?`linear-gradient(135deg,${PLD},${PL})`:"#ccc",
-                    color:WH,fontSize:13,fontWeight:700,cursor:form.selServices.length?"pointer":"not-allowed",fontFamily:"inherit"}}>
+                <button onClick={()=>{
+                  if(recBookMode==="package"&&!form.packageId) return pop("Select a package","err");
+                  if(recBookMode==="standard"&&!form.selServices.length) return pop("Select at least one service","err");
+                  setStep(3);
+                }}
+                  style={{flex:2,padding:"10px",borderRadius:9,border:"none",
+                    background:`linear-gradient(135deg,${PLD},${PL})`,
+                    color:WH,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   Continue → Payment
                 </button>
               </div>
