@@ -493,6 +493,11 @@ module.exports = async function handler(req, res) {
           RETURNING *`;
         return res.status(201).json(rows[0]);
       }
+      if (req.method === 'DELETE' && id) {
+        await sql`DELETE FROM reception_log WHERE id = ${id}`;
+        return res.status(200).json({ success: true });
+      }
+
       if (req.method === 'PUT' && id) {
         const { out_time, status, paid_amount, add_payment, payment_method } = req.body || {};
         let rows;
