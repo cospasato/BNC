@@ -2913,9 +2913,18 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
     </div>
   );
 
-  const presets=[["Today",td(),td()],["This Week",(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10);})(),(()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().slice(0,10);})()],["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})(),new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().slice(0,10)],["All Time","",""]];
+  const yest=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+  const presets=[
+    ["Today",     td(),   td()  ],
+    ["Yesterday", yest,   yest  ],
+    ["This Week", (()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10);})(), (()=>{const d=new Date();d.setDate(d.getDate()+(6-d.getDay()));return d.toISOString().slice(0,10);})()],
+    ["This Month",(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";})(), new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().slice(0,10)],
+    ["Last 7 Days",(()=>{const d=new Date();d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})(), td()],
+    ["Last 30 Days",(()=>{const d=new Date();d.setDate(d.getDate()-29);return d.toISOString().slice(0,10);})(), td()],
+    ["All Time",  "",     ""    ],
+  ];
 
-  const TABS=[["overview","📊 Overview"],["financial","💰 Financial"],["clients","👥 Clients"],["therapists","💆 Therapists"],["services","📋 Services"],["time","⏰ Time Analysis"],["expenses","📤 Expenses"]];
+  const TABS=[["overview","📊 Overview"],["financial","💰 Financial"],["clients","👥 Clients"],["therapists","💆 Therapists"],["services","📋 Services"],["time","⏰ Time Analysis"],["expenses","📤 Expenses"],["sessions","📋 Sessions Table"]];
 
   return(
     <div>
@@ -2923,16 +2932,28 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
 
       {/* Date range */}
       <Card style={{marginBottom:14}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
           {presets.map(([l,f,t])=>(
             <button key={l} onClick={()=>{setDf(f);setDt(t);}}
               style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
                 border:`1px solid ${df===f&&dt===t?PL:G2}`,background:df===f&&dt===t?PLF:WH,color:df===f&&dt===t?PL:G6}}>{l}</button>
           ))}
         </div>
+        {/* Single day picker */}
+        <div style={{background:G1,borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+          <label style={{fontSize:11,fontWeight:700,color:G8,textTransform:"uppercase",letterSpacing:".06em",display:"block",marginBottom:6}}>
+            📅 Specific Day
+          </label>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input type="date" onChange={e=>{const v=e.target.value;if(v){setDf(v);setDt(v);}}}
+              value={df===dt&&df?df:""}
+              style={{padding:"7px 10px",border:`1px solid ${G2}`,borderRadius:7,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+            <span style={{fontSize:12,color:G6}}>View a single day's data</span>
+          </div>
+        </div>
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-          <Inp label="From" type="date" value={df} onChange={e=>setDf(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
-          <Inp label="To"   type="date" value={dt} onChange={e=>setDt(e.target.value)} style={{marginBottom:0,flex:"0 0 150px"}}/>
+          <Inp label="Date From" type="date" value={df} onChange={e=>setDf(e.target.value)} style={{marginBottom:0,flex:"0 0 148px"}}/>
+          <Inp label="Date To"   type="date" value={dt} onChange={e=>setDt(e.target.value)} style={{marginBottom:0,flex:"0 0 148px"}}/>
           {(df||dt)&&<button onClick={()=>{setDf("");setDt("");}} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${G2}`,background:"none",cursor:"pointer",color:G6,fontSize:12,fontFamily:"inherit"}}>✕ Clear</button>}
         </div>
       </Card>
@@ -3303,6 +3324,95 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
               </div>
             ))}
           </Card>
+        </div>
+      )}
+      {/* ── SESSIONS TABLE ── */}
+      {tab==="sessions"&&(
+        <div>
+          {/* Summary */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:14}}>
+            <KPI label="Total Sessions" value={filtered.length}         color={PL}  icon="💆"/>
+            <KPI label="Completed"      value={completedSessions}       color={OK}  icon="✅"/>
+            <KPI label="Cancelled"      value={cancelledSessions}       color={ER}  icon="❌"/>
+            <KPI label="Revenue"        value={fmt(totRev)}             color={GOLD}icon="💰"/>
+          </div>
+
+          {/* Table */}
+          <div style={{overflowX:"auto",borderRadius:12,border:`1px solid ${G2}`,background:WH}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:680}}>
+              <thead>
+                <tr style={{background:G1}}>
+                  {["Date","Client","Masseuse","Services","Type","Paid","Method","Status"].map(h=>(
+                    <th key={h} style={{padding:"9px 12px",fontSize:11,fontWeight:700,color:G6,textTransform:"uppercase",
+                      letterSpacing:".06em",textAlign:"left",borderBottom:`1px solid ${G2}`,whiteSpace:"nowrap"}}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length===0&&(
+                  <tr><td colSpan={8} style={{padding:24,textAlign:"center",color:G4}}>No sessions in this period</td></tr>
+                )}
+                {[...filtered].sort((a,b)=>{
+                  const da=(a.appt_date||a.in_time||"");
+                  const db=(b.appt_date||b.in_time||"");
+                  return db.localeCompare(da);
+                }).map((s,i)=>{
+                  const th=therapists.find(t=>t.id===s.therapist_id);
+                  const svcs=Array.isArray(s.services)?s.services:(typeof s.services==="string"?JSON.parse(s.services||"[]"):[]);
+                  const isWalkin=!s.appt_date;
+                  const dateStr=s.appt_date?fmtDate(s.appt_date):(s.in_time?fmtDate(s.in_time.slice(0,10)):"—");
+                  const timeStr=s.appt_time?fmtTime(s.appt_time):(s.in_time?new Date(s.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"");
+                  const statusColor={completed:OK,inProgress:PL,cancelled:ER,noShow:G4,pending:WA,confirmed:IN}[s.status]||G6;
+                  const statusLabel={completed:"✅ Done",inProgress:"🟣 Active",cancelled:"❌ Cancelled",noShow:"👻 No Show",pending:"⏳ Pending",confirmed:"✅ Confirmed"}[s.status]||s.status;
+                  const bal=Math.max(0,Number(s.total_amount||0)-Number(s.paid_amount||0));
+                  return(
+                    <tr key={i} style={{borderBottom:`1px solid ${G1}`,background:i%2===0?WH:G1+"60"}}>
+                      <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                        <div style={{fontWeight:600}}>{dateStr}</div>
+                        {timeStr&&<div style={{fontSize:11,color:G4}}>{timeStr}</div>}
+                      </td>
+                      <td style={{padding:"8px 12px"}}>
+                        <div style={{fontWeight:600}}>{s.customer_name}</div>
+                        {s.customer_phone&&<div style={{fontSize:11,color:G4}}>{s.customer_phone}</div>}
+                      </td>
+                      <td style={{padding:"8px 12px",color:th?PL:G4,fontWeight:th?600:400}}>{th?.name||"—"}</td>
+                      <td style={{padding:"8px 12px",maxWidth:160}}>
+                        <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:G6,fontSize:12}}>
+                          {svcs.length?svcs.map(s=>s.name).join(", "):"—"}
+                        </div>
+                      </td>
+                      <td style={{padding:"8px 12px"}}>
+                        <span style={{fontSize:11,fontWeight:700,color:isWalkin?G6:PL,background:isWalkin?G1:PLF,padding:"2px 7px",borderRadius:99}}>
+                          {isWalkin?"🚪 Walk-in":"📅 Booking"}
+                        </span>
+                      </td>
+                      <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                        <div style={{fontWeight:700,color:OK}}>{fmt(s.paid_amount||0)}</div>
+                        {bal>0&&<div style={{fontSize:11,color:ER}}>due {fmt(bal)}</div>}
+                      </td>
+                      <td style={{padding:"8px 12px",color:G6,fontSize:12}}>{s.payment_method||"—"}</td>
+                      <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                        <span style={{fontSize:11,fontWeight:700,color:statusColor,background:statusColor+"15",padding:"2px 8px",borderRadius:99}}>
+                          {statusLabel}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {filtered.length>0&&(
+                <tfoot>
+                  <tr style={{background:G1,borderTop:`2px solid ${G2}`}}>
+                    <td colSpan={5} style={{padding:"8px 12px",fontWeight:700,fontSize:13,color:G6}}>{filtered.length} sessions total</td>
+                    <td style={{padding:"8px 12px",fontWeight:700,color:OK}}>{fmt(totRev)}</td>
+                    <td colSpan={2}/>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
       )}
     </div>
