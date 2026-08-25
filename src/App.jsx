@@ -683,8 +683,18 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
 
   const [editSession,setEditSession]=useState(null);
   const [coModal,setCoModal]=useState(null);
-  const [views,setViews]=useState({total:0,today:0,unique:0,by_page:[]});
-  useEffect(()=>{ api.getViews(30).then(v=>{ if(v&&v.total!==undefined) setViews(v); }).catch(()=>{}); },[]);
+  const [views,       setViews]       = useState({total:0,today:0,unique:0,by_page:[]});
+  const [viewsMonth,  setViewsMonth]  = useState({total:0,today:0,unique:0,by_page:[]});
+  const [viewsAll,    setViewsAll]    = useState({total:0,today:0,unique:0,by_page:[]});
+  const [viewsPeriod, setViewsPeriod] = useState("today"); // today | month | all
+
+  useEffect(()=>{
+    api.getViews(1).then(v=>{ if(v?.total!==undefined) setViews(v); }).catch(()=>{});
+    api.getViews(30).then(v=>{ if(v?.total!==undefined) setViewsMonth(v); }).catch(()=>{});
+    api.getViews(36500).then(v=>{ if(v?.total!==undefined) setViewsAll(v); }).catch(()=>{});
+  },[]);
+
+  const activeViews = viewsPeriod==="today" ? views : viewsPeriod==="month" ? viewsMonth : viewsAll;
   const [payAmt,setPayAmt]=useState("");
   const [payMethod,setPayMethod]=useState((payMethods||[])[0]||"Cash");
   const [saving,setSaving]=useState(false);
@@ -821,27 +831,44 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
 
       {/* Page Views */}
       <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"14px 16px",marginBottom:16}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:BK,marginBottom:12}}>👁 Website Visitors (Last 30 Days)</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
-            <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
-              <div style={{fontSize:24,fontWeight:700,color:PL}}>{views.total.toLocaleString()}</div>
-              <div style={{fontSize:11,color:G6,marginTop:3}}>Total Views</div>
-            </div>
-            <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
-              <div style={{fontSize:24,fontWeight:700,color:OK}}>{views.today.toLocaleString()}</div>
-              <div style={{fontSize:11,color:G6,marginTop:3}}>Today</div>
-            </div>
-            <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
-              <div style={{fontSize:24,fontWeight:700,color:IN}}>{views.unique.toLocaleString()}</div>
-              <div style={{fontSize:11,color:G6,marginTop:3}}>Unique Visitors</div>
-            </div>
-            {views.by_page?.length>0&&(
-              <div style={{textAlign:"center",background:PLF,borderRadius:10,padding:"12px 8px",border:`1px solid ${PL}20`}}>
-                <div style={{fontSize:24,fontWeight:700,color:PL}}>{(views.by_page.find(p=>p.page==='videos')?.count||0).toLocaleString()}</div>
-                <div style={{fontSize:11,color:G6,marginTop:3}}>M-Videos Views</div>
-              </div>
-            )}
+        {/* Header + period toggle */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:BK}}>👁 Website Visitors</div>
+          <div style={{display:"flex",gap:0,background:G1,borderRadius:8,padding:2}}>
+            {[["today","Today"],["month","This Month"],["all","All Time"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setViewsPeriod(v)}
+                style={{padding:"5px 12px",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer",
+                  fontFamily:"inherit",border:"none",
+                  background:viewsPeriod===v?PL:"transparent",
+                  color:viewsPeriod===v?WH:G6,transition:"all .2s"}}>
+                {l}
+              </button>
+            ))}
           </div>
+        </div>
+        {/* Stats grid */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10}}>
+          <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
+            <div style={{fontSize:26,fontWeight:700,color:PL}}>{activeViews.total.toLocaleString()}</div>
+            <div style={{fontSize:11,color:G6,marginTop:3}}>Page Views</div>
+          </div>
+          <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
+            <div style={{fontSize:26,fontWeight:700,color:OK}}>{activeViews.today.toLocaleString()}</div>
+            <div style={{fontSize:11,color:G6,marginTop:3}}>{viewsPeriod==="today"?"Today":viewsPeriod==="month"?"This Month's Daily Avg":"Today"}</div>
+          </div>
+          <div style={{textAlign:"center",background:G1,borderRadius:10,padding:"12px 8px"}}>
+            <div style={{fontSize:26,fontWeight:700,color:IN}}>{activeViews.unique.toLocaleString()}</div>
+            <div style={{fontSize:11,color:G6,marginTop:3}}>Unique Visitors</div>
+          </div>
+          <div style={{textAlign:"center",background:PLF,borderRadius:10,padding:"12px 8px",border:`1px solid ${PL}20`}}>
+            <div style={{fontSize:26,fontWeight:700,color:PL}}>{(activeViews.by_page?.find(p=>p.page==='videos')?.count||0).toLocaleString()}</div>
+            <div style={{fontSize:11,color:G6,marginTop:3}}>M-Videos Views</div>
+          </div>
+        </div>
+        {/* Period label */}
+        <div style={{textAlign:"center",marginTop:10,fontSize:11,color:G4}}>
+          {viewsPeriod==="today"?"Showing: Today only":viewsPeriod==="month"?"Showing: Last 30 days":"Showing: All time since launch"}
+        </div>
       </div>
 
       {/* ── DAILY INCOME BREAKDOWN ── */}
