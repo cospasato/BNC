@@ -4446,7 +4446,7 @@ function getEmbedUrl(url, thumb) {
   if(!url) return { type:'unknown', embedUrl:'', thumb:null };
   // YouTube
   const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([A-Za-z0-9_-]{11})/);
-  if (ytMatch) return { type:'youtube', embedUrl:`https://www.youtube.com/embed/${ytMatch[1]}?rel=0&modestbranding=1`, thumb:thumb||`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg` };
+  if (ytMatch) return { type:'youtube', embedUrl:`https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white`, thumb:thumb||`https://img.youtube.com/vi/${ytMatch[1]}/maxresdefault.jpg`, videoId:ytMatch[1] };
 
   // TikTok — extract video ID from various URL formats
   const ttMatch = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/) || url.match(/tiktok\.com\/t\/([\w]+)/);
@@ -4899,15 +4899,36 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                 <div style={{paddingTop:"177.78%",position:"relative",background:"#000"}}>
                   {isPlaying
                     ? <>
-                        {/* YouTube: no controls, no title bar */}
+                        {/* Video player — different per source */}
                         {isYT
+                          // YouTube: youtube-nocookie removes sign-in/bot prompts
                           ? <iframe
-                              src={`${embedUrl}&autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3`}
+                              src={`${embedUrl}&autoplay=1&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white`}
                               style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
                               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                              title=""
+                              allowFullScreen title=""
                             />
+                          : v.source==='telegram'
+                          ? (() => {
+                              const info = getEmbedUrl(v.url, v.thumbnail);
+                              return info.direct
+                                // Direct Telegram file (from bot) — plays as native video
+                                ? <video src={info.embedUrl} autoPlay controls playsInline
+                                    style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",background:"#000"}}/>
+                                // Channel post link — can't embed (bot check), open in Telegram
+                                : <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+                                    alignItems:"center",justifyContent:"center",background:"#0d1117",gap:12,padding:16}}>
+                                    <div style={{fontSize:48}}>✈️</div>
+                                    <div style={{color:"#fff",fontWeight:700,fontSize:14,textAlign:"center"}}>{v.title||"Telegram Video"}</div>
+                                    <a href={v.url} target="_blank" rel="noopener noreferrer"
+                                      onClick={e=>e.stopPropagation()}
+                                      style={{background:"#229ED9",color:"#fff",textDecoration:"none",
+                                        padding:"11px 22px",borderRadius:10,fontWeight:700,fontSize:14,marginTop:4}}>
+                                      ▶ Watch on Telegram
+                                    </a>
+                                    <div style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>Opens in Telegram app</div>
+                                  </div>;
+                            })()
                           : v.source==='upload'
                           ? <video src={embedUrl} autoPlay controls playsInline
                               style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",background:"#000"}}/>
@@ -4946,8 +4967,9 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                           justifyContent:"center",
                           background:actualThumb?"none":"linear-gradient(135deg,#1a1a2e,#4a1a3e)"}}>
                         {actualThumb&&(
-                          <img src={actualThumb} alt="" style={{position:"absolute",inset:0,
-                            width:"100%",height:"100%",objectFit:"cover"}}/>
+                          <img src={actualThumb} alt=""
+                            onError={e=>{if(e.target.src.includes('maxresdefault'))e.target.src=e.target.src.replace('maxresdefault','hqdefault');}}
+                            style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
                         )}
                         {/* Source tag — top left */}
                         <div style={{position:"absolute",top:8,left:8,zIndex:2,
