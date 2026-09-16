@@ -938,7 +938,7 @@ module.exports = async function handler(req, res) {
       if (req.method === 'POST') {
         const { url, source, title, thumbnail, published_at } = req.body || {};
         if (!url) return res.status(400).json({ error: 'url required' });
-        const src = source || (url.includes('tiktok') ? 'tiktok' : url.includes('instagram') ? 'instagram' : url.includes('facebook') ? 'facebook' : 'youtube');
+        const src = source || (url.includes('tiktok') ? 'tiktok' : url.includes('instagram') ? 'instagram' : url.includes('facebook') ? 'facebook' : (url.includes('t.me')||url.includes('telegram.me')) ? 'telegram' : 'youtube');
         const rows = await sql`
           INSERT INTO videos (url, source, title, thumbnail, published_at)
           VALUES (${url}, ${src}, ${title||''}, ${thumbnail||null}, ${published_at||null})

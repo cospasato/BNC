@@ -4483,6 +4483,7 @@ function getSourceIcon(source) {
   if (source==='instagram') return { icon:'📸', label:'Instagram', color:'#E1306C' };
   if (source==='facebook')  return { icon:'👥', label:'Facebook',  color:'#1877F2' };
   if (source==='upload')    return { icon:'🎬', label:'Direct',    color:'#7B3F6E' };
+  if (source==='telegram')  return { icon:'✈️', label:'Telegram',  color:'#229ED9' };
   return                           { icon:'▶️', label:'YouTube',   color:'#FF0000' };
 }
 
@@ -4651,10 +4652,11 @@ function VideosAdminTab({ pop }) {
 
   const handleUrl = (val) => {
     setUrl(val);
-    if (val.includes('tiktok'))         setSource('tiktok');
-    else if (val.includes('instagram')) setSource('instagram');
-    else if (val.includes('facebook') || val.includes('fb.watch')) setSource('facebook');
-    else                                setSource('youtube');
+    if (val.includes('tiktok'))                             setSource('tiktok');
+    else if (val.includes('instagram'))                     setSource('instagram');
+    else if (val.includes('facebook')||val.includes('fb.watch')) setSource('facebook');
+    else if (val.includes('t.me')||val.includes('telegram.me'))  setSource('telegram');
+    else                                                    setSource('youtube');
   };
 
   const add = async () => {
@@ -4729,7 +4731,7 @@ function VideosAdminTab({ pop }) {
               placeholder="https://youtube.com/watch?v=..."/>
             <Inp label="Title (optional)" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Relaxing Full Body Massage"/>
             <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:14}}>
-              {[["youtube","▶️ YouTube","#FF0000"],["tiktok","🎵 TikTok","#010101"],["instagram","📸 Instagram","#E1306C"],["facebook","👥 Facebook","#1877F2"]].map(([v,l,col])=>(
+              {[["youtube","▶️ YouTube","#FF0000"],["tiktok","🎵 TikTok","#010101"],["instagram","📸 Instagram","#E1306C"],["facebook","👥 Facebook","#1877F2"],["telegram","✈️ Telegram","#229ED9"]].map(([v,l,col])=>(
                 <button key={v} onClick={()=>setSource(v)}
                   style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
                     border:`2px solid ${source===v?col:G2}`,background:source===v?col+"15":WH,color:source===v?col:G6}}>
@@ -4830,15 +4832,68 @@ function VideosAdminTab({ pop }) {
               <span style={{fontSize:20}}>👥</span>
               <div>
                 <div style={{fontWeight:700,fontSize:15}}>Facebook Page</div>
-                <div style={{fontSize:12,color:G6}}>Add Facebook video links manually or auto-fetch with a Page token</div>
+                <div style={{fontSize:12,color:G6}}>Add Facebook video links manually</div>
               </div>
             </div>
             <Inp label="Facebook Page URL (for display)" value={settings.fb_page_url} onChange={e=>setSettings(s=>({...s,fb_page_url:e.target.value}))}
               placeholder="https://facebook.com/yourpage"/>
             <div style={{background:G1,borderRadius:8,padding:"10px 12px",fontSize:12,color:G6}}>
-              For each video: open it on Facebook → Share → Copy link, then paste in "Add Video" tab.
+              Open video on Facebook → Share → Copy link → paste in "Add Video" tab.
             </div>
           </Card>
+
+          {/* Telegram Bot */}
+          {(()=>{
+            const [tgStatus,setTgStatus]=React.useState("");
+            const [tgLoading,setTgLoading]=React.useState(false);
+            const registerWebhook=async()=>{
+              setTgLoading(true);setTgStatus("");
+              try{
+                const r=await fetch("/api/telegram");
+                const d=await r.json();
+                setTgStatus(d.webhook_set?"✅ Webhook registered! Bot is active. Post a video to test.":"❌ "+d.result);
+              }catch(e){setTgStatus("❌ "+e.message);}
+              setTgLoading(false);
+            };
+            return(
+            <Card>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                <span style={{fontSize:20}}>✈️</span>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15}}>Telegram Bot (Auto-sync)</div>
+                  <div style={{fontSize:12,color:G6}}>Post video to your channel → appears in M-Videos automatically</div>
+                </div>
+              </div>
+              <Inp label="Bot Token (from @BotFather)" value={settings.tg_bot_token||""} onChange={e=>setSettings(s=>({...s,tg_bot_token:e.target.value}))}
+                placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"/>
+              <Inp label="Channel Username" value={settings.tg_channel_url||""} onChange={e=>setSettings(s=>({...s,tg_channel_url:e.target.value}))}
+                placeholder="@bodymelodyspa"/>
+              <div style={{background:G1,borderRadius:8,padding:"12px 14px",fontSize:12,color:G6,marginBottom:10,lineHeight:1.8}}>
+                <strong>Setup steps:</strong><br/>
+                1. Open Telegram → search <strong>@BotFather</strong> → /newbot<br/>
+                2. Give it a name & username → copy the <strong>token</strong> above<br/>
+                3. Create a public channel (e.g. @bodymelodyspa)<br/>
+                4. Add your bot as <strong>Admin</strong> of the channel<br/>
+                5. Save settings below, then click <strong>Register Webhook</strong><br/>
+                6. Post any video to your channel → it auto-appears in M-Videos!
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+                <Btn onClick={saveSettings} disabled={savingSet} style={{flex:1,justifyContent:"center"}}>
+                  {savingSet?"Saving…":"💾 Save Settings"}
+                </Btn>
+                <button onClick={registerWebhook} disabled={tgLoading||!settings.tg_bot_token}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${PL}`,
+                    background:PLF,color:PL,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {tgLoading?"Registering…":"⚡ Register Webhook"}
+                </button>
+              </div>
+              {tgStatus&&<div style={{fontSize:12,fontWeight:600,color:tgStatus.startsWith("✅")?OK:ER,background:tgStatus.startsWith("✅")?OKB:ERB,borderRadius:7,padding:"8px 12px"}}>{tgStatus}</div>}
+              <div style={{background:WAB,borderRadius:7,padding:"8px 12px",fontSize:11,color:WA,marginTop:8}}>
+                ⚠️ Telegram may be blocked in some Tanzania networks. YouTube remains the most reliable option.
+              </div>
+            </Card>
+            );
+          })()}
 
           <Btn onClick={saveSettings} disabled={savingSet} style={{width:"100%",justifyContent:"center"}}>
             {savingSet?"Saving…":"💾 Save Settings"}
@@ -4979,7 +5034,7 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
 
         {/* Filter tabs */}
         <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-          {[["all","🎬 All"],["youtube","▶️ YouTube"],["tiktok","🎵 TikTok"],["instagram","📸 Instagram"],["facebook","👥 Facebook"]].map(([v,l])=>(
+          {[["all","🎬 All"],["youtube","▶️ YouTube"],["tiktok","🎵 TikTok"],["instagram","📸 Instagram"],["facebook","👥 Facebook"],["telegram","✈️ Telegram"]].map(([v,l])=>(
             <button key={v} onClick={()=>setFilter(v)}
               style={{padding:"7px 16px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
                 border:"none",
