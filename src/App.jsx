@@ -4488,149 +4488,6 @@ function getSourceIcon(source) {
 }
 
 
-// ── Video Upload Widget — browser uploads directly to Cloudinary ──────────────
-function UploadVideoWidget({ pop, onUploaded }) {
-  const [file,      setFile]      = useState(null);
-  const [title,     setTitle]     = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [progress,  setProgress]  = useState(0);
-  const [preview,   setPreview]   = useState(null);
-  const [fileSize,  setFileSize]  = useState(null);
-
-  const fmtSz = n => n>=1073741824?(n/1073741824).toFixed(1)+'GB':n>=1048576?(n/1048576).toFixed(1)+'MB':(n/1024).toFixed(0)+'KB';
-
-  const pickFile = e => {
-    const f = e.target.files?.[0];
-    if(!f) return;
-    if(!f.type.startsWith('video/')) return pop('Please select a video file','err');
-    setFile(f); setFileSize(f.size);
-    setTitle(f.name.replace(/\.[^.]+$/,'').replace(/[_-]/g,' '));
-    setPreview(URL.createObjectURL(f));
-    e.target.value='';
-  };
-
-  const upload = async () => {
-    if(!file) return;
-    setUploading(true); setProgress(5);
-    try {
-      // Step 1: get upload signature from our server (tiny request, no file data)
-      const sigRes = await fetch('/api/spa?resource=cloudinary_sign');
-      const sig    = await sigRes.json();
-      if(sig.error) throw new Error(sig.setup ? 'Cloudinary not configured — see Channel Settings tab' : sig.error);
-
-      setProgress(15);
-
-      // Step 2: upload DIRECTLY from browser to Cloudinary
-      const form = new FormData();
-      form.append('file', file);
-      form.append('resource_type', 'video');
-
-      if(sig.mode === 'signed') {
-        // Signed upload — include exactly the params that were signed
-        form.append('api_key',   sig.apiKey);
-        form.append('timestamp', String(sig.timestamp));
-        form.append('signature', sig.signature);
-        form.append('folder',    sig.folder);
-      } else {
-        // Unsigned upload — just the preset name
-        form.append('upload_preset', sig.preset);
-      }
-
-      const cloudUrl = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => {
-          if(e.lengthComputable) setProgress(15 + Math.round(e.loaded/e.total*75));
-        };
-        xhr.onload = () => {
-          try {
-            const d = JSON.parse(xhr.responseText);
-            if(d.error) reject(new Error(d.error.message));
-            else resolve(d);
-          } catch(e) { reject(new Error('Upload response error')); }
-        };
-        xhr.onerror = () => reject(new Error('Network error during upload'));
-        xhr.open('POST', `https://api.cloudinary.com/v1_1/${sig.cloudName}/video/upload`);
-        xhr.send(form);
-      });
-
-      setProgress(95);
-
-      // Step 3: save URL to our database
-      const thumb = cloudUrl.secure_url.replace(/\.[^.]+$/, '.jpg');
-      const saved = await fetch('/api/spa?resource=save_video', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ url: cloudUrl.secure_url, thumbnail: thumb, title, bytes: cloudUrl.bytes, duration: cloudUrl.duration }),
-      }).then(r=>r.json());
-
-      setProgress(100);
-      const origMB = (file.size/1048576).toFixed(1);
-      const newMB  = (cloudUrl.bytes/1048576).toFixed(1);
-      pop(`✓ Uploaded! ${origMB}MB → ${newMB}MB (${Math.round((1-cloudUrl.bytes/file.size)*100)}% smaller)`);
-      onUploaded(saved);
-      setFile(null); setPreview(null); setTitle(''); setProgress(0);
-    } catch(e) {
-      pop(e.message,'err'); setProgress(0);
-    }
-    setUploading(false);
-  };
-
-  return (
-    <div>
-      {!file&&(
-        <label style={{display:"block",border:`2px dashed ${G2}`,borderRadius:12,padding:"32px 20px",
-          textAlign:"center",cursor:"pointer",background:G1,transition:"border-color .2s"}}
-          onMouseEnter={e=>e.currentTarget.style.borderColor=PL}
-          onMouseLeave={e=>e.currentTarget.style.borderColor=G2}>
-          <div style={{fontSize:40,marginBottom:10}}>🎬</div>
-          <div style={{fontWeight:700,fontSize:14,color:BK,marginBottom:4}}>Tap to choose a video</div>
-          <div style={{fontSize:12,color:G6}}>MP4, MOV, AVI, WebM · Any size · Auto-compressed on upload</div>
-          <input type="file" accept="video/*" onChange={pickFile} style={{display:"none"}}/>
-        </label>
-      )}
-      {file&&(
-        <div>
-          <video src={preview} controls style={{width:"100%",borderRadius:10,maxHeight:260,background:"#000",marginBottom:12}}/>
-          <div style={{background:G1,borderRadius:9,padding:"10px 14px",marginBottom:12,fontSize:13}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-              <span style={{color:G6}}>Original file</span>
-              <span style={{fontWeight:700,color:fileSize>100*1048576?WA:G6}}>{fmtSz(fileSize)}</span>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between"}}>
-              <span style={{color:G6}}>Estimated after compression</span>
-              <span style={{fontWeight:700,color:OK}}>~{fmtSz(fileSize*0.12)}</span>
-            </div>
-          </div>
-          <Inp label="Title" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Full Body Massage Session"/>
-          {uploading&&(
-            <div style={{marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:G6,marginBottom:5}}>
-                <span>{progress<20?"Getting upload token…":progress<90?"Uploading to CDN…":"Saving…"}</span>
-                <span style={{fontWeight:700,color:PL}}>{progress}%</span>
-              </div>
-              <div style={{height:8,background:G2,borderRadius:99,overflow:"hidden"}}>
-                <div style={{height:"100%",width:progress+"%",background:`linear-gradient(90deg,${PL},${GOLD})`,borderRadius:99,transition:"width .4s"}}/>
-              </div>
-            </div>
-          )}
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{setFile(null);setPreview(null);setTitle('');setProgress(0);}}
-              disabled={uploading}
-              style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:uploading?.5:1}}>
-              ✕ Cancel
-            </button>
-            <button onClick={upload} disabled={uploading||!title.trim()}
-              style={{flex:2,padding:"11px",borderRadius:9,border:"none",
-                background:uploading?"#aaa":`linear-gradient(135deg,${PLD},${PL})`,
-                color:WH,fontSize:13,fontWeight:700,cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
-              {uploading?`${progress}%…`:"☁️ Upload & Compress"}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Videos Admin Tab ─────────────────────────────────────────────────────────
 function VideosAdminTab({ pop }) {
@@ -4643,6 +4500,8 @@ function VideosAdminTab({ pop }) {
   const [saving,    setSaving]    = useState(false);
   const [savingSet, setSavingSet] = useState(false);
   const [tab,       setTab]       = useState('add');
+  const [tgStatus,  setTgStatus]  = useState('');
+  const [tgLoading, setTgLoading] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getVideos(), api.getSocialSettings()])
@@ -4707,26 +4566,10 @@ function VideosAdminTab({ pop }) {
       {/* ── ADD VIDEO (link or upload) ── */}
       {tab==='add'&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {/* Upload directly */}
-          <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,overflow:"hidden"}}>
-            <div style={{background:`linear-gradient(135deg,${BK},${PLD})`,padding:"12px 16px"}}>
-              <div style={{fontWeight:700,fontSize:15,color:WH}}>📁 Upload Video Directly</div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,.6)",marginTop:2}}>Uploaded to Cloudinary CDN — auto-compressed, fast loading</div>
-            </div>
-            <div style={{padding:"16px"}}>
-              {!process.env.CLOUDINARY_CLOUD_NAME&&(
-                <div style={{background:WAB,borderRadius:8,padding:"10px 12px",fontSize:12,color:WA,marginBottom:12}}>
-                  ⚠️ Configure Cloudinary first (see Channel Settings tab)
-                </div>
-              )}
-              <UploadVideoWidget pop={pop} onUploaded={v=>setVideos(p=>[v,...p])}/>
-            </div>
-          </div>
-
-          {/* OR paste a link */}
+          {/* Paste a link */}
           <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"16px"}}>
-            <div style={{fontWeight:700,fontSize:15,color:BK,marginBottom:4}}>🔗 Or Paste a Video Link</div>
-            <div style={{fontSize:12,color:G6,marginBottom:14}}>YouTube, TikTok, Instagram, or Facebook</div>
+            <div style={{fontWeight:700,fontSize:15,color:BK,marginBottom:4}}>🔗 Paste a Video Link</div>
+            <div style={{fontSize:12,color:G6,marginBottom:14}}>YouTube, TikTok, Instagram, Facebook or Telegram</div>
             <Inp label="Video URL" value={url} onChange={e=>handleUrl(e.target.value)}
               placeholder="https://youtube.com/watch?v=..."/>
             <Inp label="Title (optional)" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Relaxing Full Body Massage"/>
@@ -4740,7 +4583,7 @@ function VideosAdminTab({ pop }) {
               ))}
             </div>
             <Btn onClick={add} disabled={saving||!url.trim()} style={{width:"100%",justifyContent:"center"}}>
-              {saving?"Adding…":"+ Add Link"}
+              {saving?"Adding…":"+ Add Video"}
             </Btn>
           </div>
         </div>
@@ -4770,29 +4613,7 @@ function VideosAdminTab({ pop }) {
             </div>
           </Card>
 
-          {/* Cloudinary */}
-          <Card>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-              <span style={{fontSize:20}}>☁️</span>
-              <div>
-                <div style={{fontWeight:700,fontSize:15}}>Cloudinary (Direct Upload)</div>
-                <div style={{fontSize:12,color:G6}}>Free video hosting with auto-compression — free 25GB storage</div>
-              </div>
-            </div>
-            <div style={{background:G1,borderRadius:8,padding:"10px 12px",fontSize:12,color:G6,marginBottom:12}}>
-              <strong>Setup (5 minutes, free):</strong><br/>
-              1. Go to <strong>cloudinary.com</strong> → Sign up free<br/>
-              2. Dashboard → copy Cloud Name, API Key, API Secret<br/>
-              3. Add to <strong>Vercel → Settings → Environment Variables</strong>:<br/>
-              &nbsp;&nbsp;• <code>CLOUDINARY_CLOUD_NAME</code><br/>
-              &nbsp;&nbsp;• <code>CLOUDINARY_API_KEY</code><br/>
-              &nbsp;&nbsp;• <code>CLOUDINARY_API_SECRET</code><br/>
-              4. Redeploy Vercel — then upload from the Add Video tab
-            </div>
-            <div style={{background:OKB,borderRadius:8,padding:"10px 12px",fontSize:12,color:OK}}>
-              ✓ Free tier: 25GB storage · Auto H.264 compression · Fast CDN delivery worldwide · No size limits
-            </div>
-          </Card>
+
 
           {/* TikTok */}
           <Card>
@@ -4844,8 +4665,6 @@ function VideosAdminTab({ pop }) {
 
           {/* Telegram Bot */}
           {(()=>{
-            const [tgStatus,setTgStatus]=React.useState("");
-            const [tgLoading,setTgLoading]=React.useState(false);
             const registerWebhook=async()=>{
               setTgLoading(true);setTgStatus("");
               try{
