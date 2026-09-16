@@ -26,6 +26,13 @@ const td = () => {
   return now.toISOString().split("T")[0];
 };
 const fmtDate = d => d ? String(d).split("T")[0] : "—";
+// Convert any timestamp to its "spa day" date string (day starts 06:01, ends 05:59 next day)
+const spaDay = (ts) => {
+  if(!ts) return "";
+  const d = new Date(ts);
+  if(d.getHours() < 6) d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
+};
 const fmtTime = t => t ? String(t).slice(0,5) : "—";
 const fmtDT   = dt => dt ? new Date(dt).toLocaleString("en-TZ",{dateStyle:"short",timeStyle:"short"}) : "—";
 
@@ -667,10 +674,11 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
 
   // Daily income breakdown
   const todayApptRev  = appts.filter(a=>(a.appt_date||"").slice(0,10)===today).reduce((s,a)=>s+Number(a.paid_amount||0),0);
-  const todayWalkinRev= reception.filter(r=>(r.in_time||"").slice(0,10)===today).reduce((s,r)=>s+Number(r.paid_amount||0),0);
+  // Walk-ins: use spaDay so midnight-6am sessions count as previous day
+  const todayWalkinRev= reception.filter(r=>spaDay(r.in_time)===today).reduce((s,r)=>s+Number(r.paid_amount||0),0);
   const todayRev      = todayApptRev + todayWalkinRev;
   const todayInvoiced = appts.filter(a=>(a.appt_date||"").slice(0,10)===today).reduce((s,a)=>s+Number(a.total_amount||0),0)
-                       +reception.filter(r=>(r.in_time||"").slice(0,10)===today).reduce((s,r)=>s+Number(r.total_amount||0),0);
+                       +reception.filter(r=>spaDay(r.in_time)===today).reduce((s,r)=>s+Number(r.total_amount||0),0);
   const todayOutstanding = Math.max(0, todayInvoiced - todayRev);
 
   // Therapist status — busy = has active session today
@@ -1081,7 +1089,7 @@ function DashTab({appts,reception,therapists,rooms,pop,setReception,payMethods,s
       {(()=>{
         // Merge today's walk-in sessions + appointments into one table
         const todaySessions = [
-          ...reception.filter(r=>(r.in_time||"").slice(0,10)===today)
+          ...reception.filter(r=>spaDay(r.in_time)===today)
             .map(r=>({...r, _type:"walkin"})),
           ...todayAppts.map(a=>({...a, _type:"appt"})),
         ].sort((a,b)=>{
@@ -2938,7 +2946,10 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
 
   const allRev=[...appts,...reception];
   const inRange=r=>{
-    const d=(r.appt_date||r.in_time||r.created_at||"").slice(0,10);
+    // Use spaDay for walk-in sessions (have in_time), raw date for appointments
+    const d = r.in_time
+      ? spaDay(r.in_time)
+      : (r.appt_date||r.created_at||"").slice(0,10);
     return(!df||d>=df)&&(!dt||d<=dt);
   };
   const filtered=allRev.filter(inRange);
@@ -2975,7 +2986,7 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
 
   // Daily revenue (last 14 days within range)
   const last14=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()-13+i);return d.toISOString().slice(0,10);});
-  const dailyRev=last14.map(d=>({d,rev:allRev.filter(a=>(a.appt_date||a.in_time||"").slice(0,10)===d).reduce((s,a)=>s+Number(a.paid_amount||0),0)}));
+  const dailyRev=last14.map(d=>({d,rev:allRev.filter(a=>{ const day=a.in_time?spaDay(a.in_time):(a.appt_date||"").slice(0,10); return day===d; }).reduce((s,a)=>s+Number(a.paid_amount||0),0)}));
   const maxDayRev=Math.max(...dailyRev.map(x=>x.rev),1);
 
   // Cancellation rate
@@ -3445,7 +3456,7 @@ function ReportsTab({appts,reception,expenses,therapists,services,payMethods}){
                   const th=therapists.find(t=>t.id===s.therapist_id);
                   const svcs=Array.isArray(s.services)?s.services:(typeof s.services==="string"?JSON.parse(s.services||"[]"):[]);
                   const isWalkin=!s.appt_date;
-                  const dateStr=s.appt_date?fmtDate(s.appt_date):(s.in_time?fmtDate(s.in_time.slice(0,10)):"—");
+                  const dateStr=s.appt_date?fmtDate(s.appt_date):(s.in_time?fmtDate(spaDay(s.in_time)):"—");
                   const timeStr=s.appt_time?fmtTime(s.appt_time):(s.in_time?new Date(s.in_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"");
                   const statusColor={completed:OK,inProgress:PL,cancelled:ER,noShow:G4,pending:WA,confirmed:IN}[s.status]||G6;
                   const statusLabel={completed:"✅ Done",inProgress:"🟣 Active",cancelled:"❌ Cancelled",noShow:"👻 No Show",pending:"⏳ Pending",confirmed:"✅ Confirmed"}[s.status]||s.status;
