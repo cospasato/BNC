@@ -5595,65 +5595,152 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
       const avColor={available:OK,outcall_only:WA,unavailable:ER};
       const avLabel={available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"};
       return(
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.95)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end"}}
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
         onClick={e=>e.target===e.currentTarget&&setViewTh(null)}>
-        <div style={{width:"100%",maxWidth:520,maxHeight:"95vh",display:"flex",flexDirection:"column",borderRadius:"20px 20px 0 0",overflow:"hidden",boxShadow:"0 -8px 60px rgba(0,0,0,.8)"}}>
-          {/* Full-screen photo — no fixed height, natural image ratio */}
-          <div style={{position:"relative",width:"100%",background:vPhotos[0]?"#111":`linear-gradient(135deg,${PLD},${PL})`}}>
-            {vPhotos.length>0
-              ? <>
-                  {/* Natural size image — no aspect ratio box, image sets its own height */}
-                  <img src={vPhotos[thPhotoIdx]} alt={viewTh.name}
-                    style={{width:"100%",display:"block",maxHeight:"72vh",
-                      objectFit:"cover",objectPosition:"top center"}}
-                    onError={e=>{e.target.style.display="none";}}/>
-                </>
-              : <div style={{height:320,display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:100,color:"rgba(255,255,255,.15)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>
-                  {viewTh.name[0]}
-                </div>
-            }
-            <div style={{position:"absolute",bottom:0,left:0,right:0,height:"40%",background:"linear-gradient(to top,rgba(0,0,0,.85),transparent)",pointerEvents:"none"}}/>
-            <button onClick={()=>setViewTh(null)} style={{position:"absolute",top:12,right:12,width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.65)",border:"2px solid rgba(255,255,255,.2)",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10,backdropFilter:"blur(4px)"}}>×</button>
-            {vPhotos.length>1&&(
-              <>
-                <button onClick={e=>{e.stopPropagation();setThPhotoIdx(i=>(i-1+vPhotos.length)%vPhotos.length);}} style={{position:"absolute",left:10,top:"45%",transform:"translateY(-50%)",width:40,height:40,borderRadius:"50%",background:"rgba(0,0,0,.55)",border:"none",color:WH,fontSize:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:5}}>‹</button>
-                <button onClick={e=>{e.stopPropagation();setThPhotoIdx(i=>(i+1)%vPhotos.length);}} style={{position:"absolute",right:10,top:"45%",transform:"translateY(-50%)",width:40,height:40,borderRadius:"50%",background:"rgba(0,0,0,.55)",border:"none",color:WH,fontSize:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:5}}>›</button>
-                <div style={{position:"absolute",bottom:54,left:0,right:0,display:"flex",gap:4,justifyContent:"center"}}>
-                  {vPhotos.map((_,i)=><div key={i} onClick={()=>setThPhotoIdx(i)} style={{width:i===thPhotoIdx?14:5,height:5,borderRadius:99,background:i===thPhotoIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",transition:"all .2s",cursor:"pointer"}}/>)}
-                </div>
-              </>
-            )}
-            <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"16px 18px",background:"linear-gradient(to top,rgba(0,0,0,.85) 0%,transparent 100%)"}}>
-              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:WH,margin:"0 0 4px",textShadow:"0 2px 8px rgba(0,0,0,.5)"}}>{viewTh.name}</h2>
-              {viewTh.specialties?.length>0&&<div style={{fontSize:13,color:"rgba(255,255,255,.85)"}}>{viewTh.specialties.join(" · ")}</div>}
+        <div style={{background:WH,borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,
+          boxShadow:"0 -8px 60px rgba(0,0,0,.4)",maxHeight:"93vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+          {/* ── Header ── */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px 12px",borderBottom:`1px solid ${G1}`,flexShrink:0}}>
+            <div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:BK,margin:0}}>{viewTh.name}</h2>
+              {viewTh.specialties?.length>0&&<div style={{fontSize:12,color:G6,marginTop:2}}>{viewTh.specialties.join(" · ")}</div>}
             </div>
+            <button onClick={()=>setViewTh(null)}
+              style={{width:34,height:34,borderRadius:"50%",background:G1,border:"none",
+                color:G6,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              ×
+            </button>
           </div>
-          {vPhotos.length>1&&(
-            <div style={{display:"flex",gap:6,padding:"8px 12px",background:"#000",overflowX:"auto",flexShrink:0}}>
-              {vPhotos.map((src,i)=>(
-                <img key={i} src={src} onClick={()=>setThPhotoIdx(i)} alt="" style={{width:52,height:70,objectFit:"cover",objectPosition:"top",borderRadius:6,cursor:"pointer",flexShrink:0,border:`2px solid ${i===thPhotoIdx?GOLD:"transparent"}`,opacity:i===thPhotoIdx?1:.55,transition:"all .15s"}}/>
-              ))}
-            </div>
-          )}
-          <div style={{padding:"16px 20px 24px",overflowY:"auto",background:WH,flexShrink:0}}>
-            <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+
+          {/* ── Scrollable body ── */}
+          <div style={{overflowY:"auto",flex:1}}>
+
+            {/* Availability + badges */}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",padding:"12px 18px 0"}}>
               {viewTh.availability&&<span style={{background:`${avColor[viewTh.availability]||G4}18`,color:avColor[viewTh.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{avLabel[viewTh.availability]||viewTh.availability}</span>}
               <span style={{background:OKB,color:OK,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
               {viewTh.outcall&&<span style={{background:PLF,color:PL,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏠 Outcall</span>}
             </div>
-            {viewTh.bio&&<p style={{fontSize:14,color:G6,lineHeight:1.8,marginBottom:16}}>{viewTh.bio}</p>}
-            {viewTh.phone&&<div style={{fontSize:13,color:G6,marginBottom:16}}>📞 {viewTh.phone}</div>}
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setViewTh(null)} style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${G2}`,background:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:G6}}>Close</button>
+
+            {/* Bio */}
+            {viewTh.bio&&(
+              <div style={{padding:"12px 18px"}}>
+                <p style={{fontSize:14,color:G6,lineHeight:1.8,margin:0}}>{viewTh.bio}</p>
+              </div>
+            )}
+
+            {/* Phone */}
+            {viewTh.phone&&(
+              <div style={{padding:"0 18px 12px",fontSize:13,color:G6}}>📞 {viewTh.phone}</div>
+            )}
+
+            {/* ── Photo gallery ── */}
+            {vPhotos.length>0&&(
+              <div style={{padding:"4px 18px 16px"}}>
+                <div style={{fontSize:11,fontWeight:700,color:G4,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>
+                  Photos · tap to view full size
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+                  {vPhotos.map((src,i)=>(
+                    <div key={i} onClick={()=>setThPhotoIdx(i+1000)}
+                      style={{paddingTop:"133%",position:"relative",borderRadius:10,overflow:"hidden",
+                        cursor:"zoom-in",border:`2px solid ${G1}`,background:G1}}>
+                      <img src={src} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}
+                        onError={e=>e.target.style.display="none"}/>
+                      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0)",
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        opacity:0,transition:"all .2s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.background="rgba(0,0,0,.3)";e.currentTarget.style.opacity=1;}}
+                        onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,0)";e.currentTarget.style.opacity=0;}}>
+                        <span style={{color:WH,fontSize:22}}>🔍</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Book button */}
+            <div style={{padding:"0 18px 24px",display:"flex",gap:10}}>
+              <button onClick={()=>setViewTh(null)}
+                style={{flex:1,padding:"12px",borderRadius:10,border:`1px solid ${G2}`,background:WH,
+                  fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:G6}}>
+                Close
+              </button>
               <button onClick={()=>{setBD(d=>({...d,therapistId:viewTh.id}));setViewTh(null);}}
-                style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:bD.therapistId===viewTh.id?OK:PL,color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:2,padding:"12px",borderRadius:10,border:"none",
+                  background:bD.therapistId===viewTh.id?OK:PL,
+                  color:WH,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 {bD.therapistId===viewTh.id?"✓ Selected":"Select & Book"}
               </button>
             </div>
           </div>
         </div>
       </div>
+      );
+    })()}
+
+    {/* ── Fullscreen photo viewer ── */}
+    {thPhotoIdx>=1000&&viewTh&&(()=>{
+      const vPhotos=[...(viewTh.photos||[]),viewTh.photo].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+      const realIdx = thPhotoIdx-1000;
+      return(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.97)",zIndex:2000,
+          display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setThPhotoIdx(0)}>
+          {/* Full image */}
+          <img src={vPhotos[realIdx]} alt=""
+            style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",userSelect:"none"}}
+            onClick={e=>e.stopPropagation()}/>
+
+          {/* Close */}
+          <button onClick={()=>setThPhotoIdx(0)}
+            style={{position:"absolute",top:16,right:16,width:42,height:42,borderRadius:"50%",
+              background:"rgba(255,255,255,.15)",border:"none",color:WH,fontSize:24,
+              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
+            ×
+          </button>
+
+          {/* Counter */}
+          <div style={{position:"absolute",top:20,left:0,right:0,textAlign:"center",
+            fontSize:13,color:"rgba(255,255,255,.6)",pointerEvents:"none"}}>
+            {realIdx+1} / {vPhotos.length}
+          </div>
+
+          {/* Prev / Next */}
+          {vPhotos.length>1&&(<>
+            <button onClick={e=>{e.stopPropagation();setThPhotoIdx(((realIdx-1+vPhotos.length)%vPhotos.length)+1000);}}
+              style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",
+                width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,.15)",
+                border:"none",color:WH,fontSize:28,cursor:"pointer",display:"flex",
+                alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
+              ‹
+            </button>
+            <button onClick={e=>{e.stopPropagation();setThPhotoIdx((realIdx+1)%vPhotos.length+1000);}}
+              style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
+                width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,.15)",
+                border:"none",color:WH,fontSize:28,cursor:"pointer",display:"flex",
+                alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
+              ›
+            </button>
+          </>)}
+
+          {/* Thumbnail strip */}
+          {vPhotos.length>1&&(
+            <div style={{position:"absolute",bottom:20,left:0,right:0,display:"flex",
+              justifyContent:"center",gap:8,padding:"0 16px"}}>
+              {vPhotos.map((_,i)=>(
+                <div key={i} onClick={e=>{e.stopPropagation();setThPhotoIdx(i+1000);}}
+                  style={{width:i===realIdx?36:28,height:i===realIdx?36:28,borderRadius:"50%",
+                    border:`2px solid ${i===realIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.3)"}`,
+                    overflow:"hidden",cursor:"pointer",transition:"all .2s",flexShrink:0}}>
+                  <img src={vPhotos[i]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       );
     })()}
   </div>
