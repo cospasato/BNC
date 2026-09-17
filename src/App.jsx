@@ -4903,7 +4903,7 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                         {isYT
                           // YouTube: youtube-nocookie removes sign-in/bot prompts
                           ? <iframe
-                              src={`${embedUrl}&autoplay=1&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white`}
+                              src={`${embedUrl}&autoplay=0&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white`}
                               style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
                               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                               allowFullScreen title=""
@@ -4913,7 +4913,7 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                               const info = getEmbedUrl(v.url, v.thumbnail);
                               return info.direct
                                 // Direct Telegram file (from bot) — plays as native video
-                                ? <video src={info.embedUrl} autoPlay controls playsInline
+                                ? <video src={info.embedUrl} controls playsInline
                                     style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",background:"#000"}}/>
                                 // Channel post link — can't embed (bot check), open in Telegram
                                 : <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
@@ -4930,7 +4930,7 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                                   </div>;
                             })()
                           : v.source==='upload'
-                          ? <video src={embedUrl} autoPlay controls playsInline
+                          ? <video src={embedUrl} controls playsInline
                               style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",background:"#000"}}/>
                           : <iframe
                               src={embedUrl}
