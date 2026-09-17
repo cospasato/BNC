@@ -4514,24 +4514,20 @@ function UploadToTelegram({ pop, onSaved }) {
     setUploading(true); setProgress(10);
 
     try {
-      // Read file as base64
-      const base64 = await new Promise((res, rej) => {
-        const reader = new FileReader();
-        reader.onload  = () => res(reader.result);
-        reader.onerror = rej;
-        reader.readAsDataURL(file);
-      });
-      setProgress(40);
+      setProgress(30);
+
+      // Send as multipart/form-data directly — no base64 conversion needed
+      const form = new FormData();
+      form.append('video',    file, file.name);
+      form.append('caption',  caption.trim() || `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`);
+      form.append('fileName', file.name);
+      form.append('mimeType', file.type);
+
+      setProgress(50);
 
       const resp = await fetch('/api/upload-video', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileData:  base64,
-          fileName:  file.name,
-          mimeType:  file.type,
-          caption:   caption.trim() || `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`,
-        }),
+        body: form, // no Content-Type header — browser sets it with boundary automatically
       });
       setProgress(85);
 
@@ -4542,7 +4538,6 @@ function UploadToTelegram({ pop, onSaved }) {
       setDone(data);
       pop('✅ Video uploaded to Telegram and saved!');
 
-      // Add to local list
       onSaved && onSaved({
         id: 'tg_' + Date.now(),
         url: data.video_url || data.post_url,
@@ -4552,7 +4547,6 @@ function UploadToTelegram({ pop, onSaved }) {
         active: true,
       });
 
-      // Reset
       setFile(null); setPreview(null); setCaption('');
       if (fileRef.current) fileRef.current.value = '';
 
