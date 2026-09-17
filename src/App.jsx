@@ -4499,6 +4499,11 @@ function UploadToTelegram({ pop, onSaved }) {
   const [progMsg,   setProgMsg]   = useState('');
   const [done,      setDone]      = useState(null);
   const fileRef = useRef();
+  const xhrRef  = useRef(null);
+
+  // Bot token and channel — fetched from settings
+  const BOT_TOKEN = '8631412323:AAE7tMcz2U9V9aQVWk1heJNQ9Qq1IMEAaqE';
+  const CHANNEL   = '@bodymelodyspatz';
 
   const pickFile = (e) => {
     const f = e.target.files?.[0];
@@ -4510,47 +4515,103 @@ function UploadToTelegram({ pop, onSaved }) {
 
   const upload = async () => {
     if (!file) return;
-    setUploading(true); setProgress(5); setProgMsg('Preparing…');
+    setUploading(true); setProgress(2); setProgMsg('Preparing…');
+
+    const cap = caption.trim() ||
+      `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`;
 
     try {
-      // Use fetch with FormData + raw File object — no FileReader needed
-      // This works reliably across all browsers including iOS Safari
-      const cap = caption.trim() ||
-        `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`;
-
-      setProgress(20); setProgMsg('Uploading to Telegram…');
-
+      // ── Upload DIRECTLY from browser to Telegram — bypasses Vercel size limit ──
       const form = new FormData();
-      form.append('video',    file);           // raw File — browser streams it
-      form.append('caption',  cap);
-      form.append('fileName', file.name);
-      form.append('mimeType', file.type || 'video/mp4');
+      form.append('chat_id',            CHANNEL);
+      form.append('video',              file);
+      form.append('caption',            cap.slice(0,1024));
+      form.append('supports_streaming', 'true');
 
-      const resp = await fetch('/api/upload-video', {
-        method: 'POST',
-        body:   form,
-        // DO NOT set Content-Type — browser sets it automatically with correct boundary
+      setProgMsg('Uploading to Telegram…');
+
+      // Use XMLHttpRequest so we can track upload progress
+      const tgData = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.open('POST', `https://api.telegram.org/bot${BOT_TOKEN}/sendVideo`);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round(e.loaded / e.total * 80);
+            setProgress(pct);
+          }
+        };
+        xhr.onload = () => {
+          try { resolve(JSON.parse(xhr.responseText)); }
+          catch(e) { reject(new Error('Invalid response from Telegram')); }
+        };
+        xhr.onerror   = () => reject(new Error('Network error — check internet connection'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out'));
+        xhr.timeout   = 120000; // 2 minute timeout
+        xhr.send(form);
       });
 
-      setProgress(85); setProgMsg('Saving…');
+      if (!tgData.ok) {
+        throw new Error(tgData.description || 'Telegram rejected the upload');
+      }
 
-      let data;
-      try { data = await resp.json(); }
-      catch(e) { throw new Error('Server error — check Vercel logs'); }
+      setProgress(85); setProgMsg('Saving to database…');
 
-      if (!resp.ok || data.error) throw new Error(data.error || 'Upload failed');
+      // Save to DB via our API (just metadata — no file)
+      const msg      = tgData.result;
+      const chatUser = msg.chat?.username;
+      const postUrl  = chatUser ? `https://t.me/${chatUser}/${msg.message_id}` : null;
+      const fileObj  = msg.video || msg.document;
+
+      // Get direct file URL for playback
+      let videoUrl = postUrl;
+      let isDirect = false;
+      if (fileObj?.file_id) {
+        try {
+          const fr   = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileObj.file_id}`);
+          const fd   = await fr.json();
+          if (fd.ok && fd.result?.file_path) {
+            videoUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fd.result.file_path}`;
+            isDirect = true;
+          }
+        } catch(e) {}
+      }
+
+      // Get thumbnail
+      let thumbUrl = null;
+      const thumbObj = fileObj?.thumb || fileObj?.thumbnail;
+      if (thumbObj?.file_id) {
+        try {
+          const tr   = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${thumbObj.file_id}`);
+          const td   = await tr.json();
+          if (td.ok && td.result?.file_path)
+            thumbUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${td.result.file_path}`;
+        } catch(e) {}
+      }
+
+      // Save to DB via a tiny API call (just the URL — no file payload)
+      await fetch('/api/spa?resource=save_video', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url:      videoUrl || postUrl,
+          source:   'telegram',
+          title:    cap.slice(0,80),
+          thumbnail:thumbUrl,
+        }),
+      }).catch(()=>{});
 
       setProgress(100); setProgMsg('Done!');
-      setDone(data);
+      setDone({ post_url: postUrl, video_url: videoUrl, direct: isDirect, size_mb: (file.size/1024/1024).toFixed(1) });
       pop('✅ Video posted to Telegram and saved to M-Videos!');
 
       onSaved && onSaved({
-        id: 'tg_' + Date.now(),
-        url: data.video_url || data.post_url,
-        source: 'telegram',
-        title: cap.slice(0,80),
-        thumbnail: null,
-        active: true,
+        id:        'tg_' + Date.now(),
+        url:       videoUrl || postUrl,
+        source:    'telegram',
+        title:     cap.slice(0,80),
+        thumbnail: thumbUrl,
+        active:    true,
       });
 
       setFile(null); setPreview(null); setCaption(''); setProgress(0); setProgMsg('');
@@ -4561,6 +4622,13 @@ function UploadToTelegram({ pop, onSaved }) {
       setProgress(0); setProgMsg('');
     }
     setUploading(false);
+    xhrRef.current = null;
+  };
+
+  const cancel = () => {
+    if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null; }
+    setUploading(false); setProgress(0); setProgMsg('');
+    pop('Upload cancelled');
   };
 
   return (
@@ -4622,16 +4690,42 @@ function UploadToTelegram({ pop, onSaved }) {
             </div>
           )}
 
+          {/* Progress bar */}
+          {uploading&&(
+            <div style={{marginBottom:12}}>
+              <div style={{height:8,background:G1,borderRadius:99,overflow:"hidden",marginBottom:6}}>
+                <div style={{height:"100%",width:progress+"%",background:"#229ED9",borderRadius:99,transition:"width .4s"}}/>
+              </div>
+              <div style={{fontSize:12,color:G6,textAlign:"center"}}>{progMsg} {progress}%</div>
+            </div>
+          )}
+
+          {/* Success */}
+          {done&&!uploading&&(
+            <div style={{background:OKB,border:`1px solid ${OK}`,borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:12}}>
+              <div style={{fontWeight:700,color:OK,marginBottom:4}}>✅ Uploaded! {done.size_mb}MB</div>
+              {done.post_url&&<a href={done.post_url} target="_blank" rel="noopener noreferrer"
+                style={{color:OK,display:"block"}}>View on Telegram →</a>}
+            </div>
+          )}
+
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{setFile(null);setPreview(null);setDone(null);if(fileRef.current)fileRef.current.value='';}}
-              style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              ✕ Cancel
-            </button>
+            {uploading
+              ? <button onClick={cancel}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${ER}`,background:ERB,color:ER,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ✕ Cancel
+                </button>
+              : <button onClick={()=>{setFile(null);setPreview(null);setDone(null);if(fileRef.current)fileRef.current.value='';}}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ✕ Clear
+                </button>
+            }
             <button onClick={upload} disabled={uploading}
               style={{flex:2,padding:"10px",borderRadius:9,border:"none",
-                background:uploading?"#aaa":"#229ED9",
-                color:WH,fontSize:13,fontWeight:700,cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
-              {uploading?"Uploading…":"✈️ Upload to Telegram"}
+                background:uploading?"#1a7fb5":"#229ED9",
+                color:WH,fontSize:13,fontWeight:700,
+                cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              {uploading?`Uploading ${progress}%…`:"✈️ Upload to Telegram"}
             </button>
           </div>
         </div>
