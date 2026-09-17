@@ -5266,16 +5266,46 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                     ? <>
                         {/* Video player — different per source */}
                         {isYT
-                          // YouTube: only inject iframe after explicit tap — avoids sign-in prompt
+                          // YouTube: open directly in YouTube app/browser — 100% reliable, no sign-in wall
                           ? (()=>{
-                              const {videoId:vid, embedUrl:eUrl} = getEmbedUrl(v.url, v.thumbnail);
-                              const src = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white&origin=${window.location.origin}&enablejsapi=1`;
-                              return <iframe
-                                src={src}
-                                style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                allowFullScreen referrerPolicy="strict-origin-when-cross-origin" title={v.title||""}
-                              />;
+                              const {videoId:vid} = getEmbedUrl(v.url, v.thumbnail);
+                              const ytUrl = `https://www.youtube.com/watch?v=${vid}`;
+                              return(
+                                <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+                                  alignItems:"center",justifyContent:"center",background:"#000",gap:14}}>
+                                  {/* Show thumbnail behind */}
+                                  {(v.thumbnail||`https://img.youtube.com/vi/${vid}/maxresdefault.jpg`)&&(
+                                    <img src={v.thumbnail||`https://img.youtube.com/vi/${vid}/maxresdefault.jpg`}
+                                      alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:.35}}
+                                      onError={e=>{e.target.src=`https://img.youtube.com/vi/${vid}/hqdefault.jpg`;}}/>
+                                  )}
+                                  <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"0 20px"}}>
+                                    <div style={{width:70,height:70,borderRadius:"50%",background:"rgba(255,0,0,.9)",
+                                      display:"flex",alignItems:"center",justifyContent:"center",
+                                      boxShadow:"0 4px 24px rgba(255,0,0,.5)"}}>
+                                      <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
+                                        <path d="M8 5v14l11-7z"/>
+                                      </svg>
+                                    </div>
+                                    <div style={{color:"#fff",fontWeight:700,fontSize:14,textAlign:"center",textShadow:"0 2px 8px rgba(0,0,0,.8)"}}>
+                                      {v.title||"Watch on YouTube"}
+                                    </div>
+                                    <a href={ytUrl} target="_blank" rel="noopener noreferrer"
+                                      onClick={e=>e.stopPropagation()}
+                                      style={{background:"#FF0000",color:"#fff",textDecoration:"none",
+                                        padding:"11px 24px",borderRadius:10,fontWeight:700,fontSize:14,
+                                        display:"flex",alignItems:"center",gap:8,boxShadow:"0 4px 16px rgba(255,0,0,.4)"}}>
+                                      <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                                        <path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/>
+                                      </svg>
+                                      Open in YouTube
+                                    </a>
+                                    <div style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>
+                                      Opens YouTube app or browser
+                                    </div>
+                                  </div>
+                                </div>
+                              );
                             })()
                           : v.source==='telegram'
                           ? (() => {
