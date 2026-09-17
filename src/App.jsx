@@ -4490,6 +4490,156 @@ function getSourceIcon(source) {
 
 
 // ── Videos Admin Tab ─────────────────────────────────────────────────────────
+function UploadToTelegram({ pop, onSaved }) {
+  const [file,       setFile]       = useState(null);
+  const [preview,    setPreview]    = useState(null);
+  const [caption,    setCaption]    = useState('');
+  const [uploading,  setUploading]  = useState(false);
+  const [progress,   setProgress]   = useState(0);
+  const [done,       setDone]       = useState(null);
+  const fileRef = useRef();
+
+  const pickFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 50 * 1024 * 1024) return pop('File too large — max 50MB', 'err');
+    setFile(f);
+    setDone(null);
+    const url = URL.createObjectURL(f);
+    setPreview(url);
+  };
+
+  const upload = async () => {
+    if (!file) return;
+    setUploading(true); setProgress(10);
+
+    try {
+      // Read file as base64
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload  = () => res(reader.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      setProgress(40);
+
+      const resp = await fetch('/api/upload-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileData:  base64,
+          fileName:  file.name,
+          mimeType:  file.type,
+          caption:   caption.trim() || `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`,
+        }),
+      });
+      setProgress(85);
+
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || 'Upload failed');
+
+      setProgress(100);
+      setDone(data);
+      pop('✅ Video uploaded to Telegram and saved!');
+
+      // Add to local list
+      onSaved && onSaved({
+        id: 'tg_' + Date.now(),
+        url: data.video_url || data.post_url,
+        source: 'telegram',
+        title: caption || 'Bodymelody Massage',
+        thumbnail: null,
+        active: true,
+      });
+
+      // Reset
+      setFile(null); setPreview(null); setCaption('');
+      if (fileRef.current) fileRef.current.value = '';
+
+    } catch(e) {
+      pop(e.message, 'err');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div>
+      {/* File picker */}
+      <input ref={fileRef} type="file" accept="video/*" onChange={pickFile}
+        style={{display:"none"}} id="tg-file-input"/>
+
+      {!file && (
+        <label htmlFor="tg-file-input"
+          style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+            border:`2px dashed ${G2}`,borderRadius:12,padding:"28px 16px",cursor:"pointer",
+            background:G1,gap:8,transition:"all .2s"}}>
+          <div style={{fontSize:36}}>📹</div>
+          <div style={{fontWeight:700,color:BK,fontSize:14}}>Tap to pick a video</div>
+          <div style={{fontSize:12,color:G4}}>MP4, MOV, AVI — max 50MB</div>
+        </label>
+      )}
+
+      {file && (
+        <div>
+          {/* Video preview */}
+          {preview && (
+            <div style={{borderRadius:10,overflow:"hidden",background:"#000",marginBottom:12,
+              position:"relative",paddingTop:"56.25%"}}>
+              <video src={preview} controls style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain"}}/>
+            </div>
+          )}
+
+          {/* File info */}
+          <div style={{background:G1,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:G6,display:"flex",justifyContent:"space-between"}}>
+            <span style={{fontWeight:600,color:BK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"70%"}}>{file.name}</span>
+            <span>{(file.size/1024/1024).toFixed(1)} MB</span>
+          </div>
+
+          {/* Caption */}
+          <Inp label="Caption (optional)" value={caption} onChange={e=>setCaption(e.target.value)}
+            placeholder="e.g. Deep tissue massage at Bodymelody Spa..."/>
+
+          {/* Progress bar */}
+          {uploading && (
+            <div style={{marginBottom:12}}>
+              <div style={{height:6,background:G1,borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:progress+"%",background:"#229ED9",borderRadius:99,transition:"width .3s"}}/>
+              </div>
+              <div style={{fontSize:12,color:G6,marginTop:4,textAlign:"center"}}>
+                {progress<40?"Reading file…":progress<85?"Uploading to Telegram…":"Saving…"}
+              </div>
+            </div>
+          )}
+
+          {/* Success */}
+          {done && (
+            <div style={{background:OKB,border:`1px solid ${OK}`,borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:12}}>
+              <div style={{fontWeight:700,color:OK,marginBottom:4}}>✅ Uploaded successfully!</div>
+              {done.post_url&&<a href={done.post_url} target="_blank" rel="noopener noreferrer"
+                style={{color:OK}}>View on Telegram →</a>}
+              <div style={{color:G6,marginTop:2}}>{done.size_mb} MB uploaded</div>
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{setFile(null);setPreview(null);setDone(null);if(fileRef.current)fileRef.current.value='';}}
+              style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${G2}`,background:WH,color:G6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              ✕ Cancel
+            </button>
+            <button onClick={upload} disabled={uploading}
+              style={{flex:2,padding:"10px",borderRadius:9,border:"none",
+                background:uploading?"#aaa":"#229ED9",
+                color:WH,fontSize:13,fontWeight:700,cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              {uploading?"Uploading…":"✈️ Upload to Telegram"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function VideosAdminTab({ pop }) {
   const [videos,    setVideos]    = useState([]);
   const [settings,  setSettings]  = useState({ yt_channel_id:'', yt_api_key:'', fb_page_url:'', ig_profile_url:'', tt_profile_url:'' });
@@ -4566,9 +4716,24 @@ function VideosAdminTab({ pop }) {
       {/* ── ADD VIDEO (link or upload) ── */}
       {tab==='add'&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {/* Paste a link */}
+
+          {/* ── UPLOAD DIRECTLY TO TELEGRAM ── */}
+          <div style={{background:WH,borderRadius:14,border:`2px solid ${PL}20`,overflow:"hidden"}}>
+            <div style={{background:`linear-gradient(135deg,#229ED9,#1a7fb5)`,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:22}}>✈️</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:15,color:WH}}>Upload Video to Telegram</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,.7)"}}>Pick a video → posts to your channel → appears in M-Videos</div>
+              </div>
+            </div>
+            <div style={{padding:"16px"}}>
+              <UploadToTelegram pop={pop} onSaved={v=>setVideos(p=>[v,...p])}/>
+            </div>
+          </div>
+
+          {/* ── OR PASTE A LINK ── */}
           <div style={{background:WH,borderRadius:14,border:`1px solid ${G2}`,padding:"16px"}}>
-            <div style={{fontWeight:700,fontSize:15,color:BK,marginBottom:4}}>🔗 Paste a Video Link</div>
+            <div style={{fontWeight:700,fontSize:15,color:BK,marginBottom:4}}>🔗 Or Paste a Video Link</div>
             <div style={{fontSize:12,color:G6,marginBottom:14}}>YouTube, TikTok, Instagram, Facebook or Telegram</div>
             <Inp label="Video URL" value={url} onChange={e=>handleUrl(e.target.value)}
               placeholder="https://youtube.com/watch?v=..."/>
