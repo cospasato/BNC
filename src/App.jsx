@@ -4491,175 +4491,70 @@ function getSourceIcon(source) {
 
 // ── Videos Admin Tab ─────────────────────────────────────────────────────────
 function UploadToTelegram({ pop, onSaved }) {
-  const [file,       setFile]      = useState(null);
-  const [preview,    setPreview]   = useState(null);
-  const [caption,    setCaption]   = useState('');
-  const [uploading,  setUploading] = useState(false);
-  const [progress,   setProgress]  = useState(0);
-  const [progMsg,    setProgMsg]   = useState('');
-  const [done,       setDone]      = useState(null);
-  const [converting, setConverting]= useState(false);
-  const fileRef  = useRef();
-  const xhrRef   = useRef(null);
-  const ffmpegRef= useRef(null);
+  const [file,      setFile]      = useState(null);
+  const [preview,   setPreview]   = useState(null);
+  const [caption,   setCaption]   = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [progress,  setProgress]  = useState(0);
+  const [progMsg,   setProgMsg]   = useState('');
+  const [done,      setDone]      = useState(null);
+  const fileRef = useRef();
+  const xhrRef  = useRef(null);
 
   const BOT_TOKEN = '8631412323:AAE7tMcz2U9V9aQVWk1heJNQ9Qq1IMEAaqE';
   const CHANNEL   = '@bodymelodyspatz';
 
-  const needsConversion = (f) => {
-    const ext = (f.name.split('.').pop()||'').toLowerCase();
-    const mime = (f.type||'').toLowerCase();
-    return ext === 'mov' || ext === 'avi' || ext === 'mkv' || ext === 'wmv' ||
-           mime === 'video/quicktime' || mime === 'video/x-msvideo';
-  };
-
-  const convertToMp4 = async (f) => {
-    setConverting(true);
-    setProgMsg('Loading converter…');
-    setProgress(2);
-
-    try {
-      // Load FFmpeg.wasm dynamically from CDN
-      if (!ffmpegRef.current) {
-        const { createFFmpeg, fetchFile } = await import(
-          'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js'
-        );
-        const ff = createFFmpeg({
-          log: false,
-          corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
-          progress: ({ ratio }) => {
-            setProgress(Math.round(5 + ratio * 70));
-            setProgMsg(`Converting to MP4… ${Math.round(ratio*100)}%`);
-          },
-        });
-        await ff.load();
-        ffmpegRef.current = { ff, fetchFile };
-      }
-
-      const { ff, fetchFile } = ffmpegRef.current;
-      setProgMsg('Reading file…'); setProgress(5);
-
-      // Write input file
-      const inputName  = 'input.' + (f.name.split('.').pop()||'mov');
-      const outputName = 'output.mp4';
-      ff.FS('writeFile', inputName, await fetchFile(f));
-
-      setProgMsg('Converting to MP4…'); setProgress(10);
-
-      // Convert: copy video stream, convert audio — fast, minimal quality loss
-      await ff.run(
-        '-i', inputName,
-        '-c:v', 'copy',      // copy video stream — no re-encode, no quality loss
-        '-c:a', 'aac',       // convert audio to AAC (MP4 compatible)
-        '-movflags', '+faststart', // optimize for streaming
-        '-y', outputName
-      );
-
-      setProgress(80); setProgMsg('Finalizing…');
-
-      // Read output
-      const data   = ff.FS('readFile', outputName);
-      const blob   = new Blob([data.buffer], { type: 'video/mp4' });
-      const mp4File= new File([blob], f.name.replace(/\.[^.]+$/, '.mp4'), { type: 'video/mp4' });
-
-      // Cleanup
-      try { ff.FS('unlink', inputName);  } catch(e) {}
-      try { ff.FS('unlink', outputName); } catch(e) {}
-
-      setProgress(85); setProgMsg('Conversion done!');
-      setConverting(false);
-      return mp4File;
-
-    } catch(e) {
-      setConverting(false);
-      // FFmpeg.wasm failed — return original file and warn
-      console.warn('FFmpeg conversion failed:', e.message);
-      pop('⚠️ Could not convert — uploading original format', 'err');
-      return f;
-    }
-  };
-
-  const pickFile = async (e) => {
+  const pickFile = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 200 * 1024 * 1024) return pop('File too large — max 200MB', 'err');
-    setDone(null); setProgress(0); setProgMsg('');
-
-    if (needsConversion(f)) {
-      setProgMsg('Preparing to convert…');
-      setPreview(URL.createObjectURL(f));
-      setFile(f); // show preview while converting
-    } else {
-      setFile(f);
-      setPreview(URL.createObjectURL(f));
-    }
+    if (f.size > 50 * 1024 * 1024) return pop('File too large — max 50MB', 'err');
+    setFile(f); setDone(null); setProgress(0); setProgMsg('');
+    setPreview(URL.createObjectURL(f));
   };
 
   const upload = async () => {
     if (!file) return;
-    setUploading(true); setProgress(2); setProgMsg('Preparing…');
+    setUploading(true); setProgress(2); setProgMsg('Uploading to Telegram…');
 
     const cap = caption.trim() ||
       `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`;
 
     try {
-      // Convert to MP4 if needed before uploading
-      let uploadFile = file;
-      if (needsConversion(file)) {
-        setProgMsg('Converting to MP4 (no quality loss)…');
-        uploadFile = await convertToMp4(file);
-        setProgress(85);
-      }
-
-      // ── Upload DIRECTLY from browser to Telegram — bypasses Vercel size limit ──
       const form = new FormData();
       form.append('chat_id',            CHANNEL);
-      form.append('video',              uploadFile);
+      form.append('video',              file);
       form.append('caption',            cap.slice(0,1024));
       form.append('supports_streaming', 'true');
 
-      setProgMsg('Uploading to Telegram…');
-
-      // Use XMLHttpRequest so we can track upload progress
       const tgData = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhrRef.current = xhr;
         xhr.open('POST', `https://api.telegram.org/bot${BOT_TOKEN}/sendVideo`);
         xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round(e.loaded / e.total * 80);
-            setProgress(pct);
-          }
+          if (e.lengthComputable) setProgress(Math.round(e.loaded / e.total * 80));
         };
-        xhr.onload = () => {
-          try { resolve(JSON.parse(xhr.responseText)); }
-          catch(e) { reject(new Error('Invalid response from Telegram')); }
-        };
+        xhr.onload    = () => { try { resolve(JSON.parse(xhr.responseText)); } catch(e) { reject(new Error('Invalid response')); } };
         xhr.onerror   = () => reject(new Error('Network error — check internet connection'));
         xhr.ontimeout = () => reject(new Error('Upload timed out'));
-        xhr.timeout   = 120000; // 2 minute timeout
+        xhr.timeout   = 120000;
         xhr.send(form);
       });
 
-      if (!tgData.ok) {
-        throw new Error(tgData.description || 'Telegram rejected the upload');
-      }
+      if (!tgData.ok) throw new Error(tgData.description || 'Telegram rejected the upload');
 
-      setProgress(85); setProgMsg('Saving to database…');
+      setProgress(85); setProgMsg('Saving…');
 
-      // Save to DB via our API (just metadata — no file)
       const msg      = tgData.result;
+      const fileObj  = msg.video || msg.document;
       const chatUser = msg.chat?.username;
       const postUrl  = chatUser ? `https://t.me/${chatUser}/${msg.message_id}` : null;
-      const fileObj  = msg.video || msg.document;
 
-      // Get direct file URL for playback
       let videoUrl = postUrl;
       let isDirect = false;
       if (fileObj?.file_id) {
         try {
-          const fr   = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileObj.file_id}`);
-          const fd   = await fr.json();
+          const fr = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileObj.file_id}`);
+          const fd = await fr.json();
           if (fd.ok && fd.result?.file_path) {
             videoUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fd.result.file_path}`;
             isDirect = true;
@@ -4667,43 +4562,27 @@ function UploadToTelegram({ pop, onSaved }) {
         } catch(e) {}
       }
 
-      // Get thumbnail
       let thumbUrl = null;
       const thumbObj = fileObj?.thumb || fileObj?.thumbnail;
       if (thumbObj?.file_id) {
         try {
-          const tr   = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${thumbObj.file_id}`);
-          const td   = await tr.json();
+          const tr = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${thumbObj.file_id}`);
+          const td = await tr.json();
           if (td.ok && td.result?.file_path)
             thumbUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${td.result.file_path}`;
         } catch(e) {}
       }
 
-      // Save to DB via a tiny API call (just the URL — no file payload)
       await fetch('/api/spa?resource=save_video', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url:      videoUrl || postUrl,
-          source:   'telegram',
-          title:    cap.slice(0,80),
-          thumbnail:thumbUrl,
-        }),
+        body: JSON.stringify({ url: videoUrl||postUrl, source:'telegram', title:cap.slice(0,80), thumbnail:thumbUrl }),
       }).catch(()=>{});
 
       setProgress(100); setProgMsg('Done!');
-      setDone({ post_url: postUrl, video_url: videoUrl, direct: isDirect, size_mb: (file.size/1024/1024).toFixed(1) });
+      setDone({ post_url:postUrl, video_url:videoUrl, direct:isDirect, size_mb:(file.size/1024/1024).toFixed(1) });
       pop('✅ Video posted to Telegram and saved to M-Videos!');
-
-      onSaved && onSaved({
-        id:        'tg_' + Date.now(),
-        url:       videoUrl || postUrl,
-        source:    'telegram',
-        title:     cap.slice(0,80),
-        thumbnail: thumbUrl,
-        active:    true,
-      });
-
+      onSaved && onSaved({ id:'tg_'+Date.now(), url:videoUrl||postUrl, source:'telegram', title:cap.slice(0,80), thumbnail:thumbUrl, active:true });
       setFile(null); setPreview(null); setCaption(''); setProgress(0); setProgMsg('');
       if (fileRef.current) fileRef.current.value = '';
 
@@ -4723,86 +4602,49 @@ function UploadToTelegram({ pop, onSaved }) {
 
   return (
     <div>
-      {/* File picker */}
       <input ref={fileRef} type="file" accept="video/*" onChange={pickFile}
         style={{display:"none"}} id="tg-file-input"/>
 
-      {!file && (
+      {!file&&(
         <label htmlFor="tg-file-input"
           style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
             border:`2px dashed ${G2}`,borderRadius:12,padding:"28px 16px",cursor:"pointer",
-            background:G1,gap:8,transition:"all .2s"}}>
+            background:G1,gap:8}}>
           <div style={{fontSize:36}}>📹</div>
           <div style={{fontWeight:700,color:BK,fontSize:14}}>Tap to pick a video</div>
           <div style={{fontSize:12,color:G4}}>MP4, MOV, AVI — max 50MB</div>
         </label>
       )}
 
-      {file && (
+      {file&&(
         <div>
-          {/* Video preview */}
-          {preview && (
+          {preview&&(
             <div style={{borderRadius:10,overflow:"hidden",background:"#000",marginBottom:12,
               position:"relative",paddingTop:"56.25%"}}>
               <video src={preview} controls style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain"}}/>
             </div>
           )}
-
-          {/* File info */}
-          <div style={{background:G1,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:G6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontWeight:600,color:BK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"65%"}}>{file.name}</span>
-            <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-              {needsConversion(file)&&(
-                <span style={{background:PLF,color:PL,padding:"2px 7px",borderRadius:99,fontSize:11,fontWeight:700}}>
-                  → MP4
-                </span>
-              )}
-              <span>{(file.size/1024/1024).toFixed(1)} MB</span>
-            </div>
+          <div style={{background:G1,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:G6,display:"flex",justifyContent:"space-between"}}>
+            <span style={{fontWeight:600,color:BK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"70%"}}>{file.name}</span>
+            <span>{(file.size/1024/1024).toFixed(1)} MB</span>
           </div>
 
-          {/* Caption */}
           <Inp label="Caption (optional)" value={caption} onChange={e=>setCaption(e.target.value)}
-            placeholder="e.g. Deep tissue massage at Bodymelody Spa..."/>
+            placeholder="e.g. Deep tissue massage at Bodymelody Spa…"/>
 
-          {/* Progress bar */}
-          {uploading && (
-            <div style={{marginBottom:12}}>
-              <div style={{height:6,background:G1,borderRadius:99,overflow:"hidden"}}>
-                <div style={{height:"100%",width:progress+"%",background:"#229ED9",borderRadius:99,transition:"width .3s"}}/>
-              </div>
-              <div style={{fontSize:12,color:G6,marginTop:4,textAlign:"center"}}>
-                {progress<40?"Reading file…":progress<85?"Uploading to Telegram…":"Saving…"}
-              </div>
-            </div>
-          )}
-
-          {/* Success */}
-          {done && (
-            <div style={{background:OKB,border:`1px solid ${OK}`,borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:12}}>
-              <div style={{fontWeight:700,color:OK,marginBottom:4}}>✅ Uploaded successfully!</div>
-              {done.post_url&&<a href={done.post_url} target="_blank" rel="noopener noreferrer"
-                style={{color:OK}}>View on Telegram →</a>}
-              <div style={{color:G6,marginTop:2}}>{done.size_mb} MB uploaded</div>
-            </div>
-          )}
-
-          {/* Progress bar */}
           {uploading&&(
             <div style={{marginBottom:12}}>
               <div style={{height:8,background:G1,borderRadius:99,overflow:"hidden",marginBottom:6}}>
                 <div style={{height:"100%",width:progress+"%",background:"#229ED9",borderRadius:99,transition:"width .4s"}}/>
               </div>
-              <div style={{fontSize:12,color:G6,textAlign:"center"}}>{progMsg} {progress}%</div>
+              <div style={{fontSize:12,color:G6,textAlign:"center"}}>{progMsg} {progress>0?progress+"%":""}</div>
             </div>
           )}
 
-          {/* Success */}
           {done&&!uploading&&(
             <div style={{background:OKB,border:`1px solid ${OK}`,borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:12}}>
               <div style={{fontWeight:700,color:OK,marginBottom:4}}>✅ Uploaded! {done.size_mb}MB</div>
-              {done.post_url&&<a href={done.post_url} target="_blank" rel="noopener noreferrer"
-                style={{color:OK,display:"block"}}>View on Telegram →</a>}
+              {done.post_url&&<a href={done.post_url} target="_blank" rel="noopener noreferrer" style={{color:OK}}>View on Telegram →</a>}
             </div>
           )}
 
@@ -4820,8 +4662,7 @@ function UploadToTelegram({ pop, onSaved }) {
             <button onClick={upload} disabled={uploading}
               style={{flex:2,padding:"10px",borderRadius:9,border:"none",
                 background:uploading?"#1a7fb5":"#229ED9",
-                color:WH,fontSize:13,fontWeight:700,
-                cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                color:WH,fontSize:13,fontWeight:700,cursor:uploading?"not-allowed":"pointer",fontFamily:"inherit"}}>
               {uploading?`Uploading ${progress}%…`:"✈️ Upload to Telegram"}
             </button>
           </div>
