@@ -4491,26 +4491,108 @@ function getSourceIcon(source) {
 
 // ── Videos Admin Tab ─────────────────────────────────────────────────────────
 function UploadToTelegram({ pop, onSaved }) {
-  const [file,      setFile]      = useState(null);
-  const [preview,   setPreview]   = useState(null);
-  const [caption,   setCaption]   = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [progress,  setProgress]  = useState(0);
-  const [progMsg,   setProgMsg]   = useState('');
-  const [done,      setDone]      = useState(null);
-  const fileRef = useRef();
-  const xhrRef  = useRef(null);
+  const [file,       setFile]      = useState(null);
+  const [preview,    setPreview]   = useState(null);
+  const [caption,    setCaption]   = useState('');
+  const [uploading,  setUploading] = useState(false);
+  const [progress,   setProgress]  = useState(0);
+  const [progMsg,    setProgMsg]   = useState('');
+  const [done,       setDone]      = useState(null);
+  const [converting, setConverting]= useState(false);
+  const fileRef  = useRef();
+  const xhrRef   = useRef(null);
+  const ffmpegRef= useRef(null);
 
-  // Bot token and channel — fetched from settings
   const BOT_TOKEN = '8631412323:AAE7tMcz2U9V9aQVWk1heJNQ9Qq1IMEAaqE';
   const CHANNEL   = '@bodymelodyspatz';
 
-  const pickFile = (e) => {
+  const needsConversion = (f) => {
+    const ext = (f.name.split('.').pop()||'').toLowerCase();
+    const mime = (f.type||'').toLowerCase();
+    return ext === 'mov' || ext === 'avi' || ext === 'mkv' || ext === 'wmv' ||
+           mime === 'video/quicktime' || mime === 'video/x-msvideo';
+  };
+
+  const convertToMp4 = async (f) => {
+    setConverting(true);
+    setProgMsg('Loading converter…');
+    setProgress(2);
+
+    try {
+      // Load FFmpeg.wasm dynamically from CDN
+      if (!ffmpegRef.current) {
+        const { createFFmpeg, fetchFile } = await import(
+          'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js'
+        );
+        const ff = createFFmpeg({
+          log: false,
+          corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+          progress: ({ ratio }) => {
+            setProgress(Math.round(5 + ratio * 70));
+            setProgMsg(`Converting to MP4… ${Math.round(ratio*100)}%`);
+          },
+        });
+        await ff.load();
+        ffmpegRef.current = { ff, fetchFile };
+      }
+
+      const { ff, fetchFile } = ffmpegRef.current;
+      setProgMsg('Reading file…'); setProgress(5);
+
+      // Write input file
+      const inputName  = 'input.' + (f.name.split('.').pop()||'mov');
+      const outputName = 'output.mp4';
+      ff.FS('writeFile', inputName, await fetchFile(f));
+
+      setProgMsg('Converting to MP4…'); setProgress(10);
+
+      // Convert: copy video stream, convert audio — fast, minimal quality loss
+      await ff.run(
+        '-i', inputName,
+        '-c:v', 'copy',      // copy video stream — no re-encode, no quality loss
+        '-c:a', 'aac',       // convert audio to AAC (MP4 compatible)
+        '-movflags', '+faststart', // optimize for streaming
+        '-y', outputName
+      );
+
+      setProgress(80); setProgMsg('Finalizing…');
+
+      // Read output
+      const data   = ff.FS('readFile', outputName);
+      const blob   = new Blob([data.buffer], { type: 'video/mp4' });
+      const mp4File= new File([blob], f.name.replace(/\.[^.]+$/, '.mp4'), { type: 'video/mp4' });
+
+      // Cleanup
+      try { ff.FS('unlink', inputName);  } catch(e) {}
+      try { ff.FS('unlink', outputName); } catch(e) {}
+
+      setProgress(85); setProgMsg('Conversion done!');
+      setConverting(false);
+      return mp4File;
+
+    } catch(e) {
+      setConverting(false);
+      // FFmpeg.wasm failed — return original file and warn
+      console.warn('FFmpeg conversion failed:', e.message);
+      pop('⚠️ Could not convert — uploading original format', 'err');
+      return f;
+    }
+  };
+
+  const pickFile = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 50 * 1024 * 1024) return pop('File too large — max 50MB', 'err');
-    setFile(f); setDone(null);
-    setPreview(URL.createObjectURL(f));
+    if (f.size > 200 * 1024 * 1024) return pop('File too large — max 200MB', 'err');
+    setDone(null); setProgress(0); setProgMsg('');
+
+    if (needsConversion(f)) {
+      setProgMsg('Preparing to convert…');
+      setPreview(URL.createObjectURL(f));
+      setFile(f); // show preview while converting
+    } else {
+      setFile(f);
+      setPreview(URL.createObjectURL(f));
+    }
   };
 
   const upload = async () => {
@@ -4521,10 +4603,18 @@ function UploadToTelegram({ pop, onSaved }) {
       `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`;
 
     try {
+      // Convert to MP4 if needed before uploading
+      let uploadFile = file;
+      if (needsConversion(file)) {
+        setProgMsg('Converting to MP4 (no quality loss)…');
+        uploadFile = await convertToMp4(file);
+        setProgress(85);
+      }
+
       // ── Upload DIRECTLY from browser to Telegram — bypasses Vercel size limit ──
       const form = new FormData();
       form.append('chat_id',            CHANNEL);
-      form.append('video',              file);
+      form.append('video',              uploadFile);
       form.append('caption',            cap.slice(0,1024));
       form.append('supports_streaming', 'true');
 
@@ -4659,9 +4749,16 @@ function UploadToTelegram({ pop, onSaved }) {
           )}
 
           {/* File info */}
-          <div style={{background:G1,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:G6,display:"flex",justifyContent:"space-between"}}>
-            <span style={{fontWeight:600,color:BK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"70%"}}>{file.name}</span>
-            <span>{(file.size/1024/1024).toFixed(1)} MB</span>
+          <div style={{background:G1,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:G6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:600,color:BK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"65%"}}>{file.name}</span>
+            <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+              {needsConversion(file)&&(
+                <span style={{background:PLF,color:PL,padding:"2px 7px",borderRadius:99,fontSize:11,fontWeight:700}}>
+                  → MP4
+                </span>
+              )}
+              <span>{(file.size/1024/1024).toFixed(1)} MB</span>
+            </div>
           </div>
 
           {/* Caption */}
