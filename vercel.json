@@ -2,15 +2,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/api/upload-video",
-      "destination": "/api/upload-video"
-    },
-    {
-      "source": "/api/telegram",
-      "destination": "/api/telegram"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]

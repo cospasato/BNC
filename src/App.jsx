@@ -4446,7 +4446,7 @@ function getEmbedUrl(url, thumb) {
   if(!url) return { type:'unknown', embedUrl:'', thumb:null };
   // YouTube
   const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([A-Za-z0-9_-]{11})/);
-  if (ytMatch) return { type:'youtube', embedUrl:`https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white`, thumb:thumb||`https://img.youtube.com/vi/${ytMatch[1]}/maxresdefault.jpg`, videoId:ytMatch[1] };
+  if (ytMatch) return { type:'youtube', videoId:ytMatch[1], embedUrl:`https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white&origin=${typeof window!=='undefined'?window.location.origin:'https://massagetz.com'}`, thumb:thumb||`https://img.youtube.com/vi/${ytMatch[1]}/maxresdefault.jpg` };
 
   // TikTok — extract video ID from various URL formats
   const ttMatch = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/) || url.match(/tiktok\.com\/t\/([\w]+)/);
@@ -4511,23 +4511,29 @@ function UploadToTelegram({ pop, onSaved }) {
 
   const upload = async () => {
     if (!file) return;
-    setUploading(true); setProgress(10);
+    setUploading(true); setProgress(5);
 
     try {
-      setProgress(30);
+      // Step 1: Read file as base64
+      setProgress(15);
+      const fileData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result); // includes data:video/mp4;base64,...
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+      setProgress(40);
 
-      // Send as multipart/form-data directly — no base64 conversion needed
-      const form = new FormData();
-      form.append('video',    file, file.name);
-      form.append('caption',  caption.trim() || `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`);
-      form.append('fileName', file.name);
-      form.append('mimeType', file.type);
-
-      setProgress(50);
-
+      // Step 2: Send as JSON to Vercel API
       const resp = await fetch('/api/upload-video', {
-        method: 'POST',
-        body: form, // no Content-Type header — browser sets it with boundary automatically
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileData,
+          fileName: file.name,
+          mimeType: file.type,
+          caption:  caption.trim() || `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`,
+        }),
       });
       setProgress(85);
 
@@ -4539,19 +4545,19 @@ function UploadToTelegram({ pop, onSaved }) {
       pop('✅ Video uploaded to Telegram and saved!');
 
       onSaved && onSaved({
-        id: 'tg_' + Date.now(),
-        url: data.video_url || data.post_url,
-        source: 'telegram',
-        title: caption || 'Bodymelody Massage',
+        id:        'tg_' + Date.now(),
+        url:       data.video_url || data.post_url,
+        source:    'telegram',
+        title:     caption.trim() || 'Bodymelody Massage',
         thumbnail: null,
-        active: true,
+        active:    true,
       });
 
       setFile(null); setPreview(null); setCaption('');
       if (fileRef.current) fileRef.current.value = '';
 
     } catch(e) {
-      pop(e.message, 'err');
+      pop(e.message || 'Upload failed', 'err');
     }
     setUploading(false);
   };
@@ -4733,6 +4739,13 @@ function VideosAdminTab({ pop }) {
               placeholder="https://youtube.com/watch?v=..."/>
             <Inp label="Title (optional)" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Relaxing Full Body Massage"/>
             <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:14}}>
+              {source==="youtube"&&(
+                <div style={{background:"#fff3cd",border:"1px solid #ffc107",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:12,color:"#856404"}}>
+                  ⚠️ <strong>YouTube requirement:</strong> Your video must have <strong>embedding enabled</strong>.<br/>
+                  In YouTube Studio → Videos → Edit → More options → <strong>Allow embedding ✓</strong><br/>
+                  Also set visibility to <strong>Public</strong> or <strong>Unlisted</strong> (not Private).
+                </div>
+              )}
               {[["youtube","▶️ YouTube","#FF0000"],["tiktok","🎵 TikTok","#010101"],["instagram","📸 Instagram","#E1306C"],["facebook","👥 Facebook","#1877F2"],["telegram","✈️ Telegram","#229ED9"]].map(([v,l,col])=>(
                 <button key={v} onClick={()=>setSource(v)}
                   style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
@@ -5055,18 +5068,23 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                   boxShadow:"0 4px 16px rgba(0,0,0,.5)",
                   cursor:"pointer",position:"relative"}}>
                 {/* Portrait aspect ratio 9:16 */}
-                <div style={{paddingTop:"177.78%",position:"relative",background:"#000"}}>
+                <div style={{paddingTop:"177.78%",position:"relative",background:"#000"}}
+                  onClick={()=>!isPlaying&&setPlaying(v.id)}>
                   {isPlaying
                     ? <>
                         {/* Video player — different per source */}
                         {isYT
-                          // YouTube: youtube-nocookie removes sign-in/bot prompts
-                          ? <iframe
-                              src={`${embedUrl}&autoplay=0&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white`}
-                              style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen title=""
-                            />
+                          // YouTube: only inject iframe after explicit tap — avoids sign-in prompt
+                          ? (()=>{
+                              const {videoId:vid, embedUrl:eUrl} = getEmbedUrl(v.url, v.thumbnail);
+                              const src = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white&origin=${window.location.origin}&enablejsapi=1`;
+                              return <iframe
+                                src={src}
+                                style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                allowFullScreen referrerPolicy="strict-origin-when-cross-origin" title={v.title||""}
+                              />;
+                            })()
                           : v.source==='telegram'
                           ? (() => {
                               const info = getEmbedUrl(v.url, v.thumbnail);
