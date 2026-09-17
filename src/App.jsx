@@ -4491,73 +4491,74 @@ function getSourceIcon(source) {
 
 // ── Videos Admin Tab ─────────────────────────────────────────────────────────
 function UploadToTelegram({ pop, onSaved }) {
-  const [file,       setFile]       = useState(null);
-  const [preview,    setPreview]    = useState(null);
-  const [caption,    setCaption]    = useState('');
-  const [uploading,  setUploading]  = useState(false);
-  const [progress,   setProgress]   = useState(0);
-  const [done,       setDone]       = useState(null);
+  const [file,      setFile]      = useState(null);
+  const [preview,   setPreview]   = useState(null);
+  const [caption,   setCaption]   = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [progress,  setProgress]  = useState(0);
+  const [progMsg,   setProgMsg]   = useState('');
+  const [done,      setDone]      = useState(null);
   const fileRef = useRef();
 
   const pickFile = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 50 * 1024 * 1024) return pop('File too large — max 50MB', 'err');
-    setFile(f);
-    setDone(null);
-    const url = URL.createObjectURL(f);
-    setPreview(url);
+    setFile(f); setDone(null);
+    setPreview(URL.createObjectURL(f));
   };
 
   const upload = async () => {
     if (!file) return;
-    setUploading(true); setProgress(5);
+    setUploading(true); setProgress(5); setProgMsg('Preparing…');
 
     try {
-      // Step 1: Read file as base64
-      setProgress(15);
-      const fileData = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload  = () => resolve(reader.result); // includes data:video/mp4;base64,...
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-      setProgress(40);
+      // Use fetch with FormData + raw File object — no FileReader needed
+      // This works reliably across all browsers including iOS Safari
+      const cap = caption.trim() ||
+        `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`;
 
-      // Step 2: Send as JSON to Vercel API
+      setProgress(20); setProgMsg('Uploading to Telegram…');
+
+      const form = new FormData();
+      form.append('video',    file);           // raw File — browser streams it
+      form.append('caption',  cap);
+      form.append('fileName', file.name);
+      form.append('mimeType', file.type || 'video/mp4');
+
       const resp = await fetch('/api/upload-video', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileData,
-          fileName: file.name,
-          mimeType: file.type,
-          caption:  caption.trim() || `Bodymelody Massage — ${new Date().toLocaleDateString('en-TZ',{day:'numeric',month:'short',year:'numeric'})}`,
-        }),
+        method: 'POST',
+        body:   form,
+        // DO NOT set Content-Type — browser sets it automatically with correct boundary
       });
-      setProgress(85);
 
-      const data = await resp.json();
+      setProgress(85); setProgMsg('Saving…');
+
+      let data;
+      try { data = await resp.json(); }
+      catch(e) { throw new Error('Server error — check Vercel logs'); }
+
       if (!resp.ok || data.error) throw new Error(data.error || 'Upload failed');
 
-      setProgress(100);
+      setProgress(100); setProgMsg('Done!');
       setDone(data);
-      pop('✅ Video uploaded to Telegram and saved!');
+      pop('✅ Video posted to Telegram and saved to M-Videos!');
 
       onSaved && onSaved({
-        id:        'tg_' + Date.now(),
-        url:       data.video_url || data.post_url,
-        source:    'telegram',
-        title:     caption.trim() || 'Bodymelody Massage',
+        id: 'tg_' + Date.now(),
+        url: data.video_url || data.post_url,
+        source: 'telegram',
+        title: cap.slice(0,80),
         thumbnail: null,
-        active:    true,
+        active: true,
       });
 
-      setFile(null); setPreview(null); setCaption('');
+      setFile(null); setPreview(null); setCaption(''); setProgress(0); setProgMsg('');
       if (fileRef.current) fileRef.current.value = '';
 
     } catch(e) {
       pop(e.message || 'Upload failed', 'err');
+      setProgress(0); setProgMsg('');
     }
     setUploading(false);
   };
