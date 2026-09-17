@@ -5595,36 +5595,38 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
       const avColor={available:OK,outcall_only:WA,unavailable:ER};
       const avLabel={available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"};
       return(
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.95)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end"}}
         onClick={e=>e.target===e.currentTarget&&setViewTh(null)}>
-        <div style={{background:BK,borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,boxShadow:"0 -8px 40px rgba(0,0,0,.6)",overflow:"hidden",maxHeight:"96vh",display:"flex",flexDirection:"column"}}>
-          {/* Photo — full height, contain so entire image is visible */}
-          <div style={{position:"relative",flexShrink:0,background:vPhotos[0]?"#000":`linear-gradient(135deg,${PLD},${PL})`,
-            height:"min(70vh, 480px)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+        <div style={{width:"100%",maxWidth:520,maxHeight:"95vh",display:"flex",flexDirection:"column",borderRadius:"20px 20px 0 0",overflow:"hidden",boxShadow:"0 -8px 60px rgba(0,0,0,.8)"}}>
+          {/* Full-screen photo — no fixed height, natural image ratio */}
+          <div style={{position:"relative",width:"100%",background:vPhotos[0]?"#111":`linear-gradient(135deg,${PLD},${PL})`}}>
             {vPhotos.length>0
-              ? vPhotos.map((src,i)=>(
-                  <img key={i} src={src} alt={viewTh.name}
-                    style={{position:"absolute",inset:0,width:"100%",height:"100%",
-                      objectFit:"contain",  /* contain = full image visible, no cropping */
-                      objectPosition:"center",
-                      opacity:i===thPhotoIdx?1:0,transition:"opacity .3s"}}/>
-                ))
-              : <div style={{fontSize:90,color:"rgba(255,255,255,.2)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>{viewTh.name[0]}</div>
+              ? <>
+                  {/* Natural size image — no aspect ratio box, image sets its own height */}
+                  <img src={vPhotos[thPhotoIdx]} alt={viewTh.name}
+                    style={{width:"100%",display:"block",maxHeight:"72vh",
+                      objectFit:"cover",objectPosition:"top center"}}
+                    onError={e=>{e.target.style.display="none";}}/>
+                </>
+              : <div style={{height:320,display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:100,color:"rgba(255,255,255,.15)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>
+                  {viewTh.name[0]}
+                </div>
             }
             <div style={{position:"absolute",bottom:0,left:0,right:0,height:"40%",background:"linear-gradient(to top,rgba(0,0,0,.85),transparent)",pointerEvents:"none"}}/>
-            <button onClick={()=>setViewTh(null)} style={{position:"absolute",top:12,right:12,width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>×</button>
+            <button onClick={()=>setViewTh(null)} style={{position:"absolute",top:12,right:12,width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.65)",border:"2px solid rgba(255,255,255,.2)",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10,backdropFilter:"blur(4px)"}}>×</button>
             {vPhotos.length>1&&(
               <>
-                <button onClick={()=>setThPhotoIdx(i=>(i-1+vPhotos.length)%vPhotos.length)} style={{position:"absolute",left:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-                <button onClick={()=>setThPhotoIdx(i=>(i+1)%vPhotos.length)} style={{position:"absolute",right:10,top:"45%",transform:"translateY(-50%)",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                <button onClick={e=>{e.stopPropagation();setThPhotoIdx(i=>(i-1+vPhotos.length)%vPhotos.length);}} style={{position:"absolute",left:10,top:"45%",transform:"translateY(-50%)",width:40,height:40,borderRadius:"50%",background:"rgba(0,0,0,.55)",border:"none",color:WH,fontSize:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:5}}>‹</button>
+                <button onClick={e=>{e.stopPropagation();setThPhotoIdx(i=>(i+1)%vPhotos.length);}} style={{position:"absolute",right:10,top:"45%",transform:"translateY(-50%)",width:40,height:40,borderRadius:"50%",background:"rgba(0,0,0,.55)",border:"none",color:WH,fontSize:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:5}}>›</button>
                 <div style={{position:"absolute",bottom:54,left:0,right:0,display:"flex",gap:4,justifyContent:"center"}}>
                   {vPhotos.map((_,i)=><div key={i} onClick={()=>setThPhotoIdx(i)} style={{width:i===thPhotoIdx?14:5,height:5,borderRadius:99,background:i===thPhotoIdx?"rgba(255,255,255,1)":"rgba(255,255,255,.4)",transition:"all .2s",cursor:"pointer"}}/>)}
                 </div>
               </>
             )}
-            <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 18px"}}>
-              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:WH,margin:"0 0 4px"}}>{viewTh.name}</h2>
-              {viewTh.specialties?.length>0&&<div style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{viewTh.specialties.join(" · ")}</div>}
+            <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"16px 18px",background:"linear-gradient(to top,rgba(0,0,0,.85) 0%,transparent 100%)"}}>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:WH,margin:"0 0 4px",textShadow:"0 2px 8px rgba(0,0,0,.5)"}}>{viewTh.name}</h2>
+              {viewTh.specialties?.length>0&&<div style={{fontSize:13,color:"rgba(255,255,255,.85)"}}>{viewTh.specialties.join(" · ")}</div>}
             </div>
           </div>
           {vPhotos.length>1&&(
@@ -5634,7 +5636,7 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
               ))}
             </div>
           )}
-          <div style={{padding:"18px 20px 24px",overflowY:"auto",background:WH,borderRadius:"16px 16px 0 0",marginTop:-16,position:"relative",zIndex:1}}>
+          <div style={{padding:"16px 20px 24px",overflowY:"auto",background:WH,flexShrink:0}}>
             <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
               {viewTh.availability&&<span style={{background:`${avColor[viewTh.availability]||G4}18`,color:avColor[viewTh.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{avLabel[viewTh.availability]||viewTh.availability}</span>}
               <span style={{background:OKB,color:OK,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
