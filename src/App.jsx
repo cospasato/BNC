@@ -5107,46 +5107,19 @@ function VideosPage({ navTo, customer, user, therapistUser, therapistLogout, cus
                     ? <>
                         {/* Video player — different per source */}
                         {isYT
-                          // YouTube: open directly in YouTube app/browser — 100% reliable, no sign-in wall
+                          // YouTube inline — nocookie domain skips sign-in wall
                           ? (()=>{
                               const {videoId:vid} = getEmbedUrl(v.url, v.thumbnail);
-                              const ytUrl = `https://www.youtube.com/watch?v=${vid}`;
-                              return(
-                                <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
-                                  alignItems:"center",justifyContent:"center",background:"#000",gap:14}}>
-                                  {/* Show thumbnail behind */}
-                                  {(v.thumbnail||`https://img.youtube.com/vi/${vid}/maxresdefault.jpg`)&&(
-                                    <img src={v.thumbnail||`https://img.youtube.com/vi/${vid}/maxresdefault.jpg`}
-                                      alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:.35}}
-                                      onError={e=>{e.target.src=`https://img.youtube.com/vi/${vid}/hqdefault.jpg`;}}/>
-                                  )}
-                                  <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"0 20px"}}>
-                                    <div style={{width:70,height:70,borderRadius:"50%",background:"rgba(255,0,0,.9)",
-                                      display:"flex",alignItems:"center",justifyContent:"center",
-                                      boxShadow:"0 4px 24px rgba(255,0,0,.5)"}}>
-                                      <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
-                                        <path d="M8 5v14l11-7z"/>
-                                      </svg>
-                                    </div>
-                                    <div style={{color:"#fff",fontWeight:700,fontSize:14,textAlign:"center",textShadow:"0 2px 8px rgba(0,0,0,.8)"}}>
-                                      {v.title||"Watch on YouTube"}
-                                    </div>
-                                    <a href={ytUrl} target="_blank" rel="noopener noreferrer"
-                                      onClick={e=>e.stopPropagation()}
-                                      style={{background:"#FF0000",color:"#fff",textDecoration:"none",
-                                        padding:"11px 24px",borderRadius:10,fontWeight:700,fontSize:14,
-                                        display:"flex",alignItems:"center",gap:8,boxShadow:"0 4px 16px rgba(255,0,0,.4)"}}>
-                                      <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                                        <path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/>
-                                      </svg>
-                                      Open in YouTube
-                                    </a>
-                                    <div style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>
-                                      Opens YouTube app or browser
-                                    </div>
-                                  </div>
-                                </div>
-                              );
+                              const src = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3&color=white&playsinline=1`;
+                              return <iframe
+                                key={vid}
+                                src={src}
+                                style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                allowFullScreen
+                                referrerPolicy="strict-origin-when-cross-origin"
+                                title={v.title||""}
+                              />;
                             })()
                           : v.source==='telegram'
                           ? (() => {
@@ -5622,18 +5595,23 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
       const avColor={available:OK,outcall_only:WA,unavailable:ER};
       const avLabel={available:"🟢 Available",outcall_only:"🟡 Outcall Only",unavailable:"🔴 Unavailable"};
       return(
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center",overflowY:"auto"}}
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
         onClick={e=>e.target===e.currentTarget&&setViewTh(null)}>
-        <div style={{background:WH,borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,boxShadow:"0 -8px 40px rgba(0,0,0,.4)",overflow:"hidden",maxHeight:"95vh",display:"flex",flexDirection:"column"}}>
-          {/* Portrait photo — 4:5 ratio */}
-          <div style={{paddingTop:"125%",position:"relative",flexShrink:0,background:vPhotos[0]?BK:`linear-gradient(135deg,${PLD},${PL})`}}>
+        <div style={{background:BK,borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,boxShadow:"0 -8px 40px rgba(0,0,0,.6)",overflow:"hidden",maxHeight:"96vh",display:"flex",flexDirection:"column"}}>
+          {/* Photo — full height, contain so entire image is visible */}
+          <div style={{position:"relative",flexShrink:0,background:vPhotos[0]?"#000":`linear-gradient(135deg,${PLD},${PL})`,
+            height:"min(70vh, 480px)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
             {vPhotos.length>0
               ? vPhotos.map((src,i)=>(
-                  <img key={i} src={src} alt={viewTh.name} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"top",opacity:i===thPhotoIdx?1:0,transition:"opacity .3s"}}/>
+                  <img key={i} src={src} alt={viewTh.name}
+                    style={{position:"absolute",inset:0,width:"100%",height:"100%",
+                      objectFit:"contain",  /* contain = full image visible, no cropping */
+                      objectPosition:"center",
+                      opacity:i===thPhotoIdx?1:0,transition:"opacity .3s"}}/>
                 ))
-              : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:72,color:"rgba(255,255,255,.3)",fontFamily:"'Playfair Display',serif"}}>{viewTh.name[0]}</div>
+              : <div style={{fontSize:90,color:"rgba(255,255,255,.2)",fontFamily:"'Playfair Display',serif",fontWeight:700}}>{viewTh.name[0]}</div>
             }
-            <div style={{position:"absolute",bottom:0,left:0,right:0,height:"45%",background:"linear-gradient(to top,rgba(0,0,0,.75),transparent)",pointerEvents:"none"}}/>
+            <div style={{position:"absolute",bottom:0,left:0,right:0,height:"40%",background:"linear-gradient(to top,rgba(0,0,0,.85),transparent)",pointerEvents:"none"}}/>
             <button onClick={()=>setViewTh(null)} style={{position:"absolute",top:12,right:12,width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:WH,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>×</button>
             {vPhotos.length>1&&(
               <>
@@ -5656,7 +5634,7 @@ function TherapistPickerStep({locTherapists, bD, setBD, goStep}) {
               ))}
             </div>
           )}
-          <div style={{padding:"18px 20px 24px",overflowY:"auto"}}>
+          <div style={{padding:"18px 20px 24px",overflowY:"auto",background:WH,borderRadius:"16px 16px 0 0",marginTop:-16,position:"relative",zIndex:1}}>
             <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
               {viewTh.availability&&<span style={{background:`${avColor[viewTh.availability]||G4}18`,color:avColor[viewTh.availability]||G4,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>{avLabel[viewTh.availability]||viewTh.availability}</span>}
               <span style={{background:OKB,color:OK,padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700}}>🏢 In-House</span>
